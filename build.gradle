@@ -6,6 +6,7 @@ plugins {
 
 group = 'com.otboo'
 version = '0.0.1-SNAPSHOT'
+description = 'Personalized outfit recommendation service'
 
 java {
 	toolchain {
@@ -18,15 +19,34 @@ repositories {
 }
 
 dependencies {
-	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	// Web
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+	// Security
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+
+	// Real-time communication
+	implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+	// Cache abstraction
+	implementation 'org.springframework.boot:spring-boot-starter-cache'
+
+	// Configuration metadata
+	annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+	// Lombok
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
+
+	// Test
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
+
 	testCompileOnly 'org.projectlombok:lombok'
-	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testAnnotationProcessor 'org.projectlombok:lombok'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {
