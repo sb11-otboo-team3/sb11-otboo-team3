@@ -4,7 +4,7 @@ spring:
       on-profile: local
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/otboo}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:otboo}
     username: ${DB_USERNAME:otboo}
     password: ${DB_PASSWORD:otboo}
 
