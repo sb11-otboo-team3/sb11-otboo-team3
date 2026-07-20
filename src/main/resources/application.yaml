@@ -1,3 +1,16 @@
 spring:
   application:
     name: otboo
+
+    # 별도 프로필을 지정하지 않으면 local 사용
+    profiles:
+      default: local
+
+    # API 요청 종료 후 영속성 컨텍스트를 닫도록 설정
+    jpa:
+      open-in-view: false
+
+    # 아직 Job Bean이 없으면 자동 실행 방지
+    batch:
+      job:
+        enabled: false
