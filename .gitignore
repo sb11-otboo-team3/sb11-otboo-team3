@@ -8,7 +8,6 @@ out/
 ### Gradle ###
 .gradle/
 build/
-!gradle/wrapper/gradle-wrapper.jar
 
 ### Java ###
 *.class
@@ -72,3 +71,6 @@ Desktop.ini
 *.zip
 *.tar.gz
 *.rar
+
+### Gradle Wrapper ###
+!gradle/wrapper/gradle-wrapper.jar
