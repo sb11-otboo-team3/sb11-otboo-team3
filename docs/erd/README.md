@@ -6,17 +6,17 @@
 
 ### `users`
 
-| 컬럼 | 타입 | 제약 | 의미 |
-|---|---|---|---|
-| `id` | UUID | PK | 사용자 식별자 |
-| `email` | VARCHAR(320) | NOT NULL, UNIQUE | 로그인 이메일 |
-| `name` | VARCHAR(100) | NOT NULL | 사용자 이름 |
-| `password_hash` | VARCHAR(255) | NOT NULL | 암호화된 비밀번호 |
-| `role` | VARCHAR(20) | NOT NULL | `ADMIN`, `USER` |
-| `locked` | BOOLEAN | NOT NULL, DEFAULT FALSE | 계정 잠금 여부 |
+| 컬럼 | 타입 | 제약 | 의미                                   |
+|---|---|---|----------------------------------------|
+| `id` | UUID | PK | 사용자 식별자                          |
+| `email` | VARCHAR(320) | NOT NULL, UNIQUE | 로그인 이메일                          |
+| `name` | VARCHAR(100) | NOT NULL | 사용자 이름                            |
+| `password_hash` | VARCHAR(255) | NOT NULL | 비밀번호 해시 값                         |
+| `role` | VARCHAR(20) | NOT NULL | `ADMIN`, `USER`                        |
+| `locked` | BOOLEAN | NOT NULL, DEFAULT FALSE | 계정 잠금 여부                         |
 | `token_version` | BIGINT | NOT NULL, DEFAULT 0 | 권한 변경·계정 잠금 시 JWT 무효화 버전 |
-| `created_at` | TIMESTAMPTZ | NOT NULL | 생성 시각 |
-| `updated_at` | TIMESTAMPTZ | NOT NULL | 수정 시각 |
+| `created_at` | TIMESTAMPTZ | NOT NULL | 생성 시각                              |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | 수정 시각                              |
 
 ### `profiles`
 
@@ -165,6 +165,13 @@
 | `feed_id` | UUID | FK → `feeds.id`, NOT NULL | 대상 피드 |
 | `user_id` | UUID | FK → `users.id`, NOT NULL | 좋아요 사용자 |
 | `created_at` | TIMESTAMPTZ | NOT NULL | 좋아요 시각 |
+
+#### 처리 정책
+
+- 좋아요 등록 시 `feed_likes` 행을 생성하고 `feeds.like_count`를 1 증가시킵니다.
+- 좋아요 취소 시 해당 `feed_likes` 행을 즉시 물리 삭제하고 `feeds.like_count`를 1 감소시킵니다.
+- 좋아요 행 생성·삭제와 `like_count` 증감은 동일한 트랜잭션에서 처리합니다.
+- 피드가 삭제되면 `ON DELETE CASCADE`를 통해 해당 피드의 좋아요 행을 함께 삭제합니다.
 
 ### `comments`
 
