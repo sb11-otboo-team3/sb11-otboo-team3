@@ -2,7 +2,9 @@ package com.otboo.global.error;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+
 import java.util.UUID;
+
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,6 +20,12 @@ public class TestValidationController {
     @PostMapping("/validation")
     public void validate(
             @Valid @RequestBody TestRequest request
+    ) {
+    }
+
+    @PostMapping("/validation/fallback")
+    public void validateFallback(
+            @Valid @RequestBody FallbackTestRequest request
     ) {
     }
 
@@ -37,5 +45,12 @@ public class TestValidationController {
             @NotBlank(message = "이름은 필수입니다.")
             String name
     ) {
+    }
+
+    public record FallbackTestRequest(
+            @NotBlank(message = " ")
+            String value
+    ) {
+
     }
 }

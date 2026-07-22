@@ -43,6 +43,25 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void 검증_오류메시지가_비어있으면_기본메시지를_반환한다() throws Exception {
+
+        mockMvc.perform(post("/test/validation/fallback")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                            "value": ""
+                        }
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.exceptionName")
+                        .value("MethodArgumentNotValidException"))
+                .andExpect(jsonPath("$.message")
+                        .value("요청 값이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.details.value")
+                        .value("잘못된 값입니다."));
+    }
+
+    @Test
     void 공통_도메인예외가_발생하면_지정된_HTTP상태와_에러응답을_반환한다() throws Exception {
 
         mockMvc.perform(get("/test/domain-exception"))
