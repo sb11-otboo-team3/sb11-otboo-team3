@@ -29,6 +29,8 @@ public class OpenApiConfigTest {
                 .andExpect(jsonPath("$.openapi").exists())
                 .andExpect(jsonPath("$.info.title")
                         .value("옷장을 부탁해 API"))
+                .andExpect(jsonPath("$.info.description")
+                        .value("개인화 의상 추천 서비스 API 문서"))
                 .andExpect(jsonPath("$.info.version")
                         .value("v1"));
     }
