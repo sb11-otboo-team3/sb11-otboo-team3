@@ -718,16 +718,41 @@ Windows와 macOS의 줄바꿈 문자 차이로 다음과 같은 오류가 발생
 Git 줄바꿈 설정을 확인합니다.
 
 ```bash
-git config --global core.autocrlf
+git config --global --get core.autocrlf
 ```
 
-Windows Git Bash에서는 다음 설정을 사용할 수 있습니다.
+Git Bash에서 셸 스크립트의 LF 줄바꿈을 유지하려면 다음과 같이 설정합니다.
 
 ```bash
-git config --global core.autocrlf true
+git config --global core.autocrlf input
 ```
 
-설정 변경 후에도 오류가 계속되면 저장소를 새로 복제합니다.
+`input`은 체크아웃된 LF 파일을 CRLF로 변환하지 않고, 커밋할 때 CRLF를 LF로 정규화합니다.
+
+이미 `core.autocrlf=true` 상태로 저장소를 Clone했다면 기존 파일에 CRLF가 적용되어 있을 수 있습니다.
+
+먼저 작업 중인 변경사항이 없는지 확인합니다.
+
+```bash
+git status
+```
+
+변경사항이 없다면 저장소를 새로 Clone하는 것이 가장 안전합니다.
+
+```bash
+cd ..
+mv sb11-otboo-team3 sb11-otboo-team3-backup
+git clone 복사한-HTTPS-주소
+cd sb11-otboo-team3
+```
+
+새로 Clone한 저장소에서 다시 실행합니다.
+
+```bash
+./gradlew --version
+```
+
+정상 실행을 확인한 뒤 기존 백업 폴더는 필요한 파일이 없는지 확인하고 삭제합니다.
 
 ---
 
