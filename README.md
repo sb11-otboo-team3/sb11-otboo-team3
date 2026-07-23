@@ -8,8 +8,7 @@
 
 사용자가 보유한 의상을 등록하면 현재 날씨와 개인 취향을 기반으로 적절한 코디를 추천합니다.
 
-추천 결과를 OOTD 피드에 공유하고 다른 사용자와 소통할 수 있으며,
-팔로우, 댓글, 좋아요, 알림, DM 기능을 제공합니다.
+추천 결과를 OOTD 피드에 공유하고 다른 사용자와 소통할 수 있으며, 팔로우, 댓글, 좋아요, 알림, DM 기능을 제공합니다.
 
 ---
 
@@ -243,23 +242,30 @@ Control + C
 
 ---
 
-### 4. 환경변수 적용
+### 4. Spring Boot 환경변수 설정
 
 Docker Compose는 프로젝트 루트의 `.env` 파일을 자동으로 읽습니다.
 
 Spring Boot는 `.env` 파일을 직접 자동으로 읽지 않습니다.
 
-기본 `.env` 값은 `application-local.yaml`의 기본값과 동일하므로, 값을 변경하지 않았다면 별도로 환경변수를 적용하지 않아도 됩니다.
+기본 `.env` 값은 `application-local.yaml`의 기본값과 동일하므로 값을 변경하지 않았다면 별도의 환경변수 설정 없이 실행할 수 있습니다.
 
-`.env`의 포트, 계정 또는 비밀번호를 변경했다면 애플리케이션 실행 전에 다음 명령을 실행합니다.
+`.env`의 포트, 계정 또는 비밀번호를 변경했다면 필요한 환경변수만 실행할 터미널에 개별적으로 등록합니다.
 
 ```bash
-set -a
-source .env
-set +a
+export DB_HOST='localhost'
+export DB_PORT='5433'
+export DB_NAME='otboo'
+export DB_USERNAME='otboo'
+export DB_PASSWORD='변경한-비밀번호'
+
+export REDIS_HOST='localhost'
+export REDIS_PORT='6380'
 ```
 
-적용된 값을 확인합니다.
+환경변수 값이 셸에서 임의로 해석되지 않도록 작은따옴표로 감쌉니다.
+
+등록된 값을 확인합니다.
 
 ```bash
 echo "$DB_HOST"
@@ -268,6 +274,12 @@ echo "$DB_NAME"
 echo "$REDIS_HOST"
 echo "$REDIS_PORT"
 ```
+
+환경변수를 등록한 터미널에서 애플리케이션을 실행해야 합니다.
+
+터미널을 종료하면 해당 터미널에 등록한 환경변수도 사라집니다.
+
+비밀번호에 작은따옴표가 포함되어 있거나 터미널 환경변수 등록이 어려운 경우에는 IntelliJ Run Configuration의 `Environment variables`에 직접 등록합니다.
 
 ---
 
@@ -366,7 +378,7 @@ DB_HOST=localhost
 DB_PORT=5433
 DB_NAME=otboo
 DB_USERNAME=otboo
-DB_PASSWORD=otboo
+DB_PASSWORD=변경한-비밀번호
 REDIS_HOST=localhost
 REDIS_PORT=6380
 ```
@@ -461,8 +473,7 @@ GitHub Actions에서도 다음 명령으로 전체 빌드와 테스트를 실행
 ### 특정 테스트 메서드 실행
 
 ```bash
-./gradlew test \
-  --tests "패키지명.테스트클래스명.테스트메서드명"
+./gradlew test --tests "패키지명.테스트클래스명.테스트메서드명"
 ```
 
 ---
@@ -590,12 +601,16 @@ docker compose down
 docker compose up -d
 ```
 
-Spring Boot에도 변경한 값을 적용합니다.
+Spring Boot에도 변경한 포트를 적용합니다.
 
 ```bash
-set -a
-source .env
-set +a
+export DB_PORT='5433'
+```
+
+같은 터미널에서 애플리케이션을 실행합니다.
+
+```bash
+./gradlew bootRun
 ```
 
 ---
@@ -621,12 +636,16 @@ docker compose down
 docker compose up -d
 ```
 
-Spring Boot에도 변경한 값을 적용합니다.
+Spring Boot에도 변경한 포트를 적용합니다.
 
 ```bash
-set -a
-source .env
-set +a
+export REDIS_PORT='6380'
+```
+
+같은 터미널에서 애플리케이션을 실행합니다.
+
+```bash
+./gradlew bootRun
 ```
 
 ---
@@ -652,6 +671,13 @@ lsof -nP -iTCP:8080 -sTCP:LISTEN
 ```bash
 docker compose down -v
 docker compose up -d
+```
+
+Spring Boot 실행 환경에도 변경한 계정 정보를 개별적으로 등록합니다.
+
+```bash
+export DB_USERNAME='변경한-사용자명'
+export DB_PASSWORD='변경한-비밀번호'
 ```
 
 ---
@@ -831,7 +857,7 @@ git commit -m "Tag: 작업 내용 [#이슈번호]"
 git push -u origin 현재-브랜치명
 ```
 
-현재 브랜치 이름 확인:
+현재 브랜치 이름을 확인합니다.
 
 ```bash
 git branch --show-current
