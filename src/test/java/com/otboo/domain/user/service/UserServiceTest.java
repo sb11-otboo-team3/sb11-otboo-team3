@@ -17,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,7 +40,7 @@ class UserServiceTest {
     given(passwordEncoder.encode(request.password())).willReturn("encoded-password");
 
     User savedUser = User.create(request.email(), request.name(), "encoded-password");
-    given(userRepository.save(any(User.class))).willReturn(savedUser);
+    given(userRepository.saveAndFlush(any(User.class))).willReturn(savedUser);
 
     // when
     UserDto result = userService.create(request);
@@ -62,4 +63,19 @@ class UserServiceTest {
     assertThatThrownBy(() -> userService.create(request))
         .isInstanceOf(DuplicateEmailException.class);
   }
+  
+  @Test
+  void 사전검사_통과후_저장시점에_유니크제약_위반되면_DuplicateEmailException을_던진다() {
+    // given
+    UserCreateRequest request = new UserCreateRequest("테스트유저", "test@otboo.io", "password1234");
+    given(userRepository.existsByEmail(request.email())).willReturn(false);
+    given(passwordEncoder.encode(request.password())).willReturn("encoded-password");
+    given(userRepository.saveAndFlush(any(User.class)))
+        .willThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint"));
+
+    // when & then
+    assertThatThrownBy(() -> userService.create(request))
+        .isInstanceOf(DuplicateEmailException.class);
+  }
+
 }
