@@ -63,7 +63,7 @@ class UserServiceTest {
     assertThatThrownBy(() -> userService.create(request))
         .isInstanceOf(DuplicateEmailException.class);
   }
-  
+
   @Test
   void 사전검사_통과후_저장시점에_유니크제약_위반되면_DuplicateEmailException을_던진다() {
     // given

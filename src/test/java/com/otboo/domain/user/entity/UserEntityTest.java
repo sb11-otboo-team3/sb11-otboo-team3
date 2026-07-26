@@ -62,14 +62,20 @@ class UserEntityTest {
   void 이미_잠긴_계정을_다시_잠그면_tokenVersion이_증가하지_않는다() {
     // given
     User user = User.create("test@otboo.io", "테스트유저", "encoded-password");
-    user.lock();
-    long versionAfterFirstLock = user.getTokenVersion();
 
     // when
     user.lock();
 
     // then
-    assertThat(user.getTokenVersion()).isEqualTo(versionAfterFirstLock);
+    assertThat(user.isLocked()).isTrue();
+    assertThat(user.getTokenVersion()).isEqualTo(1L);
+
+    // when
+    user.lock();
+
+    // then
+    assertThat(user.isLocked()).isTrue();
+    assertThat(user.getTokenVersion()).isEqualTo(1L);
   }
 
 }
