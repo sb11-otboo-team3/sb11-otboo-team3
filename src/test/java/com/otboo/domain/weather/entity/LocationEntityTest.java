@@ -24,7 +24,7 @@ class LocationEntityTest {
 
   @Test
   @DisplayName("같은 x, y 좌표는 중복 저장할 수 없다")
-  void throwsExceptionWhenDuplicateXYCoordinateIsSaved() {
+  void throwsExceptionWhenDuplicateXYIsSaved() {
     // given
     Location first = Location.builder()
         .x(60)

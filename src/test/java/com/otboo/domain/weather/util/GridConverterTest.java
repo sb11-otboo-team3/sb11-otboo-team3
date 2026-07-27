@@ -33,7 +33,7 @@ class GridConverterTest {
 
     @Test
     @DisplayName("부산시청 좌표를 기상청 격자좌표로 변환하면 (98, 76)이다")
-    void convertsBusanCityHallCoordinate() {
+    void convertsBusanCityHallGrid() {
       // given
       double latitude = 35.1796;
       double longitude = 129.0756;
@@ -48,7 +48,7 @@ class GridConverterTest {
 
     @Test
     @DisplayName("제주시청 좌표를 기상청 격자좌표로 변환하면 (53, 38)이다")
-    void convertsJejuCityHallCoordinate() {
+    void convertsJejuCityHallGrid() {
       // given
       double latitude = 33.4996;
       double longitude = 126.5312;

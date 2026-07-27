@@ -28,7 +28,7 @@ class WeatherControllerTest {
   @Test
   @DisplayName("위경도로 날씨 위치 정보를 조회하면 200과 위치정보를 반환한다")
   @WithMockUser
-  void returns200AndLocationWhenQueriedByCoordinate() throws Exception {
+  void returns200AndLocationWhenQueriedByLatLng() throws Exception {
     // given
     WeatherAPILocation response = new WeatherAPILocation(
         37.5665, 126.9780, 60, 127,
