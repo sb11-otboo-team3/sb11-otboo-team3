@@ -1,4 +1,4 @@
-package com.otboo.domain.location.dto;
+package com.otboo.domain.weather.dto;
 
 public record WeatherAPILocation (
 

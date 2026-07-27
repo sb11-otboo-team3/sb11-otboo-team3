@@ -1,12 +1,14 @@
-package com.otboo.domain.location.entity;
+package com.otboo.domain.weather.entity;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.otboo.domain.location.dto.WeatherAPILocation;
+import com.otboo.domain.weather.dto.WeatherAPILocation;
+import com.otboo.domain.weather.entity.Location;
 import com.otboo.global.config.JpaAuditingConfig;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -21,7 +23,8 @@ class LocationEntityTest {
   private EntityManager entityManager;
 
   @Test
-  void 같은_x_y_좌표는_중복_저장할_수_없다() {
+  @DisplayName("같은 x, y 좌표는 중복 저장할 수 없다")
+  void throwsExceptionWhenDuplicateXYCoordinateIsSaved() {
     // given
     Location first = Location.builder()
         .x(60)
@@ -49,7 +52,8 @@ class LocationEntityTest {
   }
 
   @Test
-  void builder로_생성하면_최근_요청_시각도_함께_기록된다() {
+  @DisplayName("builder로 생성하면 최근 요청 시각도 함께 기록된다")
+  void recordsLastRequestedAtWhenBuilt() {
     // given & when
     Location location = Location.builder()
         .x(60)
@@ -64,7 +68,8 @@ class LocationEntityTest {
   }
 
   @Test
-  void refreshRequestedAt_호출시_최근_요청_시각이_갱신된다() throws InterruptedException {
+  @DisplayName("refreshRequestedAt 호출 시 최근 요청 시각이 갱신된다")
+  void updatesLastRequestedAtWhenRefreshed() throws InterruptedException {
     // given
     Location location = Location.builder()
         .x(60)
@@ -84,7 +89,8 @@ class LocationEntityTest {
   }
 
   @Test
-  void builder로_생성하면_필드가_그대로_채워진다() {
+  @DisplayName("builder로 생성하면 필드가 그대로 채워진다")
+  void fillsFieldsWhenBuilt() {
     // given & when
     Location location = Location.builder()
         .x(60)
@@ -103,7 +109,8 @@ class LocationEntityTest {
   }
 
   @Test
-  void toDto는_좌표와_행정구역을_WeatherAPILocation으로_변환한다() {
+  @DisplayName("toDto는 좌표와 행정구역을 WeatherAPILocation으로 변환한다")
+  void convertsToWeatherAPILocation() {
     // given
     Location location = Location.builder()
         .x(60)

@@ -1,6 +1,6 @@
-package com.otboo.domain.location.entity;
+package com.otboo.domain.weather.entity;
 
-import com.otboo.domain.location.dto.WeatherAPILocation;
+import com.otboo.domain.weather.dto.WeatherAPILocation;
 import com.otboo.global.common.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
