@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.security.test.context.support.WithMockUser;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -29,9 +30,10 @@ class ActuatorEndpointTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("노출하지 않은 Actuator 엔드포인트에는 접근할 수 없다")
     void unexposedActuatorIsNotAccessible() throws Exception {
         mockMvc.perform(get("/actuator/env"))
-                .andExpect(status().is4xxClientError());
+                .andExpect(status().isNotFound());
     }
 }
