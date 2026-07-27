@@ -17,7 +17,19 @@ spring:
     job:
       enabled: false
   cache:
-
+    type: simple
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+  health:
+    redis:
+      enabled: false
 jwt:
   secret: test-secret-key-for-integration-test-minimum-256-bits-required
   access-expiration: 900000
