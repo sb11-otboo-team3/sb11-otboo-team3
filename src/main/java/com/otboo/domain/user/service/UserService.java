@@ -16,25 +16,38 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class UserService {
 
+  private static final String EMAIL_UNIQUE_CONSTRAINT = "uk6dotkott2kjsp8vw4d0m25fb7";
+
   private final UserRepository userRepository;
   private final PasswordEncoder passwordEncoder;
 
   @Transactional
   public UserDto create(UserCreateRequest request) {
-    if (userRepository.existsByEmail(request.email())) {
-      throw new DuplicateEmailException(request.email());
+    String normalizedEmail = request.email().toLowerCase();
+
+    if (userRepository.existsByEmail(normalizedEmail)) {
+      throw new DuplicateEmailException(normalizedEmail);
     }
 
     String passwordHash = passwordEncoder.encode(request.password());
-    User user = User.create(request.email(), request.name(), passwordHash);
+    User user = User.create(normalizedEmail, request.name(), passwordHash);
 
     User saved;
     try {
       saved = userRepository.saveAndFlush(user);
     } catch (DataIntegrityViolationException e) {
-      throw new DuplicateEmailException(request.email());
+      if (isEmailUniqueViolation(e)) {
+        throw new DuplicateEmailException(normalizedEmail);
+      }
+      throw e;
     }
 
     return UserDto.from(saved);
+  }
+
+  private boolean isEmailUniqueViolation(DataIntegrityViolationException e) {
+    Throwable cause = e.getMostSpecificCause();
+    String message = cause.getMessage();
+    return message != null && message.toLowerCase().contains(EMAIL_UNIQUE_CONSTRAINT);
   }
 }

@@ -7,7 +7,6 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -36,9 +35,8 @@ public class User extends UpdatableEntity {
   @Column(name = "token_version", nullable = false)
   private long tokenVersion;
 
-  @Builder
   private User(String email, String name, String passwordHash) {
-    this.email = email;
+    this.email = email.toLowerCase();;
     this.name = name;
     this.passwordHash = passwordHash;
     this.role = UserRole.USER;
@@ -47,12 +45,9 @@ public class User extends UpdatableEntity {
   }
 
   public static User create(String email, String name, String passwordHash) {
-    return User.builder()
-        .email(email)
-        .name(name)
-        .passwordHash(passwordHash)
-        .build();
+    return new User(email, name, passwordHash);
   }
+
 
   public void changeRole(UserRole newRole) {
     if (this.role != newRole) {

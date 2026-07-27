@@ -78,4 +78,12 @@ class UserEntityTest {
     assertThat(user.getTokenVersion()).isEqualTo(1L);
   }
 
+  @Test
+  void 이메일은_소문자로_정규화되어_저장된다() {
+    // given & when
+    User user = User.create("Test@Otboo.io", "테스트유저", "encoded-password");
+
+    // then
+    assertThat(user.getEmail()).isEqualTo("test@otboo.io");
+  }
 }

@@ -71,7 +71,7 @@ class UserControllerTest {
 
   @Test
   @WithMockUser
-  void 이미_등록된_이메일이면_409를_반환한다() throws Exception {
+  void 이미_등록된_이메일이면_400을_반환한다() throws Exception {
     // given
     UserCreateRequest request = new UserCreateRequest("테스트유저", "test@otboo.io", "password1234");
     given(userService.create(any(UserCreateRequest.class)))
@@ -82,6 +82,6 @@ class UserControllerTest {
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(request))
             .with(csrf()))
-        .andExpect(status().isConflict());
+        .andExpect(status().isBadRequest());
   }
 }

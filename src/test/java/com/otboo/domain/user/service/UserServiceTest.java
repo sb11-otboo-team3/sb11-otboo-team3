@@ -71,11 +71,38 @@ class UserServiceTest {
     given(userRepository.existsByEmail(request.email())).willReturn(false);
     given(passwordEncoder.encode(request.password())).willReturn("encoded-password");
     given(userRepository.saveAndFlush(any(User.class)))
-        .willThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint"));
+        .willThrow(new DataIntegrityViolationException(
+            "could not execute statement; SQL [n/a]; constraint [uk6dotkott2kjsp8vw4d0m25fb7]"));
 
     // when & then
     assertThatThrownBy(() -> userService.create(request))
         .isInstanceOf(DuplicateEmailException.class);
+  }
+
+  @Test
+  void 대소문자만_다른_이메일은_중복으로_처리된다() {
+    // given
+    UserCreateRequest request = new UserCreateRequest("테스트유저", "Test@otboo.io", "password1234");
+    given(userRepository.existsByEmail("test@otboo.io")).willReturn(true);
+
+    // when & then
+    assertThatThrownBy(() -> userService.create(request))
+        .isInstanceOf(DuplicateEmailException.class);
+  }
+
+  @Test
+  void 이메일이_아닌_다른_제약_위반이면_DuplicateEmailException을_던지지_않는다() {
+    // given
+    UserCreateRequest request = new UserCreateRequest("테스트유저", "test@otboo.io", "password1234");
+    given(userRepository.existsByEmail(any())).willReturn(false);
+    given(passwordEncoder.encode(request.password())).willReturn("encoded-password");
+    given(userRepository.saveAndFlush(any(User.class)))
+        .willThrow(new DataIntegrityViolationException("some other constraint violation"));
+
+    // when & then
+    assertThatThrownBy(() -> userService.create(request))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .isNotInstanceOf(DuplicateEmailException.class);
   }
 
 }

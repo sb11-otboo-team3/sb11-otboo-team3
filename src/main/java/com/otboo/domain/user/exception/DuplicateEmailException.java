@@ -6,6 +6,6 @@ import org.springframework.http.HttpStatus;
 public class DuplicateEmailException extends OtbooException {
 
   public DuplicateEmailException(String email) {
-    super(HttpStatus.CONFLICT, "이미 등록된 이메일입니다: " + email);
+    super(HttpStatus.BAD_REQUEST, "이미 등록된 이메일입니다: " + email);
   }
 }
