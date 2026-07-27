@@ -31,6 +31,6 @@ management:
     redis:
       enabled: false
 jwt:
-  secret: 3WayDafV59YynmTwCpaDtnpeur8sokrAkQ+wFlXO4QY=
+  secret: k3kXIvo3YdC0cNUP2yMc9Rmhell9Te3CTFBlP3UA+ts=
   access-expiration: 900000
   refresh-expiration: 604800000
