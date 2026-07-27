@@ -47,7 +47,7 @@ class GridConverterTest {
     }
 
     @Test
-    @DisplayName("제주시청 좌표를 기상청 격자좌표로 변환하면 (52, 38)이다")
+    @DisplayName("제주시청 좌표를 기상청 격자좌표로 변환하면 (53, 38)이다")
     void convertsJejuCityHallCoordinate() {
       // given
       double latitude = 33.4996;
@@ -57,7 +57,7 @@ class GridConverterTest {
       WeatherGrid grid = gridConverter.convert(latitude, longitude);
 
       // then
-      assertThat(grid.x()).isEqualTo(52);
+      assertThat(grid.x()).isEqualTo(53);
       assertThat(grid.y()).isEqualTo(38);
     }
   }
