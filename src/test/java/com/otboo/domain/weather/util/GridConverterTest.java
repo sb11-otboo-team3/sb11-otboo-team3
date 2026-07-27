@@ -67,8 +67,8 @@ class GridConverterTest {
   class Failure {
 
     @Test
-    @DisplayName("위도가 유효 범위(-90~90)를 벗어나면 예외를 던진다")
-    void throwsExceptionWhenLatitudeOutOfRange() {
+    @DisplayName("위도가 90을 초과하면 예외를 던진다")
+    void throwsExceptionWhenLatitudeAboveUpperBound() {
       // given
       double latitude = 91.0;
       double longitude = 126.9780;
@@ -79,8 +79,20 @@ class GridConverterTest {
     }
 
     @Test
-    @DisplayName("경도가 유효 범위(-180~180)를 벗어나면 예외를 던진다")
-    void throwsExceptionWhenLongitudeOutOfRange() {
+    @DisplayName("위도가 -90 미만이면 예외를 던진다")
+    void throwsExceptionWhenLatitudeBelowLowerBound() {
+      // given
+      double latitude = -91.0;
+      double longitude = 126.9780;
+
+      // when & then
+      assertThatThrownBy(() -> gridConverter.convert(latitude, longitude))
+          .isInstanceOf(InvalidWeatherGridException.class);
+    }
+
+    @Test
+    @DisplayName("경도가 180을 초과하면 예외를 던진다")
+    void throwsExceptionWhenLongitudeAboveUpperBound() {
       // given
       double latitude = 37.5665;
       double longitude = 181.0;
@@ -91,9 +103,69 @@ class GridConverterTest {
     }
 
     @Test
-    @DisplayName("유효 범위 안이지만 기상청 격자 범위를 벗어나면 예외를 던진다")
-    void throwsExceptionWhenOutsideWeatherGridBounds() {
-      // given:  위경도 자체는 유효하지만 기상청 격자(대한민국) 범위를 벗어남
+    @DisplayName("경도가 -180 미만이면 예외를 던진다")
+    void throwsExceptionWhenLongitudeBelowLowerBound() {
+      // given
+      double latitude = 37.5665;
+      double longitude = -181.0;
+
+      // when & then
+      assertThatThrownBy(() -> gridConverter.convert(latitude, longitude))
+          .isInstanceOf(InvalidWeatherGridException.class);
+    }
+
+    @Test
+    @DisplayName("계산된 격자 x가 최솟값보다 작으면 예외를 던진다")
+    void throwsExceptionWhenGridXBelowLowerBound() {
+      // given: 런던 - 위경도는 유효하지만 격자 x가 1 미만으로 계산됨
+      double latitude = 51.5074;
+      double longitude = -0.1278;
+
+      // when & then
+      assertThatThrownBy(() -> gridConverter.convert(latitude, longitude))
+          .isInstanceOf(InvalidWeatherGridException.class);
+    }
+
+    @Test
+    @DisplayName("계산된 격자 x가 최댓값보다 크면 예외를 던진다")
+    void throwsExceptionWhenGridXAboveUpperBound() {
+      // given: 도쿄 - 위경도는 유효하지만 격자 x가 149 초과로 계산됨
+      double latitude = 35.6762;
+      double longitude = 139.6503;
+
+      // when & then
+      assertThatThrownBy(() -> gridConverter.convert(latitude, longitude))
+          .isInstanceOf(InvalidWeatherGridException.class);
+    }
+
+    @Test
+    @DisplayName("계산된 격자 y가 최솟값보다 작으면 예외를 던진다")
+    void throwsExceptionWhenGridYBelowLowerBound() {
+      // given: 경도는 기준 경도(126)와 동일, 위도만 적도 이남으로 이동해 격자 y가 1 미만으로 계산됨
+      double latitude = -10.0;
+      double longitude = 126.0;
+
+      // when & then
+      assertThatThrownBy(() -> gridConverter.convert(latitude, longitude))
+          .isInstanceOf(InvalidWeatherGridException.class);
+    }
+
+    @Test
+    @DisplayName("계산된 격자 y가 최댓값보다 크면 예외를 던진다")
+    void throwsExceptionWhenGridYAboveUpperBound() {
+      // given: 경도는 기준 경도(126)와 동일, 위도만 시베리아 방향으로 이동해 격자 y가 253 초과로 계산됨
+      double latitude = 66.5;
+      double longitude = 126.0;
+
+      // when & then
+      assertThatThrownBy(() -> gridConverter.convert(latitude, longitude))
+          .isInstanceOf(InvalidWeatherGridException.class);
+    }
+
+    @Test
+    @DisplayName("기준 경도에서 180도 이상 서쪽으로 떨어진 좌표는 음의 wraparound 처리 후에도 격자 범위를 벗어나 예외를 던진다")
+    void throwsExceptionWhenLongitudeWrapsAroundNegatively() {
+      // given: 뉴욕 - theta가 -PI 미만이 되어 wraparound 보정이 일어나는 케이스
       double latitude = 40.7128;
       double longitude = -74.0060;
 
