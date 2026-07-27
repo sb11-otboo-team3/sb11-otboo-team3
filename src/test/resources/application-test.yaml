@@ -31,6 +31,6 @@ management:
     redis:
       enabled: false
 jwt:
-  secret: test-secret-key-for-integration-test-minimum-256-bits-required
+  secret: 3WayDafV59YynmTwCpaDtnpeur8sokrAkQ+wFlXO4QY=
   access-expiration: 900000
   refresh-expiration: 604800000

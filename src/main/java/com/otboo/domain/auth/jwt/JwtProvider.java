@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import java.security.Key;
 import java.util.Date;
@@ -22,7 +23,8 @@ public class JwtProvider {
   private final long accessExpiration;
 
   public JwtProvider(JwtProperties jwtProperties) {
-    this.key = Keys.hmacShaKeyFor(jwtProperties.secret().getBytes());
+    byte[] decodedSecret = Decoders.BASE64.decode(jwtProperties.secret());
+    this.key = Keys.hmacShaKeyFor(decodedSecret);
     this.accessExpiration = jwtProperties.accessExpiration();
   }
 
@@ -54,8 +56,8 @@ public class JwtProvider {
 
   public boolean isValid(String token) {
     try {
-      parseClaims(token);
-      return true;
+      Claims claims = parseClaims(token);
+      return hasValidSubject(claims) && hasValidTokenVersion(claims);
     } catch (ExpiredJwtException e) {
       log.debug("만료된 JWT입니다.", e);
       return false;
@@ -63,6 +65,30 @@ public class JwtProvider {
       log.debug("유효하지 않은 JWT입니다.", e);
       return false;
     }
+  }
+
+  private boolean hasValidSubject(Claims claims) {
+    String subject = claims.getSubject();
+    if (subject == null) {
+      log.debug("유효하지 않은 JWT입니다 - subject 없음");
+      return false;
+    }
+    try {
+      UUID.fromString(subject);
+      return true;
+    } catch (IllegalArgumentException e) {
+      log.debug("유효하지 않은 JWT입니다 - subject가 UUID 형식이 아님: {}", subject);
+      return false;
+    }
+  }
+
+  private boolean hasValidTokenVersion(Claims claims) {
+    Long tokenVersion = claims.get(CLAIM_TOKEN_VERSION, Long.class);
+    if (tokenVersion == null) {
+      log.debug("유효하지 않은 JWT입니다 - tokenVersion 클레임 없음");
+      return false;
+    }
+    return true;
   }
 
   private Claims parseClaims(String token) {

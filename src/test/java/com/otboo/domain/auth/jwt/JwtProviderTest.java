@@ -2,6 +2,11 @@ package com.otboo.domain.auth.jwt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
+import java.security.Key;
+import java.util.Date;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -14,7 +19,7 @@ class JwtProviderTest {
   @BeforeEach
   void setUp() {
     JwtProperties properties = new JwtProperties(
-        "test-secret-key-for-jwt-provider-unit-test-minimum-256-bits",
+        "3WayDafV59YynmTwCpaDtnpeur8sokrAkQ+wFlXO4QY=",
         900000L,
         604800000L
     );
@@ -54,5 +59,45 @@ class JwtProviderTest {
 
     // when & then
     assertThat(jwtProvider.isValid(invalidToken)).isFalse();
+  }
+
+  @Test
+  @DisplayName("tokenVersion 클레임이 없는 토큰은 유효하지 않다")
+  void tokenWithoutTokenVersionClaimIsNotValid() throws Exception {
+    // given
+    byte[] decodedSecret = Decoders.BASE64.decode("3WayDafV59YynmTwCpaDtnpeur8sokrAkQ+wFlXO4QY=");
+    Key testKey = Keys.hmacShaKeyFor(decodedSecret);
+
+    String tokenWithoutTokenVersion = Jwts.builder()
+        .subject(UUID.randomUUID().toString())
+        .claim("role", "USER")
+        // tokenVersion 클레임 의도적으로 누락
+        .issuedAt(new Date())
+        .expiration(new Date(System.currentTimeMillis() + 900000))
+        .signWith(testKey)
+        .compact();
+
+    // when & then
+    assertThat(jwtProvider.isValid(tokenWithoutTokenVersion)).isFalse();
+  }
+
+  @Test
+  @DisplayName("subject가 UUID 형식이 아닌 토큰은 유효하지 않다")
+  void tokenWithNonUuidSubjectIsNotValid() throws Exception {
+    // given
+    byte[] decodedSecret = Decoders.BASE64.decode("3WayDafV59YynmTwCpaDtnpeur8sokrAkQ+wFlXO4QY=");
+    Key testKey = Keys.hmacShaKeyFor(decodedSecret);
+
+    String tokenWithInvalidSubject = Jwts.builder()
+        .subject("not-a-uuid")
+        .claim("role", "USER")
+        .claim("tokenVersion", 0L)
+        .issuedAt(new Date())
+        .expiration(new Date(System.currentTimeMillis() + 900000))
+        .signWith(testKey)
+        .compact();
+
+    // when & then
+    assertThat(jwtProvider.isValid(tokenWithInvalidSubject)).isFalse();
   }
 }
