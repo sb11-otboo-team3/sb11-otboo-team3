@@ -22,3 +22,18 @@ spring:
 
   cache:
     type: simple
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+
+  health:
+    redis:
+      enabled: false
