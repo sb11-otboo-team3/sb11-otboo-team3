@@ -64,4 +64,15 @@ public class AttributeSelectableValueRepositoryTest {
                 selectableValueRepository.saveAndFlush(new AttributeSelectableValue(definition, "체크", 1))
         );
     }
+
+    @Test
+    void displayOrder가_음수면_저장할_수_없다() {
+        //given
+        ClothesAttributeDefinition definition = definitionRepository.save(new ClothesAttributeDefinition("크기"));
+        AttributeSelectableValue value = new AttributeSelectableValue(definition, "L", -1);
+
+        //when&then
+        assertThrows(DataIntegrityViolationException.class, () ->
+                selectableValueRepository.saveAndFlush(value));
+    }
 }

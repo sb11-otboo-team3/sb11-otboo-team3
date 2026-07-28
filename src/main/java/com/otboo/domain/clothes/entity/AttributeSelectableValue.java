@@ -2,6 +2,7 @@ package com.otboo.domain.clothes.entity;
 
 import com.otboo.global.common.entity.SoftDeletableEntity;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Check;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
@@ -11,6 +12,7 @@ import org.hibernate.annotations.OnDeleteAction;
         name = "attribute_selectable_values",
         uniqueConstraints = @UniqueConstraint(columnNames = {"definition_id", "`value`"})
 )
+@Check(constraints = "display_order >= 0")
 public class AttributeSelectableValue extends SoftDeletableEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
