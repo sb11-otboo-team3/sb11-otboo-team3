@@ -10,6 +10,7 @@ import com.otboo.domain.weather.util.GridConverter;
 import com.otboo.domain.weather.util.WeatherGrid;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -55,7 +56,16 @@ public class WeatherServiceImpl implements WeatherService {
         .city(region.city())
         .district(region.district())
         .build();
-    locationRepository.save(location);
+
+    try {
+      locationRepository.save(location);
+    } catch (DataIntegrityViolationException e) {
+      // 동시에 같은 좌표가 먼저 저장된 경우, 그 값을 그대로 사용 (동시성 제어)
+      Location winner = locationRepository.findByXAndY(grid.x(), grid.y())
+          .orElseThrow(() -> e);
+      region = new KakaoRegion(winner.getProvince(), winner.getCity(), winner.getDistrict());
+    }
+
     locationRegionCache.put(grid, region);
 
     return toDto(latitude, longitude, grid, region);
