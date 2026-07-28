@@ -4,6 +4,7 @@ package com.otboo.domain.clothes.repository;
 import com.otboo.domain.clothes.entity.Clothes;
 import com.otboo.domain.clothes.entity.ClothesAttribute;
 import com.otboo.domain.clothes.entity.ClothesAttributeDefinition;
+import com.otboo.domain.clothes.entity.ClothesType;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.global.config.JpaAuditingConfig;
@@ -37,7 +38,8 @@ public class ClothesAttributeRepositoryTest {
     void 의상_속성을_저장하면_조회할_수_있다() {
         //given
         User owner = userRepository.save(User.create("owner1@test.com", "철수", "hash"));
-        Clothes clothes = clothesRepository.save(new Clothes(owner, "반팔 티셔츠", null, "TOP"));
+        Clothes clothes = clothesRepository.save(new Clothes(
+                owner, "반팔 티셔츠", null, ClothesType.TOP));
         ClothesAttributeDefinition definition = definitionRepository.save(new ClothesAttributeDefinition("색상"));
         ClothesAttribute attribute = new ClothesAttribute(clothes, definition, "빨강");
 
@@ -52,11 +54,16 @@ public class ClothesAttributeRepositoryTest {
     void findByClothes로_해당_의상의_속성_목록을_조회할_수_있다() {
         //given
         User owner = userRepository.save(User.create("owner2@test.com", "철수", "hash"));
-        Clothes clothes = clothesRepository.save(new Clothes(owner, "청바지", null, "BOTTOM"));
-        ClothesAttributeDefinition colorDefinition = definitionRepository.save(new ClothesAttributeDefinition("색상"));
-        ClothesAttributeDefinition materialDefinition = definitionRepository.save(new ClothesAttributeDefinition("소재"));
-        clothesAttributeRepository.save(new ClothesAttribute(clothes, colorDefinition, "파랑"));
-        clothesAttributeRepository.save(new ClothesAttribute(clothes, materialDefinition, "데님"));
+        Clothes clothes = clothesRepository.save(new Clothes(
+                owner, "청바지", null, ClothesType.BOTTOM));
+        ClothesAttributeDefinition colorDefinition =
+                definitionRepository.save(new ClothesAttributeDefinition("색상"));
+        ClothesAttributeDefinition materialDefinition =
+                definitionRepository.save(new ClothesAttributeDefinition("소재"));
+        clothesAttributeRepository.save(new ClothesAttribute(
+                clothes, colorDefinition, "파랑"));
+        clothesAttributeRepository.save(new ClothesAttribute(
+                clothes, materialDefinition, "데님"));
 
         //when
         List<ClothesAttribute> result = clothesAttributeRepository.findByClothes(clothes);
@@ -68,10 +75,14 @@ public class ClothesAttributeRepositoryTest {
     @Test
     void 같은_의상에_같은_속성_정의를_중복_저장하면_유니크_제약_위반이_발생한다() {
         //given
-        User owner = userRepository.save(User.create("owner3@test.com", "철수", "hash"));
-        Clothes clothes = clothesRepository.save(new Clothes(owner, "코트", null, "OUTER"));
-        ClothesAttributeDefinition definition = definitionRepository.save(new ClothesAttributeDefinition("패턴"));
-        clothesAttributeRepository.saveAndFlush(new ClothesAttribute(clothes, definition, "체크"));
+        User owner = userRepository.save(User.create(
+                "owner3@test.com", "철수", "hash"));
+        Clothes clothes = clothesRepository.save(new Clothes(
+                owner, "코트", null, ClothesType.OUTER));
+        ClothesAttributeDefinition definition =
+                definitionRepository.save(new ClothesAttributeDefinition("패턴"));
+        clothesAttributeRepository.saveAndFlush(new ClothesAttribute(
+                clothes, definition, "체크"));
 
         //when&then
         assertThrows(DataIntegrityViolationException.class, () ->

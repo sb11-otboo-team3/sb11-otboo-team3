@@ -25,13 +25,14 @@ public class Clothes extends SoftDeletableEntity {
     @Column(name = "image_url", length = 500)
     private String imageUrl;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
-    private String type;
+    private ClothesType type;
 
     protected Clothes() {
     }
 
-    public Clothes(User owner, String name, String imageUrl, String type) {
+    public Clothes(User owner, String name, String imageUrl, ClothesType type) {
         this.owner = owner;
         this.name = name;
         this.imageUrl = imageUrl;
@@ -50,7 +51,7 @@ public class Clothes extends SoftDeletableEntity {
         return imageUrl;
     }
 
-    public String getType() {
+    public ClothesType getType() {
         return type;
     }
 
