@@ -5,6 +5,7 @@ import com.otboo.domain.auth.jwt.JwtProvider;
 import com.otboo.domain.user.repository.UserRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -15,6 +16,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 @Configuration
 @EnableWebSecurity
@@ -41,7 +43,10 @@ public class SecurityConfig {
         .csrf(csrf -> csrf
             .csrfTokenRepository(csrfTokenRepository)
             .csrfTokenRequestHandler(requestHandler)
-            .ignoringRequestMatchers("/api/users", "/api/auth/sign-in")
+            .ignoringRequestMatchers(
+                new AntPathRequestMatcher("/api/users", "POST"),
+                new AntPathRequestMatcher("/api/auth/sign-in", "POST")
+            )
         )
         .sessionManagement(session ->
             session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -49,11 +54,11 @@ public class SecurityConfig {
             .authenticationEntryPoint((request, response, authException) ->
                 response.sendError(HttpStatus.UNAUTHORIZED.value())))
         .authorizeHttpRequests(auth -> auth
+            .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
+            .requestMatchers(HttpMethod.POST, "/api/auth/sign-in").permitAll()
+            .requestMatchers(HttpMethod.GET, "/api/auth/csrf-token").permitAll()
+            .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
             .requestMatchers(
-                "/api/users",
-                "/api/auth/sign-in",
-                "/api/auth/csrf-token",
-                "/actuator/health",
                 "/swagger-ui/**",
                 "/swagger-ui.html",
                 "/v3/api-docs/**"

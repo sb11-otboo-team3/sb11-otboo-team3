@@ -30,4 +30,11 @@ class SecurityConfigTest {
     // 이건 예시 개념이고, 실제로는 인증까지 필요한 API가 아직 없어서
     // 다른 방식으로 검증이 필요할 수 있어요
   }
+
+  @Test
+  @DisplayName("GET /api/users는 인증 없이 접근하면 401을 반환한다")
+  void getUserListRequiresAuthentication() throws Exception {
+    mockMvc.perform(get("/api/users"))
+        .andExpect(status().isUnauthorized());
+  }
 }
