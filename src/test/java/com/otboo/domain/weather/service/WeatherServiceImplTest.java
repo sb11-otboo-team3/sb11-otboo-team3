@@ -14,6 +14,7 @@ import com.otboo.domain.weather.repository.LocationRepository;
 import com.otboo.domain.weather.util.GridConverter;
 import com.otboo.domain.weather.util.WeatherGrid;
 import java.util.Optional;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
