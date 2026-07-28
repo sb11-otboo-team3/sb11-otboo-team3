@@ -28,6 +28,7 @@ public class AuthService {
   private final PasswordEncoder passwordEncoder;
   private final JwtProvider jwtProvider;
 
+  @Transactional
   public JwtDto signIn(SignInRequest request) {
     String normalizedEmail = request.username().toLowerCase(Locale.ROOT);
 
@@ -48,6 +49,7 @@ public class AuthService {
     }
 
     User user = userOptional.get();
+    user.refreshSession();
 
     String accessToken = jwtProvider.createAccessToken(
         user.getId(), user.getRole().name(), user.getTokenVersion()

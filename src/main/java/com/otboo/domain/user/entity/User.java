@@ -74,4 +74,8 @@ public class User extends UpdatableEntity {
     this.passwordHash = newPasswordHash;
     this.tokenVersion++;
   }
+
+  public void refreshSession() {
+    this.tokenVersion++;
+  }
 }

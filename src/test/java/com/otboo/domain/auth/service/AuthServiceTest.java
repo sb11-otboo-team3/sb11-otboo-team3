@@ -2,6 +2,8 @@ package com.otboo.domain.auth.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.times;
@@ -46,7 +48,7 @@ class AuthServiceTest {
 
     given(userRepository.findByEmail("test@otboo.io")).willReturn(Optional.of(user));
     given(passwordEncoder.matches("password1234", "encoded-password")).willReturn(true);
-    given(jwtProvider.createAccessToken(user.getId(), "USER", 0L)).willReturn("access-token");
+    given(jwtProvider.createAccessToken(any(), any(), anyLong())).willReturn("access-token");
 
     // when
     JwtDto result = authService.signIn(request);
@@ -118,5 +120,24 @@ class AuthServiceTest {
         .isInstanceOf(InvalidCredentialsException.class);
 
     verify(passwordEncoder, times(2)).matches(anyString(), anyString());
+  }
+
+  @Test
+  @DisplayName("로그인에 성공하면 tokenVersion이 증가한다")
+  void signInIncreasesTokenVersion() throws Exception {
+    // given
+    User user = User.create("test@otboo.io", "테스트유저", "encoded-password");
+    long versionBeforeLogin = user.getTokenVersion();
+    SignInRequest request = new SignInRequest("test@otboo.io", "password1234");
+
+    given(userRepository.findByEmail("test@otboo.io")).willReturn(Optional.of(user));
+    given(passwordEncoder.matches("password1234", "encoded-password")).willReturn(true);
+    given(jwtProvider.createAccessToken(any(), any(), anyLong())).willReturn("access-token");
+
+    // when
+    authService.signIn(request);
+
+    // then
+    assertThat(user.getTokenVersion()).isEqualTo(versionBeforeLogin + 1);
   }
 }
