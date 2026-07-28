@@ -77,3 +77,7 @@ Desktop.ini
 
 ### Gradle Wrapper ###
 !gradle/wrapper/gradle-wrapper.jar
+
+# curl 테스트 산출물
+cookies.txt
+*.cookies
