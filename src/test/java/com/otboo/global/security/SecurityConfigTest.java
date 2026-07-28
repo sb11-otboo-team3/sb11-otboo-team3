@@ -1,6 +1,7 @@
 package com.otboo.global.security;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -16,6 +17,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.test.annotation.DirtiesContext;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -130,5 +132,14 @@ class SecurityConfigTest {
             .header("Authorization", "Bearer " + token)
             .with(csrf()))
         .andExpect(status().isOk());
+  }
+
+  @Test
+  @DisplayName("CSRF 토큰 조회 시 XSRF-TOKEN 쿠키가 설정된다")
+  @DirtiesContext(methodMode = DirtiesContext.MethodMode.BEFORE_METHOD)
+  void csrfTokenEndpointSetsXsrfTokenCookie() throws Exception {
+    mockMvc.perform(get("/api/auth/csrf-token"))
+        .andExpect(status().isNoContent())
+        .andExpect(cookie().exists("XSRF-TOKEN"));
   }
 }
