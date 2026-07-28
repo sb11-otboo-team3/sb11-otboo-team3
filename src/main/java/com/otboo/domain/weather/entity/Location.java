@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Getter
-@Table(name = "locations", uniqueConstraints = @UniqueConstraint(columnNames = {"x", "y"}))
+@Table(name = "locations", uniqueConstraints = @UniqueConstraint(columnNames = {"province", "city", "district"}))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Location extends BaseEntity {
 

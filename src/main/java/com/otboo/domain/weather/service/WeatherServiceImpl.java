@@ -1,6 +1,5 @@
 package com.otboo.domain.weather.service;
 
-import com.otboo.domain.weather.cache.LocationRegionCache;
 import com.otboo.domain.weather.client.KakaoLocationClient;
 import com.otboo.domain.weather.client.KakaoRegion;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
@@ -15,69 +14,54 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class WeatherServiceImpl implements WeatherService {
 
   private final GridConverter gridConverter;
   private final LocationRepository locationRepository;
   private final KakaoLocationClient kakaoLocationClient;
-  private final LocationRegionCache locationRegionCache;
-
-
 
   @Override
   @Transactional
   public WeatherAPILocation getLocation(double latitude, double longitude) {
     WeatherGrid grid = gridConverter.convert(latitude, longitude);
 
-    // 캐시 히트시 반환
-    Optional<KakaoRegion> cached = locationRegionCache.get(grid);
-    if (cached.isPresent()) {
-      return toDto(latitude, longitude, grid, cached.get());
-    }
+    // 행정구역은 항상 카카오에서 정확하게 조회 (격자 단위로 캐싱하면 동 경계에서 부정확해짐)
+    KakaoRegion region = kakaoLocationClient.getRegion(latitude, longitude);
 
-    // DB 히트시 반환
-    Optional<Location> existing = locationRepository.findByXAndY(grid.x(), grid.y());
+    Optional<Location> existing = locationRepository.findByProvinceAndCityAndDistrict(
+        region.province(), region.city(), region.district());
+
     if (existing.isPresent()) {
-
-      log.info("행정구역 찾기 - 캐시 미스, DB 히트, x = {}, y = {} , ", grid.x(), grid.y());
+      log.info("행정구역 찾기 - 기존 행정구역 재사용, province={}, city={}, district={}",
+          region.province(), region.city(), region.district());
 
       Location location = existing.get();
       location.refreshRequestedAt(); // 최근 사용 시간 기록.
       locationRepository.save(location);
+    } else {
+      log.info("행정구역 찾기 - 신규 행정구역 저장, province={}, city={}, district={}",
+          region.province(), region.city(), region.district());
 
-      KakaoRegion region = new KakaoRegion(
-          location.getProvince(), location.getCity(), location.getDistrict());
-      locationRegionCache.put(grid, region);
-      return toDto(latitude, longitude, grid, region);
+      Location location = Location.builder()
+          .x(grid.x())
+          .y(grid.y())
+          .province(region.province())
+          .city(region.city())
+          .district(region.district())
+          .build();
+
+      try {
+        locationRepository.save(location);
+      } catch (DataIntegrityViolationException e) {
+        // 동시에 같은 행정구역이 먼저 저장된 경우. 응답은 이미 카카오 조회 결과(region)로
+        // 확정되어 있으므로 별도 조회 없이 무시한다.
+        log.warn("행정구역 찾기 - 동시성 충돌 발생, province={}, city={}, district={}",
+            region.province(), region.city(), region.district(), e);
+      }
     }
-
-    // 모두 미스시 카카오 api 사용
-    log.info("행정구역 찾기 - DB 미스, x = {}, y = {} , ", grid.x(), grid.y());
-    KakaoRegion region = kakaoLocationClient.getRegion(latitude, longitude);
-    Location location = Location.builder()
-        .x(grid.x())
-        .y(grid.y())
-        .province(region.province())
-        .city(region.city())
-        .district(region.district())
-        .build();
-
-    try {
-      locationRepository.save(location);
-    } catch (DataIntegrityViolationException e) {
-
-      log.warn("행정구역 찾기 - DB 동시성 문제 발생, x = {}, y = {} , ", grid.x(), grid.y(), e);
-
-      // 동시에 같은 좌표가 먼저 저장된 경우, 그 값을 그대로 사용 (동시성 제어)
-      Location winner = locationRepository.findByXAndY(grid.x(), grid.y())
-          .orElseThrow(() -> e);
-      region = new KakaoRegion(winner.getProvince(), winner.getCity(), winner.getDistrict());
-    }
-
-    locationRegionCache.put(grid, region);
 
     return toDto(latitude, longitude, grid, region);
   }

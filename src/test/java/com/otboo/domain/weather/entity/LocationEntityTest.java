@@ -23,8 +23,8 @@ class LocationEntityTest {
   private EntityManager entityManager;
 
   @Test
-  @DisplayName("같은 x, y 좌표는 중복 저장할 수 없다")
-  void throwsExceptionWhenDuplicateXYIsSaved() {
+  @DisplayName("같은 행정구역(province, city, district)은 중복 저장할 수 없다")
+  void throwsExceptionWhenDuplicateAdministrativeRegionIsSaved() {
     // given
     Location first = Location.builder()
         .x(60)
@@ -36,12 +36,13 @@ class LocationEntityTest {
     entityManager.persist(first);
     entityManager.flush();
 
+    // 격자(x,y)는 다르지만 행정구역은 같음
     Location duplicate = Location.builder()
-        .x(60)
-        .y(127)
+        .x(61)
+        .y(128)
         .province("서울특별시")
         .city("강서구")
-        .district("다른동")
+        .district("마곡동")
         .build();
 
     // when & then
