@@ -2,27 +2,38 @@ spring:
   config:
     activate:
       on-profile: test
-
   datasource:
     url: jdbc:h2:mem:otboo;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     driver-class-name: org.h2.Driver
     username: sa
     password:
-
   jpa:
     hibernate:
       ddl-auto: create-drop
     open-in-view: false
-
   batch:
     jdbc:
       initialize-schema: always
     job:
       enabled: false
-
   cache:
     type: simple
-
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+  health:
+    redis:
+      enabled: false
+jwt:
+  secret: k3kXIvo3YdC0cNUP2yMc9Rmhell9Te3CTFBlP3UA+ts=
+  access-expiration: 900000
+  refresh-expiration: 604800000
 kakao:
   local:
     api-key: test-api-key

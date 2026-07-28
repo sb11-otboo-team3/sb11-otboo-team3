@@ -1,16 +1,15 @@
 server:
   port: ${SERVER_PORT:8080}
-
 spring:
   config:
     activate:
       on-profile: prod
-
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
   datasource:
     url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
-
   jpa:
     hibernate:
       ddl-auto: validate
@@ -18,17 +17,18 @@ spring:
     properties:
       hibernate:
         format_sql: false
-
   data:
     redis:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
-
   batch:
     jdbc:
       initialize-schema: never
-
 logging:
   level:
     root: INFO
+jwt:
+  secret: ${JWT_SECRET}
+  access-expiration: ${JWT_ACCESS_EXPIRATION:900000}
+  refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
