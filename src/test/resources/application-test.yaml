@@ -22,3 +22,8 @@ spring:
 
   cache:
     type: simple
+
+kakao:
+  local:
+    api-key: test-api-key
+    base-url: https://dapi.kakao.com

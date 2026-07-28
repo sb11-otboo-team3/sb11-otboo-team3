@@ -1,9 +1,11 @@
 package com.otboo.domain.weather.util;
 
 import com.otboo.domain.weather.exception.InvalidWeatherGridException;
+import org.springframework.stereotype.Component;
 
 
 //기상청(KMA)이 동네예보 API용으로 공개한 LCC DFS(Lambert Conformal Conic, 표준위도 2개 고정) 투영 변환 공식
+@Component
 public class GridConverter {
 
   private static final double RE = 6371.00877; // 지구 반경(km)
