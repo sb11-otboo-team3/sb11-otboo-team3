@@ -11,6 +11,7 @@ import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.follow.entity.Follow;
 import com.otboo.domain.follow.exception.DuplicateFollowException;
+import com.otboo.domain.follow.exception.FollowNotFoundException;
 import com.otboo.domain.follow.exception.FollowUserNotFoundException;
 import com.otboo.domain.follow.exception.SelfFollowNotAllowedException;
 import com.otboo.domain.follow.repository.FollowRepository;
@@ -18,6 +19,7 @@ import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -37,6 +39,7 @@ class FollowServiceTest {
   private FollowService followService;
 
   @Test
+  @DisplayName("팔로우 성공 테스트")
   void createFollow_success() {
     UUID followerId = UUID.randomUUID();
     UUID followeeId = UUID.randomUUID();
@@ -62,6 +65,7 @@ class FollowServiceTest {
   }
 
   @Test
+  @DisplayName("자기자신을 팔로우시 예외 테스트")
   void createFollow_selfFollow_throwsException() {
     UUID userId = UUID.randomUUID();
     FollowCreateRequest request = new FollowCreateRequest(userId, userId);
@@ -74,6 +78,7 @@ class FollowServiceTest {
   }
 
   @Test
+  @DisplayName("사용자(팔로워)가 DB에 없는 경우 예외 테스트")
   void createFollow_followerNotFound_throwsException() {
     UUID followerId = UUID.randomUUID();
     UUID followeeId = UUID.randomUUID();
@@ -90,6 +95,7 @@ class FollowServiceTest {
   }
 
   @Test
+  @DisplayName("사용자(팔로위)가 DB에 없는 경우 예외 테스트")
   void createFollow_followeeNotFound_throwsException() {
     UUID followerId = UUID.randomUUID();
     UUID followeeId = UUID.randomUUID();
@@ -109,6 +115,7 @@ class FollowServiceTest {
   }
 
   @Test
+  @DisplayName("이미 팔로우 중인 경우 예외 테스트")
   void createFollow_duplicateFollow_throwsException() {
     UUID followerId = UUID.randomUUID();
     UUID followeeId = UUID.randomUUID();
@@ -127,5 +134,34 @@ class FollowServiceTest {
         .isInstanceOf(DuplicateFollowException.class);
 
     verify(followRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("팔로우 취소 성공 테스트")
+  void cancelFollow_success() {
+    UUID followId = UUID.randomUUID();
+
+    User follower = User.create("follower@test.com", "follower", "password");
+    User followee = User.create("followee@test.com", "followee", "password");
+    Follow follow = Follow.create(follower, followee);
+
+    given(followRepository.findById(followId)).willReturn(Optional.of(follow));
+
+    followService.cancelFollow(followId);
+
+    verify(followRepository).delete(follow);
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 팔로우를 취소시 예외 테스트")
+  void cancelFollow_notFound_throwsException() {
+    UUID followId = UUID.randomUUID();
+
+    given(followRepository.findById(followId)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> followService.cancelFollow(followId))
+        .isInstanceOf(FollowNotFoundException.class);
+
+    verify(followRepository, never()).delete(any());
   }
 }

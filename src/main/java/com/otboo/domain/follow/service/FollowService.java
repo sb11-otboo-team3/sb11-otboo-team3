@@ -4,11 +4,13 @@ import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.follow.entity.Follow;
 import com.otboo.domain.follow.exception.DuplicateFollowException;
+import com.otboo.domain.follow.exception.FollowNotFoundException;
 import com.otboo.domain.follow.exception.FollowUserNotFoundException;
 import com.otboo.domain.follow.exception.SelfFollowNotAllowedException;
 import com.otboo.domain.follow.repository.FollowRepository;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,5 +47,13 @@ public class FollowService {
     Follow savedFollow = followRepository.save(follow);
 
     return FollowDto.from(savedFollow);
+  }
+
+  @Transactional
+  public void cancelFollow(UUID followId){
+    Follow follow = followRepository.findById(followId)
+        .orElseThrow(() -> new FollowNotFoundException(followId));
+
+    followRepository.delete(follow);
   }
 }

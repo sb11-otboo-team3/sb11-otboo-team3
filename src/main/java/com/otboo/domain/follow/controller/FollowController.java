@@ -4,9 +4,13 @@ import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.follow.service.FollowService;
 import jakarta.validation.Valid;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.apache.coyote.Response;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,5 +29,11 @@ public class FollowController {
   ) {
     FollowDto response = followService.createFollow(request);
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
+  }
+
+  @DeleteMapping("/{followId}")
+  public ResponseEntity<Void> cancelFollow(@PathVariable UUID followId){
+    followService.cancelFollow(followId);
+    return ResponseEntity.noContent().build();
   }
 }

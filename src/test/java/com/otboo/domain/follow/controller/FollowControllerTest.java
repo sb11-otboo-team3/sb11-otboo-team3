@@ -6,13 +6,17 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.BDDMockito.willThrow;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 
+import com.otboo.domain.follow.exception.FollowNotFoundException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.follow.dto.response.UserSummary;
 import com.otboo.domain.follow.service.FollowService;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -35,6 +39,7 @@ class FollowControllerTest {
 
   @Test
   @WithMockUser
+  @DisplayName("팔로우 생성에 성공 시 201과 FollowDto를 반환 테스트")
   void createFollow_success_returns201() throws Exception {
     UUID followId = UUID.randomUUID();
     UUID followerId = UUID.randomUUID();
@@ -63,6 +68,7 @@ class FollowControllerTest {
 
   @Test
   @WithMockUser
+  @DisplayName("followerId가 없을 시 400반환 테스트")
   void createFollow_missingFollowerId_returns400() throws Exception {
     // followerId가 없는 요청
     String requestBody = """
@@ -80,6 +86,7 @@ class FollowControllerTest {
 
   @Test
   @WithMockUser
+  @DisplayName("followeeId가 없을 시 400반환 테스트")
   void createFollow_missingFolloweeId_returns400() throws Exception {
     // followeeId가 없는 요청
     String requestBody = """
@@ -93,5 +100,32 @@ class FollowControllerTest {
             .content(requestBody)
             .with(csrf()))
         .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @WithMockUser
+  @DisplayName("팔로우 취소 성공 시 204를 반환 테스트")
+  void cancelFollow_success_returns204() throws Exception {
+    UUID followId = UUID.randomUUID();
+
+    mockMvc.perform(delete("/api/follows/{followId}", followId)
+            .with(csrf()))
+        .andExpect(status().isNoContent());
+  }
+
+  @Test
+  @WithMockUser
+  @DisplayName("존재하지 않는 팔로우를 취소 시 400을 반환 테스트")
+  void cancelFollow_notFound_returns400() throws Exception {
+    UUID followId = UUID.randomUUID();
+
+    willThrow(new FollowNotFoundException(followId))
+        .given(followService)
+        .cancelFollow(followId);
+
+    mockMvc.perform(delete("/api/follows/{followId}", followId)
+            .with(csrf()))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.exceptionName").value("FollowNotFoundException"));
   }
 }
