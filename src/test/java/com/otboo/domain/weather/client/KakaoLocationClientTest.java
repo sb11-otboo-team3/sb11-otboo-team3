@@ -119,4 +119,26 @@ class KakaoLocationClientTest {
     assertThatThrownBy(() -> kakaoLocationClient.getRegion(37.5665, 126.9780))
         .isInstanceOf(KakaoRegionNotFoundException.class);
   }
+
+  @Test
+  @DisplayName("apiKey가 null이면 IllegalArgumentException을 던진다")
+  void throwsIllegalArgumentExceptionWhenApiKeyIsNull() {
+    // given
+    RestClient restClient = RestClient.builder().baseUrl("https://dapi.kakao.com").build();
+
+    // when & then
+    assertThatThrownBy(() -> new KakaoLocationClient(restClient, null))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  @DisplayName("apiKey가 빈 문자열이면 IllegalArgumentException을 던진다")
+  void throwsIllegalArgumentExceptionWhenApiKeyIsBlank() {
+    // given
+    RestClient restClient = RestClient.builder().baseUrl("https://dapi.kakao.com").build();
+
+    // when & then
+    assertThatThrownBy(() -> new KakaoLocationClient(restClient, "   "))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }

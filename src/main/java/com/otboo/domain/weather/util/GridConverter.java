@@ -1,10 +1,12 @@
 package com.otboo.domain.weather.util;
 
 import com.otboo.domain.weather.exception.InvalidWeatherGridException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 
 //기상청(KMA)이 동네예보 API용으로 공개한 LCC DFS(Lambert Conformal Conic, 표준위도 2개 고정) 투영 변환 공식
+@Slf4j
 @Component
 public class GridConverter {
 
@@ -61,6 +63,7 @@ public class GridConverter {
   // 유효 위경도 체크
   private void validateLatLngRange(double latitude, double longitude) {
     if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      log.warn("위경도 범위를 벗어남: latitude={}, longitude={}", latitude, longitude);
       throw new InvalidWeatherGridException(latitude, longitude);
     }
   }
@@ -68,6 +71,8 @@ public class GridConverter {
   // 대한민국 내 유효 위경도 체크
   private void validateGridRange(double latitude, double longitude, int x, int y) {
     if (x < MIN_GRID_X || x > MAX_GRID_X || y < MIN_GRID_Y || y > MAX_GRID_Y) {
+      log.warn("대한민국 격자 범위를 벗어남: latitude={}, longitude={}, x={}, y={}",
+          latitude, longitude, x, y);
       throw new InvalidWeatherGridException(latitude, longitude);
     }
   }

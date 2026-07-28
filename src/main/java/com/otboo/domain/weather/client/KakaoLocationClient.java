@@ -18,6 +18,9 @@ public class KakaoLocationClient {
   private final String apiKey;
 
   public KakaoLocationClient(RestClient restClient, String apiKey) {
+    if (apiKey == null || apiKey.isBlank()) {
+      throw new IllegalArgumentException("카카오 API 키가 설정되지 않았습니다.");
+    }
     this.restClient = restClient;
     this.apiKey = apiKey;
   }

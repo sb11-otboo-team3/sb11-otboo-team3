@@ -10,11 +10,14 @@ import com.otboo.domain.weather.util.GridConverter;
 import com.otboo.domain.weather.util.WeatherGrid;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class WeatherServiceImpl implements WeatherService {
 
   private final GridConverter gridConverter;
@@ -25,6 +28,7 @@ public class WeatherServiceImpl implements WeatherService {
 
 
   @Override
+  @Transactional
   public WeatherAPILocation getLocation(double latitude, double longitude) {
     WeatherGrid grid = gridConverter.convert(latitude, longitude);
 
@@ -37,6 +41,9 @@ public class WeatherServiceImpl implements WeatherService {
     // DB 히트시 반환
     Optional<Location> existing = locationRepository.findByXAndY(grid.x(), grid.y());
     if (existing.isPresent()) {
+
+      log.info("행정구역 찾기 - 캐시 미스, DB 히트, x = {}, y = {} , ", grid.x(), grid.y());
+
       Location location = existing.get();
       location.refreshRequestedAt(); // 최근 사용 시간 기록.
       locationRepository.save(location);
@@ -48,6 +55,7 @@ public class WeatherServiceImpl implements WeatherService {
     }
 
     // 모두 미스시 카카오 api 사용
+    log.info("행정구역 찾기 - DB 미스, x = {}, y = {} , ", grid.x(), grid.y());
     KakaoRegion region = kakaoLocationClient.getRegion(latitude, longitude);
     Location location = Location.builder()
         .x(grid.x())
@@ -60,6 +68,9 @@ public class WeatherServiceImpl implements WeatherService {
     try {
       locationRepository.save(location);
     } catch (DataIntegrityViolationException e) {
+
+      log.warn("행정구역 찾기 - DB 동시성 문제 발생, x = {}, y = {} , ", grid.x(), grid.y(), e);
+
       // 동시에 같은 좌표가 먼저 저장된 경우, 그 값을 그대로 사용 (동시성 제어)
       Location winner = locationRepository.findByXAndY(grid.x(), grid.y())
           .orElseThrow(() -> e);
