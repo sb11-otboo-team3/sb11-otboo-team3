@@ -2,6 +2,8 @@ package com.otboo.global.security;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.otboo.domain.auth.jwt.JwtProvider;
 import com.otboo.domain.user.entity.User;
@@ -91,5 +93,42 @@ class SecurityConfigTest {
     mockMvc.perform(get("/api/test/protected")
             .header("Authorization", "Bearer " + token))
         .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("CSRF 토큰 없이 인증된 POST 요청을 보내면 403을 반환한다")
+  void postWithoutCsrfTokenReturns403() throws Exception {
+    // given
+    User user = User.create("csrftest@otboo.io", "csrf테스트",
+        passwordEncoder.encode("password1234"));
+    User savedUser = userRepository.saveAndFlush(user);
+
+    String token = jwtProvider.createAccessToken(
+        savedUser.getId(), savedUser.getRole().name(), savedUser.getTokenVersion()
+    );
+
+    // when & then
+    mockMvc.perform(post("/api/test/protected")
+            .header("Authorization", "Bearer " + token))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("CSRF 토큰을 포함하면 인증된 POST 요청이 성공한다")
+  void postWithCsrfTokenSucceeds() throws Exception {
+    // given
+    User user = User.create("csrftest2@otboo.io", "csrf테스트2",
+        passwordEncoder.encode("password1234"));
+    User savedUser = userRepository.saveAndFlush(user);
+
+    String token = jwtProvider.createAccessToken(
+        savedUser.getId(), savedUser.getRole().name(), savedUser.getTokenVersion()
+    );
+
+    // when & then
+    mockMvc.perform(post("/api/test/protected")
+            .header("Authorization", "Bearer " + token)
+            .with(csrf()))
+        .andExpect(status().isOk());
   }
 }
