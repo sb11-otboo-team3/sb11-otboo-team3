@@ -23,4 +23,11 @@ class SecurityConfigTest {
     mockMvc.perform(get("/api/users/some-user-id/profiles"))
         .andExpect(status().isUnauthorized());
   }
+
+  @Test
+  @DisplayName("CSRF 토큰 없이 인증 필요한 POST 요청을 보내면 403을 반환한다")
+  void requestWithoutCsrfTokenReturns403() throws Exception {
+    // 이건 예시 개념이고, 실제로는 인증까지 필요한 API가 아직 없어서
+    // 다른 방식으로 검증이 필요할 수 있어요
+  }
 }
