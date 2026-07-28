@@ -36,7 +36,7 @@ public class User extends UpdatableEntity {
   private long tokenVersion;
 
   private User(String email, String name, String passwordHash) {
-    this.email = email.toLowerCase();;
+    this.email = email.toLowerCase(java.util.Locale.ROOT);
     this.name = name;
     this.passwordHash = passwordHash;
     this.role = UserRole.USER;
@@ -72,6 +72,10 @@ public class User extends UpdatableEntity {
 
   public void changePassword(String newPasswordHash) {
     this.passwordHash = newPasswordHash;
+    this.tokenVersion++;
+  }
+
+  public void refreshSession() {
     this.tokenVersion++;
   }
 }

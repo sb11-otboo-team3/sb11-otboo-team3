@@ -5,6 +5,7 @@ import com.otboo.domain.user.dto.UserDto;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.exception.DuplicateEmailException;
 import com.otboo.domain.user.repository.UserRepository;
+import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,7 +24,7 @@ public class UserService {
 
   @Transactional
   public UserDto create(UserCreateRequest request) {
-    String normalizedEmail = request.email().toLowerCase();
+    String normalizedEmail = request.email().toLowerCase(Locale.ROOT);
 
     if (userRepository.existsByEmail(normalizedEmail)) {
       throw new DuplicateEmailException(normalizedEmail);

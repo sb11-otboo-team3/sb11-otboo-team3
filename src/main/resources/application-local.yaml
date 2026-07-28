@@ -24,3 +24,8 @@ spring:
   batch:
     jdbc:
       initialize-schema: always
+
+jwt:
+  secret: ${JWT_SECRET:3WayDafV59YynmTwCpaDtnpeur8sokrAkQ+wFlXO4QY=}
+  access-expiration: ${JWT_ACCESS_EXPIRATION:900000}
+  refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
