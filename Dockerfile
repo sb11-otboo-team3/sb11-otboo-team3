@@ -17,7 +17,22 @@ RUN ./gradlew dependencies --no-daemon
 COPY src ./src
 
 RUN ./gradlew clean bootJar --no-daemon -x test \
-    && cp build/libs/*.jar app.jar
+    && BOOT_JAR_COUNT="$(find build/libs \
+        -maxdepth 1 \
+        -type f \
+        -name '*.jar' \
+        ! -name '*-plain.jar' \
+        | wc -l \
+        | tr -d '[:space:]')" \
+    && [ "$BOOT_JAR_COUNT" -eq 1 ] \
+    && BOOT_JAR="$(find build/libs \
+        -maxdepth 1 \
+        -type f \
+        -name '*.jar' \
+        ! -name '*-plain.jar' \
+        -print \
+        -quit)" \
+    && cp "$BOOT_JAR" app.jar
 
 
 # 2단계: 애플리케이션 실행
