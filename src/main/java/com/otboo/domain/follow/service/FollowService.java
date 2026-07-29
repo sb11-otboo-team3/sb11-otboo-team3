@@ -3,6 +3,7 @@ package com.otboo.domain.follow.service;
 import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.follow.dto.response.FollowListResponse;
+import com.otboo.domain.follow.dto.response.FollowSummaryDto;
 import com.otboo.domain.follow.entity.Follow;
 import com.otboo.domain.follow.exception.DuplicateFollowException;
 import com.otboo.domain.follow.exception.FollowForbiddenException;
@@ -13,6 +14,7 @@ import com.otboo.domain.follow.repository.FollowRepository;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -169,6 +171,36 @@ public class FollowService {
         totalCount,
         "name",
         "ASCENDING"
+    );
+  }
+
+  public FollowSummaryDto getFollowSummary(UUID userId, UUID currentUserId){
+    // 조회하려는 userId가 존재하는지 여부
+    if (!userRepository.existsById(userId)) {
+      throw new FollowUserNotFoundException(userId);
+    }
+
+    Follow followedByMeFollow = followRepository
+        .findByFollowerIdAndFolloweeId(currentUserId, userId)
+        .orElse(null);
+
+    // currentUserId가 userId를 팔로우 하는지 여부
+    boolean followedByMe = followedByMeFollow != null;
+    // 만약 currentUserId가 userId를 팔로우중이라면 그때의 팔로우 id
+    UUID followedByMeId = followedByMe ? followedByMeFollow.getId() : null;
+
+    boolean followingMe = followRepository.existsByFollowerIdAndFolloweeId(
+        userId,
+        currentUserId
+    );
+
+    return new FollowSummaryDto(
+        userId,
+        followRepository.countFollowers(userId, null),
+        followRepository.countFollowings(userId, null),
+        followedByMe,
+        followedByMeId,
+        followingMe
     );
   }
 }

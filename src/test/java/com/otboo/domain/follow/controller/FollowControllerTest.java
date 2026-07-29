@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.follow.dto.response.FollowListResponse;
+import com.otboo.domain.follow.dto.response.FollowSummaryDto;
 import com.otboo.domain.follow.dto.response.UserSummary;
 import com.otboo.domain.follow.exception.FollowNotFoundException;
 import com.otboo.domain.follow.service.FollowService;
@@ -290,5 +291,50 @@ class FollowControllerTest {
     return authentication(
         new UsernamePasswordAuthenticationToken(userId, null, List.of())
     );
+  }
+
+  @Test
+  @DisplayName("팔로우 요약 조회 성공 테스트")
+  void getFollowSummary_success_returns200() throws Exception {
+    UUID userId = UUID.randomUUID();
+    UUID currentUserId = UUID.randomUUID();
+    UUID followedByMeId = UUID.randomUUID();
+
+    FollowSummaryDto response = new FollowSummaryDto(
+        userId,
+        5L,
+        3L,
+        true,
+        followedByMeId,
+        true
+    );
+
+    given(followService.getFollowSummary(userId, currentUserId))
+        .willReturn(response);
+
+    mockMvc.perform(get("/api/follows/summary")
+            .param("userId", userId.toString())
+            .with(authenticatedUser(currentUserId)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.followeeId").value(userId.toString()))
+        .andExpect(jsonPath("$.followerCount").value(5))
+        .andExpect(jsonPath("$.followingCount").value(3))
+        .andExpect(jsonPath("$.followedByMe").value(true))
+        .andExpect(jsonPath("$.followedByMeId").value(followedByMeId.toString()))
+        .andExpect(jsonPath("$.followingMe").value(true));
+
+    verify(followService).getFollowSummary(userId, currentUserId);
+  }
+
+  @Test
+  @DisplayName("userId가 없을때 400 반환 실패 테스트")
+  void getFollowSummary_missingUserId_returns400() throws Exception {
+    UUID currentUserId = UUID.randomUUID();
+
+    mockMvc.perform(get("/api/follows/summary")
+            .with(authenticatedUser(currentUserId)))
+        .andExpect(status().isBadRequest());
+
+    verify(followService, never()).getFollowSummary(any(), any());
   }
 }

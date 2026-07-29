@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.follow.dto.response.FollowListResponse;
+import com.otboo.domain.follow.dto.response.FollowSummaryDto;
 import com.otboo.domain.follow.entity.Follow;
 import com.otboo.domain.follow.exception.DuplicateFollowException;
 import com.otboo.domain.follow.exception.FollowForbiddenException;
@@ -378,5 +379,80 @@ class FollowServiceTest {
 
     verify(followRepository, never()).findFollowers(any(), any(), any(), anyInt(), any());
     verify(followRepository, never()).countFollowers(any(), any());
+  }
+
+  @Test
+  @DisplayName("팔로우 요약 조회 성공 테스트(맞팔인 경우)")
+  void getFollowSummary_success_followedByMeAndFollowingMe() {
+    UUID userId = UUID.randomUUID();
+    UUID currentUserId = UUID.randomUUID();
+    UUID followedByMeId = UUID.randomUUID();
+
+    User currentUser = User.create("current@test.com", "current", "password");
+    User targetUser = User.create("target@test.com", "target", "password");
+
+    ReflectionTestUtils.setField(currentUser, "id", currentUserId);
+    ReflectionTestUtils.setField(targetUser, "id", userId);
+
+    Follow followedByMeFollow = Follow.create(currentUser, targetUser);
+    ReflectionTestUtils.setField(followedByMeFollow, "id", followedByMeId);
+
+    given(userRepository.existsById(userId)).willReturn(true);
+    given(followRepository.findByFollowerIdAndFolloweeId(currentUserId, userId))
+        .willReturn(Optional.of(followedByMeFollow));
+    given(followRepository.existsByFollowerIdAndFolloweeId(userId, currentUserId))
+        .willReturn(true);
+    given(followRepository.countFollowers(userId, null)).willReturn(5L);
+    given(followRepository.countFollowings(userId, null)).willReturn(3L);
+
+    FollowSummaryDto result = followService.getFollowSummary(userId, currentUserId);
+
+    assertThat(result.followeeId()).isEqualTo(userId);
+    assertThat(result.followerCount()).isEqualTo(5L);
+    assertThat(result.followingCount()).isEqualTo(3L);
+    assertThat(result.followedByMe()).isTrue();
+    assertThat(result.followedByMeId()).isEqualTo(followedByMeId);
+    assertThat(result.followingMe()).isTrue();
+  }
+
+  @Test
+  @DisplayName("팔로우 요약 조회 성공 테스트(맞팔 아닌 경우)")
+  void getFollowSummary_success_noRelationship() {
+    UUID userId = UUID.randomUUID();
+    UUID currentUserId = UUID.randomUUID();
+
+    given(userRepository.existsById(userId)).willReturn(true);
+    given(followRepository.findByFollowerIdAndFolloweeId(currentUserId, userId))
+        .willReturn(Optional.empty());
+    given(followRepository.existsByFollowerIdAndFolloweeId(userId, currentUserId))
+        .willReturn(false);
+    given(followRepository.countFollowers(userId, null)).willReturn(0L);
+    given(followRepository.countFollowings(userId, null)).willReturn(0L);
+
+    FollowSummaryDto result = followService.getFollowSummary(userId, currentUserId);
+
+    assertThat(result.followeeId()).isEqualTo(userId);
+    assertThat(result.followerCount()).isEqualTo(0L);
+    assertThat(result.followingCount()).isEqualTo(0L);
+    assertThat(result.followedByMe()).isFalse();
+    assertThat(result.followedByMeId()).isNull();
+    assertThat(result.followingMe()).isFalse();
+  }
+
+  @Test
+  @DisplayName("조회 대상이 없어서 팔로우 요약 조회 실패 테스트")
+  void getFollowSummary_userNotFound_throwsException() {
+    UUID userId = UUID.randomUUID();
+    UUID currentUserId = UUID.randomUUID();
+
+    given(userRepository.existsById(userId)).willReturn(false);
+
+    assertThatThrownBy(() -> followService.getFollowSummary(userId, currentUserId))
+        .isInstanceOf(FollowUserNotFoundException.class);
+
+    verify(followRepository, never()).findByFollowerIdAndFolloweeId(any(), any());
+    verify(followRepository, never()).existsByFollowerIdAndFolloweeId(any(), any());
+    verify(followRepository, never()).countFollowers(any(), any());
+    verify(followRepository, never()).countFollowings(any(), any());
   }
 }

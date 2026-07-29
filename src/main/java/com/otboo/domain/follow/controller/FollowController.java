@@ -3,6 +3,7 @@ package com.otboo.domain.follow.controller;
 import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.follow.dto.response.FollowListResponse;
+import com.otboo.domain.follow.dto.response.FollowSummaryDto;
 import com.otboo.domain.follow.service.FollowService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
@@ -70,11 +71,22 @@ public class FollowController {
       @RequestParam(required = false) UUID idAfter,
       @RequestParam @Min(value = 1, message = "limit은 1 이상이어야 합니다.") int limit,
       @RequestParam(required = false) String nameLike
-  ){
+  ) {
     FollowListResponse response = followService.getFollowers(
         followeeId, cursor, idAfter, limit, nameLike
     );
 
+    return ResponseEntity.ok(response);
+  }
+
+  @GetMapping("/summary")
+  public ResponseEntity<FollowSummaryDto> getFollowSummary
+      (
+          @RequestParam UUID userId,
+          Authentication authentication
+      ) {
+    UUID currentUserId = (UUID) authentication.getPrincipal();
+    FollowSummaryDto response = followService.getFollowSummary(userId, currentUserId);
     return ResponseEntity.ok(response);
   }
 }
