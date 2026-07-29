@@ -9,6 +9,7 @@ import com.otboo.domain.follow.exception.DuplicateFollowException;
 import com.otboo.domain.follow.exception.FollowForbiddenException;
 import com.otboo.domain.follow.exception.FollowNotFoundException;
 import com.otboo.domain.follow.exception.FollowUserNotFoundException;
+import com.otboo.domain.follow.exception.InvalidFollowCursorException;
 import com.otboo.domain.follow.exception.SelfFollowNotAllowedException;
 import com.otboo.domain.follow.repository.FollowRepository;
 import com.otboo.domain.user.entity.User;
@@ -77,6 +78,8 @@ public class FollowService {
       int limit,
       String nameLike
   ){
+    validateCursor(cursor, idAfter);
+
     if (!userRepository.existsById(followerId)) {
       throw new FollowUserNotFoundException(followerId);
     }
@@ -129,6 +132,8 @@ public class FollowService {
       int limit,
       String nameLike
   ){
+    validateCursor(cursor, idAfter);
+
     if (!userRepository.existsById(followeeId)) {
       throw new FollowUserNotFoundException(followeeId);
     }
@@ -202,5 +207,15 @@ public class FollowService {
         followedByMeId,
         followingMe
     );
+  }
+
+  // cursor와 idAfter는 둘 다 있거나 둘 다 없어야 함
+  private void validateCursor(String cursor, UUID idAfter) {
+    boolean hasCursor = cursor != null && !cursor.isBlank();
+    boolean hasIdAfter = idAfter != null;
+
+    if (hasCursor != hasIdAfter) {
+      throw new InvalidFollowCursorException();
+    }
   }
 }

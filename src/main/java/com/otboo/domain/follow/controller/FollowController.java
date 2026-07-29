@@ -12,9 +12,11 @@ import com.otboo.domain.follow.dto.response.FollowListResponse;
 import com.otboo.domain.follow.dto.response.FollowSummaryDto;
 import com.otboo.domain.follow.service.FollowService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -64,7 +66,7 @@ public class FollowController {
       @RequestParam UUID followerId,
       @RequestParam(required = false) String cursor,
       @RequestParam(required = false) UUID idAfter,
-      @RequestParam @Min(value = 1, message = "limit은 1 이상이어야 합니다.") int limit,
+      @RequestParam @Min(value = 1, message = "limit는 1 이상이어야 합니다.") @Max(value = 100, message = "limit는 100 이하여야 합니다.") int limit,
       @RequestParam(required = false) String nameLike
   ) {
     FollowListResponse response = followService.getFollowings(
