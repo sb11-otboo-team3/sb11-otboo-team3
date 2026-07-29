@@ -5,23 +5,28 @@ import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import com.otboo.domain.auth.dto.JwtDto;
 import com.otboo.domain.auth.dto.SignInRequest;
 import com.otboo.domain.auth.service.AuthService;
 import com.otboo.domain.user.dto.UserDto;
 import com.otboo.domain.user.entity.UserRole;
+import com.otboo.domain.user.repository.UserRepository;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import com.otboo.domain.auth.jwt.JwtProvider;
+import com.otboo.global.security.SecurityConfig;
+import org.springframework.context.annotation.Import;
 
 @WebMvcTest(AuthController.class)
+@Import(SecurityConfig.class)
 class AuthControllerTest {
 
   @Autowired
@@ -30,8 +35,13 @@ class AuthControllerTest {
   @MockitoBean
   private AuthService authService;
 
+  @MockitoBean
+  private JwtProvider jwtProvider;
+
+  @MockitoBean
+  private UserRepository userRepository;
+
   @Test
-  @WithMockUser
   @DisplayName("로그인 요청이 유효하면 200과 JwtDto를 반환한다")
   void signInSuccessReturns200() throws Exception {
     // given
@@ -50,7 +60,6 @@ class AuthControllerTest {
   }
 
   @Test
-  @WithMockUser
   @DisplayName("username이 비어있으면 400을 반환한다")
   void signInWithBlankUsernameReturns400() throws Exception {
     // when & then
@@ -62,7 +71,6 @@ class AuthControllerTest {
   }
 
   @Test
-  @WithMockUser
   @DisplayName("password가 비어있으면 400을 반환한다")
   void signInWithBlankPasswordReturns400() throws Exception {
     // when & then
@@ -71,5 +79,12 @@ class AuthControllerTest {
             .param("password", "")
             .with(csrf()))
         .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @DisplayName("CSRF 토큰 조회 시 204를 반환한다")
+  void csrfTokenReturns204() throws Exception {
+    mockMvc.perform(get("/api/auth/csrf-token"))
+        .andExpect(status().isNoContent());
   }
 }

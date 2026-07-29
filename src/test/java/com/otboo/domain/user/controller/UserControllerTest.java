@@ -19,11 +19,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import com.otboo.domain.auth.jwt.JwtProvider;
+import com.otboo.global.security.SecurityConfig;
+import org.springframework.context.annotation.Import;
+import com.otboo.domain.user.repository.UserRepository;
 
 @WebMvcTest(UserController.class)
+@Import(SecurityConfig.class)
 class UserControllerTest {
 
   @Autowired
@@ -35,8 +39,13 @@ class UserControllerTest {
   @MockitoBean
   private UserService userService;
 
+  @MockitoBean
+  private JwtProvider jwtProvider;
+
+  @MockitoBean
+  private UserRepository userRepository;
+
   @Test
-  @WithMockUser
   void 회원가입_요청이_유효하면_201을_반환한다() throws Exception {
     // given
     UserCreateRequest request = new UserCreateRequest("테스트유저", "test@otboo.io", "password1234");
@@ -56,7 +65,6 @@ class UserControllerTest {
   }
 
   @Test
-  @WithMockUser
   void 이메일_형식이_올바르지_않으면_400을_반환한다() throws Exception {
     // given
     UserCreateRequest request = new UserCreateRequest("테스트유저", "invalid-email", "password1234");
@@ -70,7 +78,6 @@ class UserControllerTest {
   }
 
   @Test
-  @WithMockUser
   void 이미_등록된_이메일이면_400을_반환한다() throws Exception {
     // given
     UserCreateRequest request = new UserCreateRequest("테스트유저", "test@otboo.io", "password1234");
