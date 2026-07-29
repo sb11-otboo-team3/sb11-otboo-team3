@@ -53,4 +53,11 @@ public class ClothesAttributeDefinitionController {
         return ResponseEntity.ok(response);
     }
 
+    @DeleteMapping("/{definitionId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> delete(@PathVariable UUID definitionId) {
+        clothesAttributeDefinitionService.delete(definitionId);
+        return ResponseEntity.noContent().build();
+    }
+
 }

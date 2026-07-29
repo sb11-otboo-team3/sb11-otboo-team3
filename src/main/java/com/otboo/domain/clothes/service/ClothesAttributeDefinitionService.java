@@ -117,6 +117,21 @@ public class ClothesAttributeDefinitionService {
         return selectableValues;
     }
 
+    @Transactional
+    public void delete(UUID definitionId) {
+        ClothesAttributeDefinition definition =
+                definitionRepository.findById(definitionId)
+                        .filter(found -> found.getDeletedAt() == null)
+                        .orElseThrow(() -> new ClothesAttributeDefinitionNotFoundException(definitionId));
+
+        List<AttributeSelectableValue> activeValues =
+                selectableValueRepository.findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(List.of(definition));
+        activeValues.forEach(AttributeSelectableValue::delete);
+
+        definition.delete();
+    }
+
+
     private List<String> normalizeValues(List<String> rawValues) {
         if (rawValues == null) {
             return List.of();
