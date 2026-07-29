@@ -196,8 +196,11 @@ class AuthServiceTest {
   }
 
   @Test
-  @DisplayName("로그아웃하면 Refresh Token이 삭제된다")
+  @DisplayName("유효한 Refresh Token으로 로그아웃하면 Redis에서 삭제된다")
   void signOutDeletesRefreshToken() throws Exception {
+    // given
+    given(refreshTokenService.exists("some-refresh-token")).willReturn(true);
+
     // when
     authService.signOut("some-refresh-token");
 
@@ -206,10 +209,21 @@ class AuthServiceTest {
   }
 
   @Test
-  @DisplayName("Refresh Token 없이 로그아웃해도 예외가 발생하지 않는다")
-  void signOutWithNullTokenDoesNotThrow() throws Exception {
+  @DisplayName("Refresh Token 없이 로그아웃하면 예외가 발생한다")
+  void signOutWithNullTokenThrowsException() throws Exception {
     // when & then
-    authService.signOut(null);
-    // 예외 없이 정상 종료되면 성공
+    assertThatThrownBy(() -> authService.signOut(null))
+        .isInstanceOf(InvalidCredentialsException.class);
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 Refresh Token으로 로그아웃하면 예외가 발생한다")
+  void signOutWithNonExistentTokenThrowsException() throws Exception {
+    // given
+    given(refreshTokenService.exists("invalid-token")).willReturn(false);
+
+    // when & then
+    assertThatThrownBy(() -> authService.signOut("invalid-token"))
+        .isInstanceOf(InvalidCredentialsException.class);
   }
 }

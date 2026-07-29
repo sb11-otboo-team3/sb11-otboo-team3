@@ -38,4 +38,8 @@ public class RefreshTokenService {
   public void delete(String refreshToken) {
     redisTemplate.delete(KEY_PREFIX + refreshToken);
   }
+
+  public boolean exists(String refreshToken) {
+    return Boolean.TRUE.equals(redisTemplate.hasKey(KEY_PREFIX + refreshToken));
+  }
 }

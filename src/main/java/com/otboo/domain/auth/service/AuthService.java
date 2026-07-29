@@ -82,9 +82,10 @@ public class AuthService {
   }
 
   public void signOut(String refreshToken) {
-    if (refreshToken != null) {
-      refreshTokenService.delete(refreshToken);
+    if (refreshToken == null || !refreshTokenService.exists(refreshToken)) {
+      throw new InvalidCredentialsException();
     }
+    refreshTokenService.delete(refreshToken);
   }
 
   public record SignInResult(JwtDto jwtDto, String refreshToken) {

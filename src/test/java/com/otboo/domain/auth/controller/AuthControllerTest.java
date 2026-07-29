@@ -123,4 +123,16 @@ class AuthControllerTest {
             .with(csrf()))
         .andExpect(status().isNoContent());
   }
+  
+  @Test
+  @DisplayName("존재하지 않는 Refresh Token으로 로그아웃하면 401을 반환한다")
+  void signOutWithInvalidTokenReturns401() throws Exception {
+    org.mockito.BDDMockito.willThrow(new com.otboo.domain.auth.exception.InvalidCredentialsException())
+        .given(authService).signOut("invalid-token");
+
+    mockMvc.perform(post("/api/auth/sign-out")
+            .cookie(new jakarta.servlet.http.Cookie("REFRESH_TOKEN", "invalid-token"))
+            .with(csrf()))
+        .andExpect(status().isUnauthorized());
+  }
 }
