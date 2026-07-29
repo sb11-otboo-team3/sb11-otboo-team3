@@ -1,5 +1,6 @@
 package com.otboo.global.error;
 
+import jakarta.validation.ConstraintViolationException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -163,5 +164,18 @@ public class GlobalExceptionHandler {
         }
 
         return defaultMessage;
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolationException(
+        ConstraintViolationException e
+    ) {
+        ErrorResponse response = new ErrorResponse(
+            e.getClass().getSimpleName(),
+            "요청 값이 올바르지 않습니다.",
+            Map.of()
+        );
+
+        return ResponseEntity.badRequest().body(response);
     }
 }

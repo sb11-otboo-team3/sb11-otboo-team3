@@ -3,12 +3,14 @@ package com.otboo.domain.follow.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
+import com.otboo.domain.follow.dto.response.FollowListResponse;
 import com.otboo.domain.follow.entity.Follow;
 import com.otboo.domain.follow.exception.DuplicateFollowException;
 import com.otboo.domain.follow.exception.FollowNotFoundException;
@@ -17,6 +19,7 @@ import com.otboo.domain.follow.exception.SelfFollowNotAllowedException;
 import com.otboo.domain.follow.repository.FollowRepository;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -163,5 +166,99 @@ class FollowServiceTest {
         .isInstanceOf(FollowNotFoundException.class);
 
     verify(followRepository, never()).delete(any());
+  }
+
+  @Test
+  @DisplayName("팔로잉 목록 조회 성공 테스트(다음 페이지 존재)")
+  void getFollowings_success_hasNext() {
+    UUID followerId = UUID.randomUUID();
+    UUID followeeId1 = UUID.randomUUID();
+    UUID followeeId2 = UUID.randomUUID();
+    UUID followeeId3 = UUID.randomUUID();
+
+    User follower = User.create("follower@test.com", "follower", "password");
+    User followee1 = User.create("a@test.com", "Alice", "password");
+    User followee2 = User.create("b@test.com", "Bob", "password");
+    User followee3 = User.create("c@test.com", "Charlie", "password");
+
+    Follow follow1 = Follow.create(follower, followee1);
+    Follow follow2 = Follow.create(follower, followee2);
+    Follow follow3 = Follow.create(follower, followee3);
+
+    given(userRepository.existsById(followerId)).willReturn(true);
+    given(followRepository.findFollowings(followerId, null, null, 3, null))
+        .willReturn(List.of(follow1, follow2, follow3));
+    given(followRepository.countFollowings(followerId, null))
+        .willReturn(3L);
+
+    FollowListResponse result = followService.getFollowings(
+        followerId,
+        null,
+        null,
+        2,
+        null
+    );
+
+    assertThat(result.data()).hasSize(2);
+    assertThat(result.hasNext()).isTrue();
+    assertThat(result.nextCursor()).isEqualTo("bob");
+    assertThat(result.nextIdAfter()).isEqualTo(follow2.getId());
+    assertThat(result.totalCount()).isEqualTo(3L);
+    assertThat(result.sortBy()).isEqualTo("name");
+    assertThat(result.sortDirection()).isEqualTo("ASCENDING");
+
+    verify(followRepository).findFollowings(followerId, null, null, 3, null);
+    verify(followRepository).countFollowings(followerId, null);
+  }
+
+  @Test
+  @DisplayName("팔로잉 목록 조회 성공 테스트(다음 페이지 없음)")
+  void getFollowings_success_hasNoNext() {
+    UUID followerId = UUID.randomUUID();
+
+    User follower = User.create("follower@test.com", "follower", "password");
+    User followee = User.create("a@test.com", "Alice", "password");
+
+    Follow follow = Follow.create(follower, followee);
+
+    given(userRepository.existsById(followerId)).willReturn(true);
+    given(followRepository.findFollowings(followerId, null, null, 3, null))
+        .willReturn(List.of(follow));
+    given(followRepository.countFollowings(followerId, null))
+        .willReturn(1L);
+
+    FollowListResponse result = followService.getFollowings(
+        followerId,
+        null,
+        null,
+        2,
+        null
+    );
+
+    assertThat(result.data()).hasSize(1);
+    assertThat(result.hasNext()).isFalse();
+    assertThat(result.nextCursor()).isNull();
+    assertThat(result.nextIdAfter()).isNull();
+    assertThat(result.totalCount()).isEqualTo(1L);
+  }
+
+  @Test
+  @DisplayName("팔로잉 목록 조회 실패 테스트(followerId가 없음)")
+  void getFollowings_followerNotFound_throwsException() {
+    UUID followerId = UUID.randomUUID();
+
+    given(userRepository.existsById(followerId)).willReturn(false);
+
+    assertThatThrownBy(() -> followService.getFollowings(
+        followerId,
+        null,
+        null,
+        2,
+        null
+    ))
+        .isInstanceOf(FollowUserNotFoundException.class);
+
+    verify(followRepository, never()).findFollowings(any(), any(), any(), anyInt(), any());
+    verify(followRepository, never()).countFollowings(any(), any());
   }
 }

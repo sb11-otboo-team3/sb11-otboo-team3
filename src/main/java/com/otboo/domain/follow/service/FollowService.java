@@ -2,6 +2,7 @@ package com.otboo.domain.follow.service;
 
 import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
+import com.otboo.domain.follow.dto.response.FollowListResponse;
 import com.otboo.domain.follow.entity.Follow;
 import com.otboo.domain.follow.exception.DuplicateFollowException;
 import com.otboo.domain.follow.exception.FollowNotFoundException;
@@ -10,6 +11,7 @@ import com.otboo.domain.follow.exception.SelfFollowNotAllowedException;
 import com.otboo.domain.follow.repository.FollowRepository;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -55,5 +57,57 @@ public class FollowService {
         .orElseThrow(() -> new FollowNotFoundException(followId));
 
     followRepository.delete(follow);
+  }
+
+  public FollowListResponse getFollowings(
+      UUID followerId,
+      String cursor,
+      UUID idAfter,
+      int limit,
+      String nameLike
+  ){
+    if (!userRepository.existsById(followerId)) {
+      throw new FollowUserNotFoundException(followerId);
+    }
+
+    List<Follow> follows = followRepository.findFollowings(
+        followerId,
+        cursor,
+        idAfter,
+        limit + 1,
+        nameLike
+    );
+
+    boolean hasNext = follows.size() > limit;
+
+    if(hasNext){
+      follows = follows.subList(0, limit);
+    }
+
+    List<FollowDto> data = follows.stream()
+        .map(FollowDto::from)
+        .toList();
+
+    // 기본은 다음 페이지 없음
+    String nextCursor = null;
+    UUID nextIdAfter = null;
+
+    if (hasNext) {
+      Follow last = follows.get(follows.size() - 1);
+      nextCursor = last.getFollowee().getName().toLowerCase();
+      nextIdAfter = last.getId();
+    }
+
+    long totalCount = followRepository.countFollowings(followerId, nameLike);
+
+    return new FollowListResponse(
+        data,
+        nextCursor,
+        nextIdAfter,
+        hasNext,
+        totalCount,
+        "name",
+        "ASCENDING"
+    );
   }
 }
