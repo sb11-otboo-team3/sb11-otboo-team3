@@ -30,7 +30,7 @@ public class FollowRepositoryImpl implements FollowRepositoryCustom {
             // followerId가 팔로우중인 id들 가져오기
             follow.follower.id.eq(followerId),
             followeeNameContains(nameLike),
-            cursorCondition(cursor, idAfter)
+            followeeCursorCondition(cursor, idAfter)
         )
         .orderBy(follow.followee.name.lower().asc(), follow.id.asc())
         .limit(limit)
@@ -50,7 +50,8 @@ public class FollowRepositoryImpl implements FollowRepositoryCustom {
         )
         .fetchOne();
 
-    return count == null ? 0L : count;
+    // 비어있는 경우 0
+    return count == null ? 0 : count;
   }
 
   private BooleanExpression followeeNameContains(String nameLike) {
@@ -61,7 +62,7 @@ public class FollowRepositoryImpl implements FollowRepositoryCustom {
     return follow.followee.name.containsIgnoreCase(nameLike.trim());
   }
 
-  private BooleanExpression cursorCondition(String cursor, UUID idAfter) {
+  private BooleanExpression followeeCursorCondition(String cursor, UUID idAfter) {
     if (cursor == null || cursor.isBlank() || idAfter == null) {
       return null;
     }
@@ -74,4 +75,66 @@ public class FollowRepositoryImpl implements FollowRepositoryCustom {
                 .and(follow.id.gt(idAfter))
         );
   }
+
+  @Override
+  public List<Follow> findFollowers(
+      UUID followeeId,
+      String cursor,
+      UUID idAfter,
+      int limit,
+      String nameLike
+  ) {
+    return queryFactory
+        .selectFrom(follow)
+        .join(follow.followee).fetchJoin()
+        .join(follow.follower).fetchJoin()
+        .where(
+            // followerId가 팔로잉당하는중인 id들 가져오기
+            follow.followee.id.eq(followeeId),
+            followerNameContains(nameLike),
+            followerCursorCondition(cursor, idAfter)
+        )
+        .orderBy(follow.follower.name.lower().asc(), follow.id.asc())
+        .limit(limit)
+        .fetch();
+  }
+
+  @Override
+  public long countFollowers(UUID followeeId, String nameLike) {
+    Long count = queryFactory
+        .select(follow.count())
+        .from(follow)
+        .join(follow.follower)
+        .where(
+            follow.followee.id.eq(followeeId),
+            followerNameContains(nameLike)
+        )
+        .fetchOne();
+
+    // 비어있는 경우 0
+    return count == null ? 0 : count;
+  }
+
+  private BooleanExpression followerNameContains(String nameLike) {
+    if (nameLike == null || nameLike.isBlank()) {
+      return null;
+    }
+
+    return follow.follower.name.containsIgnoreCase(nameLike.trim());
+  }
+
+  private BooleanExpression followerCursorCondition(String cursor, UUID idAfter) {
+    if (cursor == null || cursor.isBlank() || idAfter == null) {
+      return null;
+    }
+
+    String normalizedCursor = cursor.trim().toLowerCase();
+
+    return follow.follower.name.lower().gt(normalizedCursor)
+        .or(
+            follow.follower.name.lower().eq(normalizedCursor)
+                .and(follow.id.gt(idAfter))
+        );
+  }
+
 }

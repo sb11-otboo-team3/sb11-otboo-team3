@@ -15,4 +15,15 @@ public interface FollowRepositoryCustom {
   );
 
   long countFollowings(UUID followerId, String nameLike);
+
+  List<Follow> findFollowers(
+      UUID followeeId,
+      String cursor,
+      UUID idAfter,
+      int limit,
+      String nameLike
+  );
+
+  long countFollowers(UUID followeeId, String nameLike);
+
 }

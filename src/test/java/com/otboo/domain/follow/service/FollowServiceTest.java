@@ -261,4 +261,93 @@ class FollowServiceTest {
     verify(followRepository, never()).findFollowings(any(), any(), any(), anyInt(), any());
     verify(followRepository, never()).countFollowings(any(), any());
   }
+
+  @Test
+  @DisplayName("팔로워 목록 조회 성공 테스트(다음 페이지 존재)")
+  void getFollowers_success_hasNext() {
+    UUID followeeId = UUID.randomUUID();
+
+    User followee = User.create("followee@test.com", "followee", "password");
+    User follower1 = User.create("a@test.com", "Alice", "password");
+    User follower2 = User.create("b@test.com", "Bob", "password");
+    User follower3 = User.create("c@test.com", "Charlie", "password");
+
+    Follow follow1 = Follow.create(follower1, followee);
+    Follow follow2 = Follow.create(follower2, followee);
+    Follow follow3 = Follow.create(follower3, followee);
+
+    given(userRepository.existsById(followeeId)).willReturn(true);
+    given(followRepository.findFollowers(followeeId, null, null, 3, null))
+        .willReturn(List.of(follow1, follow2, follow3));
+    given(followRepository.countFollowers(followeeId, null))
+        .willReturn(3L);
+
+    FollowListResponse result = followService.getFollowers(
+        followeeId,
+        null,
+        null,
+        2,
+        null
+    );
+
+    assertThat(result.data()).hasSize(2);
+    assertThat(result.hasNext()).isTrue();
+    assertThat(result.nextCursor()).isEqualTo("bob");
+    assertThat(result.nextIdAfter()).isEqualTo(follow2.getId());
+    assertThat(result.totalCount()).isEqualTo(3L);
+
+    verify(followRepository).findFollowers(followeeId, null, null, 3, null);
+    verify(followRepository).countFollowers(followeeId, null);
+  }
+
+  @Test
+  @DisplayName("팔로워 목록 조회 성공 테스트(다음 페이지 없음)")
+  void getFollowers_success_hasNoNext() {
+    UUID followeeId = UUID.randomUUID();
+
+    User followee = User.create("followee@test.com", "followee", "password");
+    User follower = User.create("a@test.com", "Alice", "password");
+
+    Follow follow = Follow.create(follower, followee);
+
+    given(userRepository.existsById(followeeId)).willReturn(true);
+    given(followRepository.findFollowers(followeeId, null, null, 3, null))
+        .willReturn(List.of(follow));
+    given(followRepository.countFollowers(followeeId, null))
+        .willReturn(1L);
+
+    FollowListResponse result = followService.getFollowers(
+        followeeId,
+        null,
+        null,
+        2,
+        null
+    );
+
+    assertThat(result.data()).hasSize(1);
+    assertThat(result.hasNext()).isFalse();
+    assertThat(result.nextCursor()).isNull();
+    assertThat(result.nextIdAfter()).isNull();
+    assertThat(result.totalCount()).isEqualTo(1L);
+  }
+
+  @Test
+  @DisplayName("팔로잉 목록 조회 실패 테스트(followeeId가 없음)")
+  void getFollowers_followeeNotFound_throwsException() {
+    UUID followeeId = UUID.randomUUID();
+
+    given(userRepository.existsById(followeeId)).willReturn(false);
+
+    assertThatThrownBy(() -> followService.getFollowers(
+        followeeId,
+        null,
+        null,
+        2,
+        null
+    ))
+        .isInstanceOf(FollowUserNotFoundException.class);
+
+    verify(followRepository, never()).findFollowers(any(), any(), any(), anyInt(), any());
+    verify(followRepository, never()).countFollowers(any(), any());
+  }
 }

@@ -206,4 +206,74 @@ class FollowControllerTest {
         any()
     );
   }
+
+  @Test
+  @WithMockUser
+  @DisplayName("팔로워 목록 조회 성공 테스트")
+  void getFollowers_success_returns200() throws Exception {
+    UUID followId = UUID.randomUUID();
+    UUID followeeId = UUID.randomUUID();
+    UUID followerId = UUID.randomUUID();
+
+    FollowListResponse response = new FollowListResponse(
+        List.of(
+            new FollowDto(
+                followId,
+                new UserSummary(followeeId, "followee", null),
+                new UserSummary(followerId, "follower", null)
+            )
+        ),
+        "follower",
+        followId,
+        true,
+        10L,
+        "name",
+        "ASCENDING"
+    );
+
+    given(followService.getFollowers(
+        eq(followeeId),
+        isNull(),
+        isNull(),
+        eq(20),
+        isNull()
+    )).willReturn(response);
+
+    mockMvc.perform(get("/api/follows/followers")
+            .param("followeeId", followeeId.toString())
+            .param("limit", "20"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data").isArray())
+        .andExpect(jsonPath("$.data[0].id").value(followId.toString()))
+        .andExpect(jsonPath("$.data[0].followee.userId").value(followeeId.toString()))
+        .andExpect(jsonPath("$.data[0].followee.name").value("followee"))
+        .andExpect(jsonPath("$.data[0].follower.userId").value(followerId.toString()))
+        .andExpect(jsonPath("$.data[0].follower.name").value("follower"))
+        .andExpect(jsonPath("$.nextCursor").value("follower"))
+        .andExpect(jsonPath("$.nextIdAfter").value(followId.toString()))
+        .andExpect(jsonPath("$.hasNext").value(true))
+        .andExpect(jsonPath("$.totalCount").value(10))
+        .andExpect(jsonPath("$.sortBy").value("name"))
+        .andExpect(jsonPath("$.sortDirection").value("ASCENDING"));
+  }
+
+  @Test
+  @WithMockUser
+  @DisplayName("limit이 1보다 작아 실패 시 400 반환 테스트")
+  void getFollowers_invalidLimit_returns400() throws Exception {
+    UUID followeeId = UUID.randomUUID();
+
+    mockMvc.perform(get("/api/follows/followers")
+            .param("followeeId", followeeId.toString())
+            .param("limit", "0"))
+        .andExpect(status().isBadRequest());
+
+    verify(followService, never()).getFollowers(
+        any(),
+        any(),
+        any(),
+        anyInt(),
+        any()
+    );
+  }
 }

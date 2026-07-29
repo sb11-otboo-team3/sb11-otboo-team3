@@ -56,4 +56,19 @@ public class FollowController {
 
     return ResponseEntity.ok(response);
   }
+
+  @GetMapping("/followers")
+  public ResponseEntity<FollowListResponse> getFollowers(
+      @RequestParam UUID followeeId,
+      @RequestParam(required = false) String cursor,
+      @RequestParam(required = false) UUID idAfter,
+      @RequestParam @Min(value = 1, message = "limit은 1 이상이어야 합니다.") int limit,
+      @RequestParam(required = false) String nameLike
+  ){
+    FollowListResponse response = followService.getFollowers(
+        followeeId, cursor, idAfter, limit, nameLike
+    );
+
+    return ResponseEntity.ok(response);
+  }
 }

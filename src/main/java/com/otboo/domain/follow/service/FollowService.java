@@ -110,4 +110,56 @@ public class FollowService {
         "ASCENDING"
     );
   }
+
+  public FollowListResponse getFollowers(
+      UUID followeeId,
+      String cursor,
+      UUID idAfter,
+      int limit,
+      String nameLike
+  ){
+    if (!userRepository.existsById(followeeId)) {
+      throw new FollowUserNotFoundException(followeeId);
+    }
+
+    List<Follow> follows = followRepository.findFollowers(
+        followeeId,
+        cursor,
+        idAfter,
+        limit + 1,
+        nameLike
+    );
+
+    boolean hasNext = follows.size() > limit;
+
+    if(hasNext){
+      follows = follows.subList(0, limit);
+    }
+
+    List<FollowDto> data = follows.stream()
+        .map(FollowDto::from)
+        .toList();
+
+    // 기본은 다음 페이지 없음
+    String nextCursor = null;
+    UUID nextIdAfter = null;
+
+    if (hasNext) {
+      Follow last = follows.get(follows.size() - 1);
+      nextCursor = last.getFollower().getName().toLowerCase();
+      nextIdAfter = last.getId();
+    }
+
+    long totalCount = followRepository.countFollowers(followeeId, nameLike);
+
+    return new FollowListResponse(
+        data,
+        nextCursor,
+        nextIdAfter,
+        hasNext,
+        totalCount,
+        "name",
+        "ASCENDING"
+    );
+  }
 }
