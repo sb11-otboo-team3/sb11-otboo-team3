@@ -5,7 +5,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.assertj.core.api.Assertions.assertThat;
 
+import jakarta.servlet.http.Cookie;
+import org.springframework.test.web.servlet.MvcResult;
 import com.otboo.domain.auth.jwt.JwtProvider;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
@@ -188,5 +191,60 @@ class SecurityConfigTest {
                             """)
             .with(csrf()))
         .andExpect(status().isCreated());
+  }
+
+  @Test
+  @DisplayName("발급받은 XSRF-TOKEN 쿠키 값을 X-XSRF-TOKEN 헤더에 실어 보내면 요청이 성공한다")
+  void csrfCookieAndHeaderFlowSucceeds() throws Exception {
+    // given: 먼저 CSRF 토큰을 발급받아 쿠키를 확보
+    MvcResult csrfResult = mockMvc.perform(get("/api/auth/csrf-token"))
+        .andExpect(status().isNoContent())
+        .andReturn();
+
+    Cookie xsrfCookie = csrfResult.getResponse().getCookie("XSRF-TOKEN");
+    assertThat(xsrfCookie).isNotNull();
+    String csrfTokenValue = xsrfCookie.getValue();
+
+    User user = User.create("csrfflowtest@otboo.io", "csrf플로우테스트",
+        passwordEncoder.encode("password1234"));
+    User savedUser = userRepository.saveAndFlush(user);
+
+    String jwt = jwtProvider.createAccessToken(
+        savedUser.getId(), savedUser.getRole().name(), savedUser.getTokenVersion()
+    );
+
+    // when & then: 쿠키와 헤더에 같은 값을 실어서 요청
+    mockMvc.perform(post("/api/test/protected")
+            .header("Authorization", "Bearer " + jwt)
+            .cookie(xsrfCookie)
+            .header("X-XSRF-TOKEN", csrfTokenValue))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  @DisplayName("쿠키 값과 다른 X-XSRF-TOKEN 헤더를 보내면 403을 반환한다")
+  void mismatchedCsrfCookieAndHeaderReturns403() throws Exception {
+    // given
+    MvcResult csrfResult = mockMvc.perform(get("/api/auth/csrf-token"))
+        .andExpect(status().isNoContent())
+        .andReturn();
+
+    Cookie xsrfCookie = csrfResult.getResponse().getCookie("XSRF-TOKEN");
+    assertThat(xsrfCookie).isNotNull();
+
+    User user = User.create("csrfmismatch@otboo.io", "csrf불일치테스트",
+        passwordEncoder.encode("password1234"));
+    User savedUser = userRepository.saveAndFlush(user);
+
+    String jwt = jwtProvider.createAccessToken(
+        savedUser.getId(), savedUser.getRole().name(), savedUser.getTokenVersion()
+    );
+
+    // when & then: 쿠키는 진짜, 헤더는 가짜 값
+    mockMvc.perform(post("/api/test/protected")
+            .header("Authorization", "Bearer " + jwt)
+            .cookie(xsrfCookie)
+            .header("X-XSRF-TOKEN", "wrong-token-value"))
+        .andExpect(status().isForbidden());
   }
 }
