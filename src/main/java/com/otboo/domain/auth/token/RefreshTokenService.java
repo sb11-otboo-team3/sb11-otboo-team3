@@ -34,7 +34,7 @@ public class RefreshTokenService {
     if (value == null) {
       return Optional.empty();
     }
-    return Optional.of(parse(value));
+    return parse(value);
   }
 
   public boolean exists(String refreshToken) {
@@ -45,9 +45,18 @@ public class RefreshTokenService {
     redisTemplate.delete(KEY_PREFIX + refreshToken);
   }
 
-  private TokenInfo parse(String value) {
+  private Optional<TokenInfo> parse(String value) {
     String[] parts = value.split(DELIMITER);
-    return new TokenInfo(UUID.fromString(parts[0]), Long.parseLong(parts[1]));
+    if (parts.length != 2) {
+      return Optional.empty();
+    }
+    try {
+      UUID userId = UUID.fromString(parts[0]);
+      long tokenVersion = Long.parseLong(parts[1]);
+      return Optional.of(new TokenInfo(userId, tokenVersion));
+    } catch (IllegalArgumentException e) {
+      return Optional.empty();
+    }
   }
 
   public record TokenInfo(UUID userId, long tokenVersion) {

@@ -116,4 +116,37 @@ class RefreshTokenServiceTest {
     // then
     verify(redisTemplate).delete("refresh:" + token);
   }
+
+  @Test
+  @DisplayName("이전 형식(userId만 저장된) 값을 소비하면 빈 값을 반환한다")
+  void consumeTokenInfoReturnsEmptyWhenValueIsLegacyFormat() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+    given(redisTemplate.opsForValue()).willReturn(valueOperations);
+    given(valueOperations.getAndDelete("refresh:legacy-token"))
+        .willReturn(userId.toString()); // 콜론 없이 userId만 저장된 예전 형식
+
+    // when
+    Optional<RefreshTokenService.TokenInfo> result =
+        refreshTokenService.consumeTokenInfo("legacy-token");
+
+    // then
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  @DisplayName("손상된(파싱 불가능한) 값을 소비하면 빈 값을 반환한다")
+  void consumeTokenInfoReturnsEmptyWhenValueIsCorrupted() throws Exception {
+    // given
+    given(redisTemplate.opsForValue()).willReturn(valueOperations);
+    given(valueOperations.getAndDelete("refresh:corrupted-token"))
+        .willReturn("not-a-valid-uuid:not-a-number");
+
+    // when
+    Optional<RefreshTokenService.TokenInfo> result =
+        refreshTokenService.consumeTokenInfo("corrupted-token");
+
+    // then
+    assertThat(result).isEmpty();
+  }
 }
