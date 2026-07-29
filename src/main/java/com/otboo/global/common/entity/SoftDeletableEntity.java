@@ -17,4 +17,8 @@ public abstract class SoftDeletableEntity extends UpdatableEntity {
             deletedAt = Instant.now();
         }
     }
+
+    public void restore() {
+        deletedAt = null;
+    }
 }
