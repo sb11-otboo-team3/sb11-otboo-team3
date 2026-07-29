@@ -16,7 +16,7 @@ import java.lang.annotation.Target;
     @ApiResponse(responseCode = "200", description = "팔로우 요약 정보 조회 성공"),
     @ApiResponse(
         responseCode = "400",
-        description = "팔로워 요약 정보 조회 실패",
+        description = "팔로우 요약 정보 조회 실패",
         content = @Content(schema = @Schema(implementation = ErrorResponse.class))
     )
 })
