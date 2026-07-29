@@ -13,6 +13,7 @@ import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.follow.dto.response.FollowListResponse;
 import com.otboo.domain.follow.entity.Follow;
 import com.otboo.domain.follow.exception.DuplicateFollowException;
+import com.otboo.domain.follow.exception.FollowForbiddenException;
 import com.otboo.domain.follow.exception.FollowNotFoundException;
 import com.otboo.domain.follow.exception.FollowUserNotFoundException;
 import com.otboo.domain.follow.exception.SelfFollowNotAllowedException;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class FollowServiceTest {
@@ -59,7 +61,7 @@ class FollowServiceTest {
     given(followRepository.save(any(Follow.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
 
-    FollowDto result = followService.createFollow(request);
+    FollowDto result = followService.createFollow(request, followerId);
 
     assertThat(result.follower().name()).isEqualTo("follower");
     assertThat(result.followee().name()).isEqualTo("followee");
@@ -73,7 +75,7 @@ class FollowServiceTest {
     UUID userId = UUID.randomUUID();
     FollowCreateRequest request = new FollowCreateRequest(userId, userId);
 
-    assertThatThrownBy(() -> followService.createFollow(request))
+    assertThatThrownBy(() -> followService.createFollow(request, userId))
         .isInstanceOf(SelfFollowNotAllowedException.class);
 
     // 예외 발생해서 save가 호출되면 안됨
@@ -90,7 +92,7 @@ class FollowServiceTest {
     // 팔로워 사용자가 DB에 없는 상황
     given(userRepository.findById(followerId)).willReturn(Optional.empty());
 
-    assertThatThrownBy(() -> followService.createFollow(request))
+    assertThatThrownBy(() -> followService.createFollow(request, followerId))
         .isInstanceOf(FollowUserNotFoundException.class);
 
     // 예외 발생해서 save가 호출되면 안됨
@@ -110,7 +112,7 @@ class FollowServiceTest {
     // 팔로위 사용자가 DB에 없는 상황
     given(userRepository.findById(followeeId)).willReturn(Optional.empty());
 
-    assertThatThrownBy(() -> followService.createFollow(request))
+    assertThatThrownBy(() -> followService.createFollow(request, followerId))
         .isInstanceOf(FollowUserNotFoundException.class);
 
     // 예외 발생해서 save가 호출되면 안됨
@@ -133,7 +135,7 @@ class FollowServiceTest {
     given(followRepository.existsByFollowerIdAndFolloweeId(followerId, followeeId))
         .willReturn(true);
 
-    assertThatThrownBy(() -> followService.createFollow(request))
+    assertThatThrownBy(() -> followService.createFollow(request, followerId))
         .isInstanceOf(DuplicateFollowException.class);
 
     verify(followRepository, never()).save(any());
@@ -143,14 +145,18 @@ class FollowServiceTest {
   @DisplayName("팔로우 취소 성공 테스트")
   void cancelFollow_success() {
     UUID followId = UUID.randomUUID();
+    UUID currentUserId = UUID.randomUUID();
 
     User follower = User.create("follower@test.com", "follower", "password");
     User followee = User.create("followee@test.com", "followee", "password");
+
+    ReflectionTestUtils.setField(follower, "id", currentUserId);
+
     Follow follow = Follow.create(follower, followee);
 
     given(followRepository.findById(followId)).willReturn(Optional.of(follow));
 
-    followService.cancelFollow(followId);
+    followService.cancelFollow(followId, follower.getId());
 
     verify(followRepository).delete(follow);
   }
@@ -159,11 +165,34 @@ class FollowServiceTest {
   @DisplayName("존재하지 않는 팔로우를 취소시 예외 테스트")
   void cancelFollow_notFound_throwsException() {
     UUID followId = UUID.randomUUID();
+    UUID currentUserId = UUID.randomUUID();
 
     given(followRepository.findById(followId)).willReturn(Optional.empty());
 
-    assertThatThrownBy(() -> followService.cancelFollow(followId))
+    assertThatThrownBy(() -> followService.cancelFollow(followId, null))
         .isInstanceOf(FollowNotFoundException.class);
+
+    verify(followRepository, never()).delete(any());
+  }
+
+  @Test
+  @DisplayName("팔로우한 사용자가 아닌 경우 예외 테스트")
+  void cancelFollow_forbidden_throwsException() {
+    UUID followId = UUID.randomUUID();
+    UUID followerId = UUID.randomUUID();
+    UUID currentUserId = UUID.randomUUID();
+
+    User follower = User.create("follower@test.com", "follower", "password");
+    User followee = User.create("followee@test.com", "followee", "password");
+
+    ReflectionTestUtils.setField(follower, "id", followerId);
+
+    Follow follow = Follow.create(follower, followee);
+
+    given(followRepository.findById(followId)).willReturn(Optional.of(follow));
+
+    assertThatThrownBy(() -> followService.cancelFollow(followId, currentUserId))
+        .isInstanceOf(FollowForbiddenException.class);
 
     verify(followRepository, never()).delete(any());
   }

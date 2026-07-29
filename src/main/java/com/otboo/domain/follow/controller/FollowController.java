@@ -10,6 +10,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,15 +31,20 @@ public class FollowController {
 
   @PostMapping
   public ResponseEntity<FollowDto> createFollow(
-      @Valid @RequestBody FollowCreateRequest request
+      @Valid @RequestBody FollowCreateRequest request,
+      Authentication authentication
   ) {
-    FollowDto response = followService.createFollow(request);
+    UUID currentUserId = (UUID) authentication.getPrincipal();
+    FollowDto response = followService.createFollow(request, currentUserId);
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
   @DeleteMapping("/{followId}")
-  public ResponseEntity<Void> cancelFollow(@PathVariable UUID followId) {
-    followService.cancelFollow(followId);
+  public ResponseEntity<Void> cancelFollow(
+      @PathVariable UUID followId,
+      Authentication authentication) {
+    UUID currentUserId = (UUID) authentication.getPrincipal();
+    followService.cancelFollow(followId, currentUserId);
     return ResponseEntity.noContent().build();
   }
 

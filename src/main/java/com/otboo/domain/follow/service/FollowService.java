@@ -5,6 +5,7 @@ import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.follow.dto.response.FollowListResponse;
 import com.otboo.domain.follow.entity.Follow;
 import com.otboo.domain.follow.exception.DuplicateFollowException;
+import com.otboo.domain.follow.exception.FollowForbiddenException;
 import com.otboo.domain.follow.exception.FollowNotFoundException;
 import com.otboo.domain.follow.exception.FollowUserNotFoundException;
 import com.otboo.domain.follow.exception.SelfFollowNotAllowedException;
@@ -26,7 +27,11 @@ public class FollowService {
   private final UserRepository userRepository;
 
   @Transactional
-  public FollowDto createFollow(FollowCreateRequest request) {
+  public FollowDto createFollow(FollowCreateRequest request, UUID currentUserId) {
+    if (!currentUserId.equals(request.followerId())) {
+      throw new FollowForbiddenException();
+    }
+
     // 자기자신 팔로우 예외처리
     if (request.followerId().equals(request.followeeId())) {
       throw new SelfFollowNotAllowedException();
@@ -52,9 +57,13 @@ public class FollowService {
   }
 
   @Transactional
-  public void cancelFollow(UUID followId){
+  public void cancelFollow(UUID followId, UUID currentUserId){
     Follow follow = followRepository.findById(followId)
         .orElseThrow(() -> new FollowNotFoundException(followId));
+
+    if(!follow.getFollower().getId().equals(currentUserId)){
+      throw new FollowForbiddenException();
+    }
 
     followRepository.delete(follow);
   }
