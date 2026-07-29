@@ -1,5 +1,11 @@
 package com.otboo.domain.follow.controller;
 
+import com.otboo.domain.follow.controller.docs.CancelFollowApi;
+import com.otboo.domain.follow.controller.docs.CreateFollowApi;
+import com.otboo.domain.follow.controller.docs.FollowApi;
+import com.otboo.domain.follow.controller.docs.GetFollowSummaryApi;
+import com.otboo.domain.follow.controller.docs.GetFollowersApi;
+import com.otboo.domain.follow.controller.docs.GetFollowingsApi;
 import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.follow.dto.response.FollowListResponse;
@@ -22,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@FollowApi
 @Validated
 @RestController
 @RequiredArgsConstructor
@@ -30,6 +37,7 @@ public class FollowController {
 
   private final FollowService followService;
 
+  @CreateFollowApi
   @PostMapping
   public ResponseEntity<FollowDto> createFollow(
       @Valid @RequestBody FollowCreateRequest request,
@@ -40,6 +48,7 @@ public class FollowController {
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
+  @CancelFollowApi
   @DeleteMapping("/{followId}")
   public ResponseEntity<Void> cancelFollow(
       @PathVariable UUID followId,
@@ -49,6 +58,7 @@ public class FollowController {
     return ResponseEntity.noContent().build();
   }
 
+  @GetFollowingsApi
   @GetMapping("/followings")
   public ResponseEntity<FollowListResponse> getFollowings(
       @RequestParam UUID followerId,
@@ -64,6 +74,7 @@ public class FollowController {
     return ResponseEntity.ok(response);
   }
 
+  @GetFollowersApi
   @GetMapping("/followers")
   public ResponseEntity<FollowListResponse> getFollowers(
       @RequestParam UUID followeeId,
@@ -79,6 +90,7 @@ public class FollowController {
     return ResponseEntity.ok(response);
   }
 
+  @GetFollowSummaryApi
   @GetMapping("/summary")
   public ResponseEntity<FollowSummaryDto> getFollowSummary
       (
