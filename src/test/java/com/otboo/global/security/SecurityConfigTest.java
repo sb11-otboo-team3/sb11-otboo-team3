@@ -85,11 +85,8 @@ class SecurityConfigTest {
     User savedUser = userRepository.saveAndFlush(user);
 
     String token = jwtProvider.createAccessToken(
-        savedUser.getId(), savedUser.getRole().name(), savedUser.getTokenVersion()
+        savedUser.getId(), savedUser.getRole().name(), savedUser.getTokenVersion() + 1
     );
-
-    savedUser.lock();
-    userRepository.saveAndFlush(savedUser);
 
     // when & then
     mockMvc.perform(get("/api/test/protected")
