@@ -137,7 +137,7 @@ class AuthServiceTest {
     RefreshTokenService.TokenInfo tokenInfo =
         new RefreshTokenService.TokenInfo(userId, user.getTokenVersion());
 
-    given(refreshTokenService.findTokenInfo("valid-refresh-token"))
+    given(refreshTokenService.consumeTokenInfo("valid-refresh-token"))
         .willReturn(Optional.of(tokenInfo));
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
     given(jwtProvider.createAccessToken(any(), any(), anyLong())).willReturn("new-access-token");
@@ -149,7 +149,6 @@ class AuthServiceTest {
     // then
     assertThat(result.jwtDto().accessToken()).isEqualTo("new-access-token");
     assertThat(result.refreshToken()).isEqualTo("new-refresh-token");
-    verify(refreshTokenService).delete("valid-refresh-token");
   }
 
   @Test
@@ -164,7 +163,7 @@ class AuthServiceTest {
   @DisplayName("존재하지 않는 Refresh Token으로 재발급하면 예외가 발생한다")
   void refreshWithInvalidTokenThrowsException() throws Exception {
     // given
-    given(refreshTokenService.findTokenInfo("invalid-token")).willReturn(Optional.empty());
+    given(refreshTokenService.consumeTokenInfo("invalid-token")).willReturn(Optional.empty());
 
     // when & then
     assertThatThrownBy(() -> authService.refresh("invalid-token"))
@@ -183,7 +182,7 @@ class AuthServiceTest {
     RefreshTokenService.TokenInfo tokenInfo =
         new RefreshTokenService.TokenInfo(userId, user.getTokenVersion());
 
-    given(refreshTokenService.findTokenInfo("some-token")).willReturn(Optional.of(tokenInfo));
+    given(refreshTokenService.consumeTokenInfo("some-token")).willReturn(Optional.of(tokenInfo));
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
 
     // when & then
@@ -203,7 +202,7 @@ class AuthServiceTest {
     RefreshTokenService.TokenInfo tokenInfo = new RefreshTokenService.TokenInfo(userId, 0L);
     user.changeRole(com.otboo.domain.user.entity.UserRole.ADMIN); // tokenVersion을 1로 올림
 
-    given(refreshTokenService.findTokenInfo("stale-token")).willReturn(Optional.of(tokenInfo));
+    given(refreshTokenService.consumeTokenInfo("stale-token")).willReturn(Optional.of(tokenInfo));
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
 
     // when & then

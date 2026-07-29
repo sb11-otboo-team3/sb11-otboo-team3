@@ -67,7 +67,7 @@ public class AuthService {
       throw new InvalidCredentialsException();
     }
 
-    RefreshTokenService.TokenInfo tokenInfo = refreshTokenService.findTokenInfo(refreshToken)
+    RefreshTokenService.TokenInfo tokenInfo = refreshTokenService.consumeTokenInfo(refreshToken)
         .orElseThrow(InvalidCredentialsException::new);
 
     User user = userRepository.findById(tokenInfo.userId())
@@ -78,8 +78,6 @@ public class AuthService {
       throw new InvalidCredentialsException();
     }
 
-    // Refresh Token Rotation: 기존 토큰 삭제 후 새로 발급
-    refreshTokenService.delete(refreshToken);
     String newRefreshToken = refreshTokenService.issue(user.getId(), user.getTokenVersion());
 
     String accessToken = jwtProvider.createAccessToken(

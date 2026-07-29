@@ -55,34 +55,31 @@ class RefreshTokenServiceTest {
   }
 
   @Test
-  @DisplayName("존재하는 토큰으로 조회하면 userId와 tokenVersion을 반환한다")
-  void findTokenInfoReturnsInfoWhenTokenExists() throws Exception {
+  @DisplayName("존재하는 토큰을 소비하면 userId와 tokenVersion을 반환하고 삭제된다")
+  void consumeTokenInfoReturnsInfoAndDeletesWhenTokenExists() throws Exception {
     // given
     UUID userId = UUID.randomUUID();
     long tokenVersion = 3L;
     String token = "some-refresh-token";
     given(redisTemplate.opsForValue()).willReturn(valueOperations);
-    given(valueOperations.get("refresh:" + token)).willReturn(userId + ":" + tokenVersion);
-
+    given(valueOperations.getAndDelete("refresh:" + token))
+        .willReturn(userId + ":" + tokenVersion);
     // when
-    Optional<RefreshTokenService.TokenInfo> result = refreshTokenService.findTokenInfo(token);
-
+    Optional<RefreshTokenService.TokenInfo> result = refreshTokenService.consumeTokenInfo(token);
     // then
     assertThat(result).isPresent();
     assertThat(result.get().userId()).isEqualTo(userId);
     assertThat(result.get().tokenVersion()).isEqualTo(tokenVersion);
   }
-
   @Test
-  @DisplayName("존재하지 않는 토큰으로 조회하면 빈 값을 반환한다")
-  void findTokenInfoReturnsEmptyWhenTokenNotFound() throws Exception {
+  @DisplayName("존재하지 않는 토큰을 소비하려 하면 빈 값을 반환한다")
+  void consumeTokenInfoReturnsEmptyWhenTokenNotFound() throws Exception {
     // given
     given(redisTemplate.opsForValue()).willReturn(valueOperations);
-    given(valueOperations.get("refresh:invalid-token")).willReturn(null);
-
+    given(valueOperations.getAndDelete("refresh:invalid-token")).willReturn(null);
     // when
-    Optional<RefreshTokenService.TokenInfo> result = refreshTokenService.findTokenInfo("invalid-token");
-
+    Optional<RefreshTokenService.TokenInfo> result =
+        refreshTokenService.consumeTokenInfo("invalid-token");
     // then
     assertThat(result).isEmpty();
   }
