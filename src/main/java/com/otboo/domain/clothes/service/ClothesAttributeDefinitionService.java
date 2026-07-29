@@ -4,6 +4,7 @@ import com.otboo.domain.clothes.dto.request.ClothesAttributeDefinitionRequest;
 import com.otboo.domain.clothes.dto.response.ClothesAttributeDefinitionResponse;
 import com.otboo.domain.clothes.entity.AttributeSelectableValue;
 import com.otboo.domain.clothes.entity.ClothesAttributeDefinition;
+import com.otboo.domain.clothes.exception.ClothesAttributeDefinitionNotFoundException;
 import com.otboo.domain.clothes.exception.DuplicateAttributeDefinitionNameException;
 import com.otboo.domain.clothes.mapper.ClothesAttributeDefinitionMapper;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
@@ -13,10 +14,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -67,20 +65,56 @@ public class ClothesAttributeDefinitionService {
                 })
                 .orElseGet(() -> definitionRepository.save(new ClothesAttributeDefinition(name)));
 
+        List<AttributeSelectableValue> selectableValues =
+                syncSelectableValues(definition, values);
+
+        return mapper.toResponse(definition, selectableValues);
+    }
+    @Transactional
+    public ClothesAttributeDefinitionResponse update(UUID definitionId, ClothesAttributeDefinitionRequest request) {
+        ClothesAttributeDefinition definition = definitionRepository.findById(definitionId)
+                .filter(found -> found.getDeletedAt() == null)
+                .orElseThrow(() -> new ClothesAttributeDefinitionNotFoundException(definitionId));
+
+        String newName = request.name().trim();
+        if (!newName.equals(definition.getName()) && definitionRepository.findByName(newName).isPresent()) {
+            throw new DuplicateAttributeDefinitionNameException(newName);
+        }
+        definition.updateName(newName);
+
+        List<String> values = normalizeValues(request.selectableValues());
+        Set<String> newValueSet = new HashSet<>(values);
+
+        List<AttributeSelectableValue> currentActiveValues =
+                selectableValueRepository.findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(List.of(definition));
+
+        for (AttributeSelectableValue current : currentActiveValues) {
+            if (!newValueSet.contains(current.getValue())) {
+                current.delete();
+            }
+        }
+
+        List<AttributeSelectableValue> selectableValues =
+                syncSelectableValues(definition, values);
+
+        return mapper.toResponse(definition, selectableValues);
+    }
+
+    private List<AttributeSelectableValue> syncSelectableValues(
+            ClothesAttributeDefinition definition, List<String> values) {
         List<AttributeSelectableValue> selectableValues = new ArrayList<>();
-        for (int i = 0; i < values.size(); i++) {
+        for (int i = 0; i< values.size(); i++) {
             String value = values.get(i);
             int displayOrder = i;
             AttributeSelectableValue selectableValue = selectableValueRepository
                     .findByDefinitionAndValue(definition, value)
                     .orElseGet(() -> selectableValueRepository.save(
                             new AttributeSelectableValue(definition, value, displayOrder)));
-
             selectableValue.restore();
             selectableValue.updateDisplayOrder(i);
             selectableValues.add(selectableValue);
         }
-        return mapper.toResponse(definition, selectableValues);
+        return selectableValues;
     }
 
     private List<String> normalizeValues(List<String> rawValues) {

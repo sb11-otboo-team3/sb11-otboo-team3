@@ -4,6 +4,7 @@ import com.otboo.domain.clothes.dto.request.ClothesAttributeDefinitionRequest;
 import com.otboo.domain.clothes.dto.response.ClothesAttributeDefinitionResponse;
 import com.otboo.domain.clothes.service.ClothesAttributeDefinitionService;
 import java.util.List;
+import java.util.UUID;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,17 @@ public class ClothesAttributeDefinitionController {
         ClothesAttributeDefinitionResponse response =
                 clothesAttributeDefinitionService.create(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PatchMapping("/{definitionId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ClothesAttributeDefinitionResponse> update(
+            @PathVariable UUID definitionId,
+            @Valid @RequestBody ClothesAttributeDefinitionRequest request
+    ) {
+        ClothesAttributeDefinitionResponse response =
+                clothesAttributeDefinitionService.update(definitionId, request);
+        return ResponseEntity.ok(response);
     }
 
 }
