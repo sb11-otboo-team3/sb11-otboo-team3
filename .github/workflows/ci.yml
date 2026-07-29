@@ -1,47 +1,47 @@
 name: CI
-
 on:
   pull_request:
     branches:
       - develop
       - main
-
   push:
     branches:
       - develop
       - main
-
 permissions:
   contents: read
-
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   build-and-test:
     name: Build and Test
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
         with:
           persist-credentials: false
-
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
-
       - name: Build and test
         run: ./gradlew clean build
-
       # 커버리지 결과는 저장만 하고 CI 성공 여부에는 영향 주지 않음
       - name: Upload coverage report
         if: always()

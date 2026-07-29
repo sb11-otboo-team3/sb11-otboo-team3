@@ -123,7 +123,7 @@ class AuthControllerTest {
             .with(csrf()))
         .andExpect(status().isNoContent());
   }
-  
+
   @Test
   @DisplayName("존재하지 않는 Refresh Token으로 로그아웃하면 401을 반환한다")
   void signOutWithInvalidTokenReturns401() throws Exception {
@@ -134,5 +134,13 @@ class AuthControllerTest {
             .cookie(new jakarta.servlet.http.Cookie("REFRESH_TOKEN", "invalid-token"))
             .with(csrf()))
         .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("Refresh Token 쿠키 없이 로그아웃 요청하면 400을 반환한다")
+  void signOutWithoutCookieReturns400() throws Exception {
+    mockMvc.perform(post("/api/auth/sign-out")
+            .with(csrf()))
+        .andExpect(status().isBadRequest());
   }
 }

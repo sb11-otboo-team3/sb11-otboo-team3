@@ -25,6 +25,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -196,15 +197,23 @@ class AuthServiceTest {
   }
 
   @Test
-  @DisplayName("유효한 Refresh Token으로 로그아웃하면 Redis에서 삭제된다")
-  void signOutDeletesRefreshToken() throws Exception {
+  @DisplayName("로그아웃하면 tokenVersion이 증가해 기존 Access Token이 무효화되고 Refresh Token이 삭제된다")
+  void signOutIncreasesTokenVersionAndDeletesRefreshToken() throws Exception {
     // given
+    User user = User.create("logouttest@otboo.io", "로그아웃테스트", "encoded-password");
+    UUID userId = UUID.randomUUID();
+    ReflectionTestUtils.setField(user, "id", userId);
+    long versionBeforeSignOut = user.getTokenVersion();
+
     given(refreshTokenService.exists("some-refresh-token")).willReturn(true);
+    given(refreshTokenService.findUserId("some-refresh-token")).willReturn(Optional.of(userId));
+    given(userRepository.findById(userId)).willReturn(Optional.of(user));
 
     // when
     authService.signOut("some-refresh-token");
 
     // then
+    assertThat(user.getTokenVersion()).isEqualTo(versionBeforeSignOut + 1);
     verify(refreshTokenService).delete("some-refresh-token");
   }
 

@@ -81,10 +81,18 @@ public class AuthService {
     return new JwtDto(UserDto.from(user), accessToken);
   }
 
+  @Transactional
   public void signOut(String refreshToken) {
     if (refreshToken == null || !refreshTokenService.exists(refreshToken)) {
       throw new InvalidCredentialsException();
     }
+
+    UUID userId = refreshTokenService.findUserId(refreshToken)
+        .orElseThrow(InvalidCredentialsException::new);
+    User user = userRepository.findById(userId)
+        .orElseThrow(InvalidCredentialsException::new);
+
+    user.refreshSession();
     refreshTokenService.delete(refreshToken);
   }
 
