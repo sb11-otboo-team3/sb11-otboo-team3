@@ -33,6 +33,9 @@ public class SecurityConfig {
       JwtProvider jwtProvider,
       UserRepository userRepository
   ) throws Exception {
+    // XSRF-TOKEN 쿠키는 프론트엔드 JS가 값을 읽어 X-XSRF-TOKEN 헤더에
+    // 실어 보내야 하는 Double Submit Cookie 패턴이라,
+    // 의도적으로 HttpOnly=false로 설정합니다.
     CookieCsrfTokenRepository csrfTokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
     csrfTokenRepository.setCookieName("XSRF-TOKEN");
     csrfTokenRepository.setHeaderName("X-XSRF-TOKEN");

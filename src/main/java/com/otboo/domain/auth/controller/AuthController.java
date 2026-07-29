@@ -6,7 +6,6 @@ import com.otboo.domain.auth.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,8 +26,7 @@ public class AuthController {
   }
 
   @GetMapping("/csrf-token")
-  public ResponseEntity<Void> csrfToken(CsrfToken csrfToken) {
-    csrfToken.getToken(); // 이 호출이 실제로 토큰을 계산하고 쿠키에 쓰게 만듦
+  public ResponseEntity<Void> csrfToken() {
     return ResponseEntity.noContent().build();
   }
 }

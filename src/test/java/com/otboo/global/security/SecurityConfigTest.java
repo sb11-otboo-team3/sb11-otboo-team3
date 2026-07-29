@@ -135,6 +135,10 @@ class SecurityConfigTest {
         .andExpect(status().isOk());
   }
 
+  // NOTE: 이 테스트만 전체 스위트와 같이 실행하면 CSRF 쿠키가
+  // 응답에 반영되지 않는 격리 문제가 발생해 @DirtiesContext로
+  // 컨텍스트를 강제로 새로 생성했습니다. 근본 원인(CookieCsrfTokenRepository
+  // 또는 MockMvc의 상태 공유 방식으로 추정)은 아직 규명하지 못했습니다.
   @Test
   @DisplayName("CSRF 토큰 조회 시 XSRF-TOKEN 쿠키가 설정된다")
   @DirtiesContext(methodMode = DirtiesContext.MethodMode.BEFORE_METHOD)
@@ -245,6 +249,32 @@ class SecurityConfigTest {
             .header("Authorization", "Bearer " + jwt)
             .cookie(xsrfCookie)
             .header("X-XSRF-TOKEN", "wrong-token-value"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("쿠키는 있지만 X-XSRF-TOKEN 헤더가 없으면 403을 반환한다")
+  void csrfCookiePresentButHeaderMissingReturns403() throws Exception {
+    // given
+    MvcResult csrfResult = mockMvc.perform(get("/api/auth/csrf-token"))
+        .andExpect(status().isNoContent())
+        .andReturn();
+
+    Cookie xsrfCookie = csrfResult.getResponse().getCookie("XSRF-TOKEN");
+    assertThat(xsrfCookie).isNotNull();
+
+    User user = User.create("csrfnoheader@otboo.io", "csrf헤더누락테스트",
+        passwordEncoder.encode("password1234"));
+    User savedUser = userRepository.saveAndFlush(user);
+
+    String jwt = jwtProvider.createAccessToken(
+        savedUser.getId(), savedUser.getRole().name(), savedUser.getTokenVersion()
+    );
+
+    // when & then: 쿠키는 있지만 헤더를 안 보냄
+    mockMvc.perform(post("/api/test/protected")
+            .header("Authorization", "Bearer " + jwt)
+            .cookie(xsrfCookie))
         .andExpect(status().isForbidden());
   }
 }
