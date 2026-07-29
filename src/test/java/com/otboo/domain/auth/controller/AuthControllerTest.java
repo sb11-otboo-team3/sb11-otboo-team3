@@ -5,6 +5,7 @@ import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import com.otboo.domain.auth.dto.JwtDto;
 import com.otboo.domain.auth.dto.SignInRequest;
@@ -78,5 +79,12 @@ class AuthControllerTest {
             .param("password", "")
             .with(csrf()))
         .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @DisplayName("CSRF 토큰 조회 시 204를 반환한다")
+  void csrfTokenReturns204() throws Exception {
+    mockMvc.perform(get("/api/auth/csrf-token"))
+        .andExpect(status().isNoContent());
   }
 }

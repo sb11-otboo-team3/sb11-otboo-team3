@@ -77,3 +77,9 @@ Desktop.ini
 
 ### Gradle Wrapper ###
 !gradle/wrapper/gradle-wrapper.jar
+
+### Local runtime files ###
+tmp/
+temp/
+uploads/
+cookies.txt
