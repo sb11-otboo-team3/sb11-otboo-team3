@@ -5,14 +5,17 @@ import static com.otboo.domain.follow.entity.QFollow.follow;
 import com.otboo.domain.follow.entity.Follow;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQueryFactory;
+import jakarta.persistence.EntityManager;
 import java.util.List;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
 
-@RequiredArgsConstructor
 public class FollowRepositoryImpl implements FollowRepositoryCustom {
 
   private final JPAQueryFactory queryFactory;
+
+  public FollowRepositoryImpl(EntityManager entityManager) {
+    this.queryFactory = new JPAQueryFactory(entityManager);
+  }
 
   @Override
   public List<Follow> findFollowings(
