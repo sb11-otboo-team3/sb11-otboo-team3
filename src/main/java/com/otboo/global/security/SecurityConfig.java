@@ -51,10 +51,14 @@ public class SecurityConfig {
             session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .exceptionHandling(exception -> exception
             .authenticationEntryPoint((request, response, authException) ->
-                response.sendError(HttpStatus.UNAUTHORIZED.value())))
+                response.sendError(HttpStatus.UNAUTHORIZED.value()))
+            .accessDeniedHandler((request, response, accessDeniedException) ->
+                response.sendError(HttpStatus.FORBIDDEN.value())))
         .authorizeHttpRequests(auth -> auth
             .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/auth/sign-in").permitAll()
+            .requestMatchers(HttpMethod.POST, "/api/auth/refresh").permitAll()
+            .requestMatchers(HttpMethod.POST, "/api/auth/sign-out").permitAll()
             .requestMatchers(HttpMethod.GET, "/api/auth/csrf-token").permitAll()
             .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
             .requestMatchers(

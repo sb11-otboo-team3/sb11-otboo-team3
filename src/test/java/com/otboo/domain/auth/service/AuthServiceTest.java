@@ -9,10 +9,12 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import java.util.UUID;
 import com.otboo.domain.auth.dto.JwtDto;
 import com.otboo.domain.auth.dto.SignInRequest;
 import com.otboo.domain.auth.exception.InvalidCredentialsException;
 import com.otboo.domain.auth.jwt.JwtProvider;
+import com.otboo.domain.auth.token.RefreshTokenService;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import java.util.Optional;
@@ -39,9 +41,12 @@ class AuthServiceTest {
   @InjectMocks
   private AuthService authService;
 
+  @Mock
+  private RefreshTokenService refreshTokenService;
+
   @Test
-  @DisplayName("로그인에 성공하면 JwtDto를 반환한다")
-  void signInSuccessReturnsJwtDto() throws Exception {
+  @DisplayName("로그인에 성공하면 JwtDto와 refreshToken을 반환한다")
+  void signInSuccessReturnsJwtDtoAndRefreshToken() throws Exception {
     // given
     User user = User.create("test@otboo.io", "테스트유저", "encoded-password");
     SignInRequest request = new SignInRequest("test@otboo.io", "password1234");
@@ -49,13 +54,15 @@ class AuthServiceTest {
     given(userRepository.findByEmail("test@otboo.io")).willReturn(Optional.of(user));
     given(passwordEncoder.matches("password1234", "encoded-password")).willReturn(true);
     given(jwtProvider.createAccessToken(any(), any(), anyLong())).willReturn("access-token");
+    given(refreshTokenService.issue(any())).willReturn("refresh-token-value");
 
     // when
-    JwtDto result = authService.signIn(request);
+    AuthService.SignInResult result = authService.signIn(request);
 
     // then
-    assertThat(result.accessToken()).isEqualTo("access-token");
-    assertThat(result.userDto().email()).isEqualTo("test@otboo.io");
+    assertThat(result.jwtDto().accessToken()).isEqualTo("access-token");
+    assertThat(result.jwtDto().userDto().email()).isEqualTo("test@otboo.io");
+    assertThat(result.refreshToken()).isEqualTo("refresh-token-value");
   }
 
   @Test
@@ -139,5 +146,70 @@ class AuthServiceTest {
 
     // then
     assertThat(user.getTokenVersion()).isEqualTo(versionBeforeLogin + 1);
+  }
+
+  @Test
+  @DisplayName("유효한 Refresh Token으로 재발급하면 새 Access Token을 반환한다")
+  void refreshWithValidTokenReturnsNewAccessToken() throws Exception {
+    // given
+    User user = User.create("refreshtest@otboo.io", "재발급테스트", "encoded-password");
+    UUID userId = UUID.randomUUID();
+    org.springframework.test.util.ReflectionTestUtils.setField(user, "id", userId);
+
+    given(refreshTokenService.findUserId("valid-refresh-token")).willReturn(Optional.of(userId));
+    given(userRepository.findById(userId)).willReturn(Optional.of(user));
+    given(jwtProvider.createAccessToken(any(), any(), anyLong())).willReturn("new-access-token");
+
+    // when
+    JwtDto result = authService.refresh("valid-refresh-token");
+
+    // then
+    assertThat(result.accessToken()).isEqualTo("new-access-token");
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 Refresh Token으로 재발급하면 예외가 발생한다")
+  void refreshWithInvalidTokenThrowsException() throws Exception {
+    // given
+    given(refreshTokenService.findUserId("invalid-token")).willReturn(Optional.empty());
+
+    // when & then
+    assertThatThrownBy(() -> authService.refresh("invalid-token"))
+        .isInstanceOf(InvalidCredentialsException.class);
+  }
+
+  @Test
+  @DisplayName("잠긴 계정의 Refresh Token으로 재발급하면 예외가 발생한다")
+  void refreshWithLockedAccountThrowsException() throws Exception {
+    // given
+    User user = User.create("lockedrefresh@otboo.io", "잠긴계정테스트", "encoded-password");
+    user.lock();
+    UUID userId = UUID.randomUUID();
+    org.springframework.test.util.ReflectionTestUtils.setField(user, "id", userId);
+
+    given(refreshTokenService.findUserId("some-token")).willReturn(Optional.of(userId));
+    given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+    // when & then
+    assertThatThrownBy(() -> authService.refresh("some-token"))
+        .isInstanceOf(InvalidCredentialsException.class);
+  }
+
+  @Test
+  @DisplayName("로그아웃하면 Refresh Token이 삭제된다")
+  void signOutDeletesRefreshToken() throws Exception {
+    // when
+    authService.signOut("some-refresh-token");
+
+    // then
+    verify(refreshTokenService).delete("some-refresh-token");
+  }
+
+  @Test
+  @DisplayName("Refresh Token 없이 로그아웃해도 예외가 발생하지 않는다")
+  void signOutWithNullTokenDoesNotThrow() throws Exception {
+    // when & then
+    authService.signOut(null);
+    // 예외 없이 정상 종료되면 성공
   }
 }

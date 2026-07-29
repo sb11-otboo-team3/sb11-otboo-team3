@@ -4,11 +4,13 @@ import com.otboo.domain.auth.dto.JwtDto;
 import com.otboo.domain.auth.dto.SignInRequest;
 import com.otboo.domain.auth.exception.InvalidCredentialsException;
 import com.otboo.domain.auth.jwt.JwtProvider;
+import com.otboo.domain.auth.token.RefreshTokenService;
 import com.otboo.domain.user.dto.UserDto;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -27,9 +29,10 @@ public class AuthService {
   private final UserRepository userRepository;
   private final PasswordEncoder passwordEncoder;
   private final JwtProvider jwtProvider;
+  private final RefreshTokenService refreshTokenService;
 
   @Transactional
-  public JwtDto signIn(SignInRequest request) {
+  public SignInResult signIn(SignInRequest request) {
     String normalizedEmail = request.username().toLowerCase(Locale.ROOT);
 
     Optional<User> userOptional = userRepository.findByEmail(normalizedEmail);
@@ -54,7 +57,36 @@ public class AuthService {
     String accessToken = jwtProvider.createAccessToken(
         user.getId(), user.getRole().name(), user.getTokenVersion()
     );
+    String refreshToken = refreshTokenService.issue(user.getId());
+
+    return new SignInResult(new JwtDto(UserDto.from(user), accessToken), refreshToken);
+  }
+
+  @Transactional
+  public JwtDto refresh(String refreshToken) {
+    UUID userId = refreshTokenService.findUserId(refreshToken)
+        .orElseThrow(InvalidCredentialsException::new);
+
+    User user = userRepository.findById(userId)
+        .orElseThrow(InvalidCredentialsException::new);
+
+    if (user.isLocked()) {
+      throw new InvalidCredentialsException();
+    }
+
+    String accessToken = jwtProvider.createAccessToken(
+        user.getId(), user.getRole().name(), user.getTokenVersion()
+    );
 
     return new JwtDto(UserDto.from(user), accessToken);
+  }
+
+  public void signOut(String refreshToken) {
+    if (refreshToken != null) {
+      refreshTokenService.delete(refreshToken);
+    }
+  }
+
+  public record SignInResult(JwtDto jwtDto, String refreshToken) {
   }
 }

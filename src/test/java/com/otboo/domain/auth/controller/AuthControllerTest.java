@@ -6,6 +6,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.otboo.domain.auth.dto.JwtDto;
 import com.otboo.domain.auth.dto.SignInRequest;
@@ -48,8 +49,9 @@ class AuthControllerTest {
     UserDto userDto = new UserDto(
         UUID.randomUUID(), Instant.now(), "test@otboo.io", "테스트유저", UserRole.USER, false
     );
-    JwtDto response = new JwtDto(userDto, "access-token");
-    given(authService.signIn(any(SignInRequest.class))).willReturn(response);
+    JwtDto jwtDto = new JwtDto(userDto, "access-token");
+    AuthService.SignInResult result = new AuthService.SignInResult(jwtDto, "refresh-token-value");
+    given(authService.signIn(any(SignInRequest.class))).willReturn(result);
 
     // when & then
     mockMvc.perform(multipart("/api/auth/sign-in")
@@ -85,6 +87,40 @@ class AuthControllerTest {
   @DisplayName("CSRF 토큰 조회 시 204를 반환한다")
   void csrfTokenReturns204() throws Exception {
     mockMvc.perform(get("/api/auth/csrf-token"))
+        .andExpect(status().isNoContent());
+  }
+
+  @Test
+  @DisplayName("유효한 Refresh Token 쿠키로 재발급하면 200을 반환한다")
+  void refreshWithValidCookieReturns200() throws Exception {
+    // given
+    UserDto userDto = new UserDto(
+        UUID.randomUUID(), Instant.now(), "test@otboo.io", "테스트유저", UserRole.USER, false
+    );
+    JwtDto response = new JwtDto(userDto, "new-access-token");
+    given(authService.refresh("valid-refresh-token")).willReturn(response);
+
+    // when & then
+    mockMvc.perform(post("/api/auth/refresh")
+            .cookie(new jakarta.servlet.http.Cookie("REFRESH_TOKEN", "valid-refresh-token"))
+            .with(csrf()))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  @DisplayName("Refresh Token 쿠키 없이 재발급 요청하면 400을 반환한다")
+  void refreshWithoutCookieReturns400() throws Exception {
+    mockMvc.perform(post("/api/auth/refresh")
+            .with(csrf()))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @DisplayName("로그아웃 요청이 성공하면 204를 반환한다")
+  void signOutReturns204() throws Exception {
+    mockMvc.perform(post("/api/auth/sign-out")
+            .cookie(new jakarta.servlet.http.Cookie("REFRESH_TOKEN", "some-token"))
+            .with(csrf()))
         .andExpect(status().isNoContent());
   }
 }
