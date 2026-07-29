@@ -18,6 +18,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.http.MediaType;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -138,5 +139,54 @@ class SecurityConfigTest {
     mockMvc.perform(get("/api/auth/csrf-token"))
         .andExpect(status().isNoContent())
         .andExpect(cookie().exists("XSRF-TOKEN"));
+  }
+
+  @Test
+  @DisplayName("CSRF 토큰 없이 로그인 요청을 보내면 403을 반환한다")
+  void signInWithoutCsrfTokenReturns403() throws Exception {
+    mockMvc.perform(post("/api/auth/sign-in")
+            .param("username", "test@otboo.io")
+            .param("password", "password1234"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("CSRF 토큰을 포함하면 로그인 요청이 정상 처리된다")
+  void signInWithCsrfTokenSucceeds() throws Exception {
+    // given
+    userRepository.saveAndFlush(User.create(
+        "csrflogintest@otboo.io", "csrf로그인테스트",
+        passwordEncoder.encode("password1234")
+    ));
+
+    // when & then
+    mockMvc.perform(post("/api/auth/sign-in")
+            .param("username", "csrflogintest@otboo.io")
+            .param("password", "password1234")
+            .with(csrf()))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  @DisplayName("CSRF 토큰 없이 회원가입 요청을 보내면 403을 반환한다")
+  void signUpWithoutCsrfTokenReturns403() throws Exception {
+    mockMvc.perform(post("/api/users")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                            {"name":"csrf테스트","email":"csrfsignup1@otboo.io","password":"password1234"}
+                            """))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @DisplayName("CSRF 토큰을 포함하면 회원가입 요청이 정상 처리된다")
+  void signUpWithCsrfTokenSucceeds() throws Exception {
+    mockMvc.perform(post("/api/users")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                            {"name":"csrf테스트2","email":"csrfsignup2@otboo.io","password":"password1234"}
+                            """)
+            .with(csrf()))
+        .andExpect(status().isCreated());
   }
 }
