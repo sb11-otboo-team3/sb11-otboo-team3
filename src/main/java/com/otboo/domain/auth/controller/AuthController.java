@@ -7,6 +7,7 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,7 +15,6 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.beans.factory.annotation.Value;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -41,15 +41,17 @@ public class AuthController {
 
   @PostMapping("/refresh")
   public ResponseEntity<JwtDto> refresh(
-      @CookieValue(REFRESH_TOKEN_COOKIE) String refreshToken
+      @CookieValue(value = REFRESH_TOKEN_COOKIE, required = false) String refreshToken,
+      HttpServletResponse response
   ) {
-    JwtDto response = authService.refresh(refreshToken);
-    return ResponseEntity.ok(response);
+    AuthService.SignInResult result = authService.refresh(refreshToken);
+    addRefreshTokenCookie(response, result.refreshToken());
+    return ResponseEntity.ok(result.jwtDto());
   }
 
   @PostMapping("/sign-out")
   public ResponseEntity<Void> signOut(
-      @CookieValue(REFRESH_TOKEN_COOKIE) String refreshToken,
+      @CookieValue(value = REFRESH_TOKEN_COOKIE, required = false) String refreshToken,
       HttpServletResponse response
   ) {
     authService.signOut(refreshToken);

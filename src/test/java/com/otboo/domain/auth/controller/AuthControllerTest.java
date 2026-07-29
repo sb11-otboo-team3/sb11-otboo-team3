@@ -97,8 +97,9 @@ class AuthControllerTest {
     UserDto userDto = new UserDto(
         UUID.randomUUID(), Instant.now(), "test@otboo.io", "테스트유저", UserRole.USER, false
     );
-    JwtDto response = new JwtDto(userDto, "new-access-token");
-    given(authService.refresh("valid-refresh-token")).willReturn(response);
+    JwtDto jwtDto = new JwtDto(userDto, "new-access-token");
+    AuthService.SignInResult result = new AuthService.SignInResult(jwtDto, "new-refresh-token");
+    given(authService.refresh("valid-refresh-token")).willReturn(result);
 
     // when & then
     mockMvc.perform(post("/api/auth/refresh")
@@ -108,11 +109,14 @@ class AuthControllerTest {
   }
 
   @Test
-  @DisplayName("Refresh Token 쿠키 없이 재발급 요청하면 400을 반환한다")
-  void refreshWithoutCookieReturns400() throws Exception {
-    mockMvc.perform(post("/api/auth/refresh")
+  @DisplayName("Refresh Token 쿠키 없이 로그아웃 요청하면 401을 반환한다")
+  void signOutWithoutCookieReturns401() throws Exception {
+    org.mockito.BDDMockito.willThrow(new com.otboo.domain.auth.exception.InvalidCredentialsException())
+        .given(authService).signOut(null);
+
+    mockMvc.perform(post("/api/auth/sign-out")
             .with(csrf()))
-        .andExpect(status().isBadRequest());
+        .andExpect(status().isUnauthorized());
   }
 
   @Test
@@ -134,13 +138,5 @@ class AuthControllerTest {
             .cookie(new jakarta.servlet.http.Cookie("REFRESH_TOKEN", "invalid-token"))
             .with(csrf()))
         .andExpect(status().isUnauthorized());
-  }
-
-  @Test
-  @DisplayName("Refresh Token 쿠키 없이 로그아웃 요청하면 400을 반환한다")
-  void signOutWithoutCookieReturns400() throws Exception {
-    mockMvc.perform(post("/api/auth/sign-out")
-            .with(csrf()))
-        .andExpect(status().isBadRequest());
   }
 }

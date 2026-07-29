@@ -10,7 +10,6 @@ import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -57,28 +56,37 @@ public class AuthService {
     String accessToken = jwtProvider.createAccessToken(
         user.getId(), user.getRole().name(), user.getTokenVersion()
     );
-    String refreshToken = refreshTokenService.issue(user.getId());
+    String refreshToken = refreshTokenService.issue(user.getId(), user.getTokenVersion());
 
     return new SignInResult(new JwtDto(UserDto.from(user), accessToken), refreshToken);
   }
 
   @Transactional
-  public JwtDto refresh(String refreshToken) {
-    UUID userId = refreshTokenService.findUserId(refreshToken)
-        .orElseThrow(InvalidCredentialsException::new);
-
-    User user = userRepository.findById(userId)
-        .orElseThrow(InvalidCredentialsException::new);
-
-    if (user.isLocked()) {
+  public SignInResult refresh(String refreshToken) {
+    if (refreshToken == null) {
       throw new InvalidCredentialsException();
     }
+
+    RefreshTokenService.TokenInfo tokenInfo = refreshTokenService.findTokenInfo(refreshToken)
+        .orElseThrow(InvalidCredentialsException::new);
+
+    User user = userRepository.findById(tokenInfo.userId())
+        .orElseThrow(InvalidCredentialsException::new);
+
+    boolean tokenVersionMismatch = user.getTokenVersion() != tokenInfo.tokenVersion();
+    if (user.isLocked() || tokenVersionMismatch) {
+      throw new InvalidCredentialsException();
+    }
+
+    // Refresh Token Rotation: 기존 토큰 삭제 후 새로 발급
+    refreshTokenService.delete(refreshToken);
+    String newRefreshToken = refreshTokenService.issue(user.getId(), user.getTokenVersion());
 
     String accessToken = jwtProvider.createAccessToken(
         user.getId(), user.getRole().name(), user.getTokenVersion()
     );
 
-    return new JwtDto(UserDto.from(user), accessToken);
+    return new SignInResult(new JwtDto(UserDto.from(user), accessToken), newRefreshToken);
   }
 
   @Transactional
@@ -86,13 +94,6 @@ public class AuthService {
     if (refreshToken == null || !refreshTokenService.exists(refreshToken)) {
       throw new InvalidCredentialsException();
     }
-
-    UUID userId = refreshTokenService.findUserId(refreshToken)
-        .orElseThrow(InvalidCredentialsException::new);
-    User user = userRepository.findById(userId)
-        .orElseThrow(InvalidCredentialsException::new);
-
-    user.refreshSession();
     refreshTokenService.delete(refreshToken);
   }
 

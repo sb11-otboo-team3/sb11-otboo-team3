@@ -46,7 +46,7 @@ class RefreshTokenServiceTest {
     given(redisTemplate.opsForValue()).willReturn(valueOperations);
 
     // when
-    String token = refreshTokenService.issue(UUID.randomUUID());
+    String token = refreshTokenService.issue(UUID.randomUUID(), 0L);
 
     // then
     assertThat(token).matches(
@@ -55,46 +55,36 @@ class RefreshTokenServiceTest {
   }
 
   @Test
-  @DisplayName("존재하는 토큰으로 조회하면 userId를 반환한다")
-  void findUserIdReturnsUserIdWhenTokenExists() throws Exception {
+  @DisplayName("존재하는 토큰으로 조회하면 userId와 tokenVersion을 반환한다")
+  void findTokenInfoReturnsInfoWhenTokenExists() throws Exception {
     // given
     UUID userId = UUID.randomUUID();
+    long tokenVersion = 3L;
     String token = "some-refresh-token";
     given(redisTemplate.opsForValue()).willReturn(valueOperations);
-    given(valueOperations.get("refresh:" + token)).willReturn(userId.toString());
+    given(valueOperations.get("refresh:" + token)).willReturn(userId + ":" + tokenVersion);
 
     // when
-    Optional<UUID> result = refreshTokenService.findUserId(token);
+    Optional<RefreshTokenService.TokenInfo> result = refreshTokenService.findTokenInfo(token);
 
     // then
-    assertThat(result).contains(userId);
+    assertThat(result).isPresent();
+    assertThat(result.get().userId()).isEqualTo(userId);
+    assertThat(result.get().tokenVersion()).isEqualTo(tokenVersion);
   }
 
   @Test
   @DisplayName("존재하지 않는 토큰으로 조회하면 빈 값을 반환한다")
-  void findUserIdReturnsEmptyWhenTokenNotFound() throws Exception {
+  void findTokenInfoReturnsEmptyWhenTokenNotFound() throws Exception {
     // given
     given(redisTemplate.opsForValue()).willReturn(valueOperations);
     given(valueOperations.get("refresh:invalid-token")).willReturn(null);
 
     // when
-    Optional<UUID> result = refreshTokenService.findUserId("invalid-token");
+    Optional<RefreshTokenService.TokenInfo> result = refreshTokenService.findTokenInfo("invalid-token");
 
     // then
     assertThat(result).isEmpty();
-  }
-
-  @Test
-  @DisplayName("삭제하면 해당 키가 제거된다")
-  void deleteRemovesTheKey() throws Exception {
-    // given
-    String token = "token-to-delete";
-
-    // when
-    refreshTokenService.delete(token);
-
-    // then
-    verify(redisTemplate).delete("refresh:" + token);
   }
 
   @Test
@@ -115,5 +105,18 @@ class RefreshTokenServiceTest {
 
     // when & then
     assertThat(refreshTokenService.exists("invalid-token")).isFalse();
+  }
+
+  @Test
+  @DisplayName("삭제하면 해당 키가 제거된다")
+  void deleteRemovesTheKey() throws Exception {
+    // given
+    String token = "token-to-delete";
+
+    // when
+    refreshTokenService.delete(token);
+
+    // then
+    verify(redisTemplate).delete("refresh:" + token);
   }
 }
