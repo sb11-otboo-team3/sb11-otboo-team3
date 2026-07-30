@@ -5,9 +5,11 @@ import com.otboo.domain.weather.client.KakaoLocationClient;
 import com.otboo.domain.weather.client.KakaoRegion;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
 import com.otboo.domain.weather.entity.Grid;
+import com.otboo.domain.weather.dto.WeatherDto;
 import com.otboo.domain.weather.repository.GridRepository;
 import com.otboo.domain.weather.util.GridConverter;
 import com.otboo.domain.weather.util.WeatherGrid;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -57,6 +59,11 @@ public class WeatherServiceImpl implements WeatherService {
     gridRecencyCache.markConfirmed(grid);
 
     return toDto(latitude, longitude, grid, region);
+  }
+
+  @Override
+  public List<WeatherDto> getWeathers(double latitude, double longitude) {
+    return List.of();
   }
 
   private WeatherAPILocation toDto(

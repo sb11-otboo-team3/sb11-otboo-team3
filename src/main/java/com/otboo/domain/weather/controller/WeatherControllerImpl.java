@@ -1,7 +1,9 @@
 package com.otboo.domain.weather.controller;
 
 import com.otboo.domain.weather.dto.WeatherAPILocation;
+import com.otboo.domain.weather.dto.WeatherDto;
 import com.otboo.domain.weather.service.WeatherService;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -14,5 +16,10 @@ public class WeatherControllerImpl implements WeatherController {
   @Override
   public WeatherAPILocation getLocation(double longitude, double latitude) {
     return weatherService.getLocation(latitude, longitude);
+  }
+
+  @Override
+  public List<WeatherDto> getWeathers(double latitude, double longitude) {
+    return weatherService.getWeathers(latitude, longitude);
   }
 }
