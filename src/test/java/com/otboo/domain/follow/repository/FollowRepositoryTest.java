@@ -185,4 +185,90 @@ class FollowRepositoryTest {
 
     assertThat(count).isEqualTo(2L);
   }
+
+  @Test
+  @DisplayName("팔로잉 목록 조회 시 이름이 같은 경우 idAfter 이후 데이터만 조회한다")
+  void findFollowings_sameFolloweeName_cursorUsesIdAfter() {
+    User follower = saveUser("follower_same@test.com", "Follower");
+    User same1 = saveUser("same1@test.com", "Same");
+    User same2 = saveUser("same2@test.com", "Same");
+    User same3 = saveUser("same3@test.com", "Same");
+
+    followRepository.save(Follow.create(follower, same1));
+    followRepository.save(Follow.create(follower, same2));
+    followRepository.save(Follow.create(follower, same3));
+
+    entityManager.flush();
+    entityManager.clear();
+
+    List<Follow> allFollowings = followRepository.findFollowings(
+        follower.getId(),
+        null,
+        null,
+        10,
+        null
+    );
+
+    Follow cursorFollow = allFollowings.get(0);
+
+    List<Follow> result = followRepository.findFollowings(
+        follower.getId(),
+        cursorFollow.getFollowee().getName(),
+        cursorFollow.getId(),
+        10,
+        null
+    );
+
+    assertThat(allFollowings).hasSize(3);
+    assertThat(result).hasSize(2);
+    assertThat(result)
+        .extracting(Follow::getId)
+        .containsExactly(
+            allFollowings.get(1).getId(),
+            allFollowings.get(2).getId()
+        );
+  }
+
+  @Test
+  @DisplayName("팔로워 목록 조회 시 이름이 같은 경우 idAfter 이후 데이터만 조회한다")
+  void findFollowers_sameFollowerName_cursorUsesIdAfter() {
+    User followee = saveUser("followee_same@test.com", "Followee");
+    User same1 = saveUser("same_follower1@test.com", "Same");
+    User same2 = saveUser("same_follower2@test.com", "Same");
+    User same3 = saveUser("same_follower3@test.com", "Same");
+
+    followRepository.save(Follow.create(same1, followee));
+    followRepository.save(Follow.create(same2, followee));
+    followRepository.save(Follow.create(same3, followee));
+
+    entityManager.flush();
+    entityManager.clear();
+
+    List<Follow> allFollowers = followRepository.findFollowers(
+        followee.getId(),
+        null,
+        null,
+        10,
+        null
+    );
+
+    Follow cursorFollow = allFollowers.get(0);
+
+    List<Follow> result = followRepository.findFollowers(
+        followee.getId(),
+        cursorFollow.getFollower().getName(),
+        cursorFollow.getId(),
+        10,
+        null
+    );
+
+    assertThat(allFollowers).hasSize(3);
+    assertThat(result).hasSize(2);
+    assertThat(result)
+        .extracting(Follow::getId)
+        .containsExactly(
+            allFollowers.get(1).getId(),
+            allFollowers.get(2).getId()
+        );
+  }
 }
