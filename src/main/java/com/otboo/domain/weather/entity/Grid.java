@@ -13,7 +13,7 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Getter
-@Table(name = "grids", uniqueConstraints = @UniqueConstraint(columnNames = {"x", "y"}))
+@Table(name = "weather_grid", uniqueConstraints = @UniqueConstraint(columnNames = {"x", "y"}))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Grid extends BaseEntity {
 
