@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.otboo.domain.weather.cache.LocationRecencyCache;
 import com.otboo.domain.weather.client.KakaoLocationClient;
 import com.otboo.domain.weather.client.KakaoRegion;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
@@ -31,6 +33,9 @@ class WeatherServiceImplTest {
   @Mock
   private KakaoLocationClient kakaoLocationClient;
 
+  @Mock
+  private LocationRecencyCache locationRecencyCache;
+
   private WeatherServiceImpl weatherService;
 
   @BeforeEach
@@ -38,7 +43,8 @@ class WeatherServiceImplTest {
     weatherService = new WeatherServiceImpl(
         new GridConverter(),
         locationRepository,
-        kakaoLocationClient
+        kakaoLocationClient,
+        locationRecencyCache
     );
   }
 
@@ -67,7 +73,26 @@ class WeatherServiceImplTest {
   }
 
   @Test
-  @DisplayName("이미 저장된 행정구역이면 재사용하고 최근 요청 시각을 갱신한다")
+  @DisplayName("최근에 확인된 행정구역이면 DB를 건드리지 않고 바로 응답한다")
+  void skipsDbWhenRecentlyConfirmed() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
+
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(locationRecencyCache.isRecentlyConfirmed(region)).willReturn(true);
+
+    // when
+    WeatherAPILocation result = weatherService.getLocation(latitude, longitude);
+
+    // then
+    assertThat(result.locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
+    verifyNoInteractions(locationRepository);
+  }
+
+  @Test
+  @DisplayName("이미 저장된 행정구역이면 재사용하고 최근 요청 시각을 갱신한 뒤 캐시에 표시한다")
   void reusesExistingLocationWhenAdministrativeRegionAlreadyStored() {
     // given
     double latitude = 37.5665;
@@ -92,10 +117,11 @@ class WeatherServiceImplTest {
     assertThat(result.locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
     verify(existing).refreshRequestedAt();
     verify(locationRepository).save(existing);
+    verify(locationRecencyCache).markConfirmed(region);
   }
 
   @Test
-  @DisplayName("처음 보는 행정구역이면 새로 저장한다")
+  @DisplayName("처음 보는 행정구역이면 새로 저장하고 캐시에 표시한다")
   void savesNewLocationWhenAdministrativeRegionNotStored() {
     // given
     double latitude = 37.5665;
@@ -118,6 +144,7 @@ class WeatherServiceImplTest {
     assertThat(saved.getProvince()).isEqualTo("서울특별시");
     assertThat(saved.getCity()).isEqualTo("강서구");
     assertThat(saved.getDistrict()).isEqualTo("마곡동");
+    verify(locationRecencyCache).markConfirmed(region);
   }
 
   @Test
@@ -139,5 +166,6 @@ class WeatherServiceImplTest {
 
     // then
     assertThat(result.locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
+    verify(locationRecencyCache).markConfirmed(region);
   }
 }
