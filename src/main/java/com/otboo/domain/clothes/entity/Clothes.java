@@ -1,23 +1,23 @@
 package com.otboo.domain.clothes.entity;
 
+import com.otboo.domain.user.entity.User;
 import com.otboo.global.common.entity.SoftDeletableEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
-
-import java.util.UUID;
+import jakarta.persistence.*;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 
 @Entity
 @Table(
-        name = "clothes", indexes = @Index(name = "idx_clothes_owner_id", columnList = "owner_id")
+        name = "clothes",
+        indexes = @Index(name = "idx_clothes_owner_id", columnList = "owner_id")
 )
 public class Clothes extends SoftDeletableEntity {
 
-    //users.id를 참조하지만 User 엔티티가 아직 없어 FK 연관관계 없이 UUID로만 저장한다.
-    @Column(name = "owner_id", nullable = false)
-    private UUID ownerId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.RESTRICT)
+    private User owner;
 
     @Column(nullable = false, length = 100)
     private String name;
@@ -25,21 +25,22 @@ public class Clothes extends SoftDeletableEntity {
     @Column(name = "image_url", length = 500)
     private String imageUrl;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
-    private String type;
+    private ClothesType type;
 
     protected Clothes() {
     }
 
-    public Clothes(UUID ownerId, String name, String imageUrl, String type) {
-        this.ownerId = ownerId;
+    public Clothes(User owner, String name, String imageUrl, ClothesType type) {
+        this.owner = owner;
         this.name = name;
         this.imageUrl = imageUrl;
         this.type = type;
     }
 
-    public UUID getOwnerId() {
-        return ownerId;
+    public User getOwner() {
+        return owner;
     }
 
     public String getName() {
@@ -50,7 +51,7 @@ public class Clothes extends SoftDeletableEntity {
         return imageUrl;
     }
 
-    public String getType() {
+    public ClothesType getType() {
         return type;
     }
 

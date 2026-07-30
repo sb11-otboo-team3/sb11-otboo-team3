@@ -8,5 +8,5 @@ import java.util.UUID;
 
 public interface ClothesRepository extends JpaRepository<Clothes, UUID> {
 
-    List<Clothes> findByOwnerIdAndDeletedAtIsNull(UUID ownerId);
+    List<Clothes> findByOwner_IdAndDeletedAtIsNull(UUID ownerId);
 }
