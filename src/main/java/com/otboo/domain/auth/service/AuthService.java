@@ -4,6 +4,7 @@ import com.otboo.domain.auth.dto.JwtDto;
 import com.otboo.domain.auth.dto.SignInRequest;
 import com.otboo.domain.auth.exception.InvalidCredentialsException;
 import com.otboo.domain.auth.jwt.JwtProvider;
+import com.otboo.domain.auth.token.RefreshTokenService;
 import com.otboo.domain.user.dto.UserDto;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
@@ -27,9 +28,10 @@ public class AuthService {
   private final UserRepository userRepository;
   private final PasswordEncoder passwordEncoder;
   private final JwtProvider jwtProvider;
+  private final RefreshTokenService refreshTokenService;
 
   @Transactional
-  public JwtDto signIn(SignInRequest request) {
+  public SignInResult signIn(SignInRequest request) {
     String normalizedEmail = request.username().toLowerCase(Locale.ROOT);
 
     Optional<User> userOptional = userRepository.findByEmail(normalizedEmail);
@@ -54,7 +56,45 @@ public class AuthService {
     String accessToken = jwtProvider.createAccessToken(
         user.getId(), user.getRole().name(), user.getTokenVersion()
     );
+    String refreshToken = refreshTokenService.issue(user.getId(), user.getTokenVersion());
 
-    return new JwtDto(UserDto.from(user), accessToken);
+    return new SignInResult(new JwtDto(UserDto.from(user), accessToken), refreshToken);
+  }
+
+  @Transactional
+  public SignInResult refresh(String refreshToken) {
+    if (refreshToken == null) {
+      throw new InvalidCredentialsException();
+    }
+
+    RefreshTokenService.TokenInfo tokenInfo = refreshTokenService.consumeTokenInfo(refreshToken)
+        .orElseThrow(InvalidCredentialsException::new);
+
+    User user = userRepository.findById(tokenInfo.userId())
+        .orElseThrow(InvalidCredentialsException::new);
+
+    boolean tokenVersionMismatch = user.getTokenVersion() != tokenInfo.tokenVersion();
+    if (user.isLocked() || tokenVersionMismatch) {
+      throw new InvalidCredentialsException();
+    }
+
+    String newRefreshToken = refreshTokenService.issue(user.getId(), user.getTokenVersion());
+
+    String accessToken = jwtProvider.createAccessToken(
+        user.getId(), user.getRole().name(), user.getTokenVersion()
+    );
+
+    return new SignInResult(new JwtDto(UserDto.from(user), accessToken), newRefreshToken);
+  }
+
+  @Transactional
+  public void signOut(String refreshToken) {
+    if (refreshToken == null || !refreshTokenService.exists(refreshToken)) {
+      throw new InvalidCredentialsException();
+    }
+    refreshTokenService.delete(refreshToken);
+  }
+
+  public record SignInResult(JwtDto jwtDto, String refreshToken) {
   }
 }

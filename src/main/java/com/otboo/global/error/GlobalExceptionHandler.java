@@ -16,6 +16,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.bind.MissingRequestCookieException;
 
 @Slf4j
 @RestControllerAdvice
@@ -176,6 +177,23 @@ public class GlobalExceptionHandler {
             Map.of()
         );
 
-        return ResponseEntity.badRequest().body(response);
+      return ResponseEntity
+          .status(HttpStatus.BAD_REQUEST)
+          .body(response);
+    }
+
+    @ExceptionHandler(MissingRequestCookieException.class)
+    public ResponseEntity<ErrorResponse> handleMissingRequestCookieException(
+        MissingRequestCookieException exception
+    ) {
+        ErrorResponse response = new ErrorResponse(
+            exception.getClass().getSimpleName(),
+            "필수 쿠키가 누락되었습니다.",
+            Map.of("cookie", exception.getCookieName())
+        );
+
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(response);
     }
 }
