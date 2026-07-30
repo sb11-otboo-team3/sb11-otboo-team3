@@ -14,3 +14,4 @@ public interface WeatherController {
       @RequestParam double latitude
   );
 }
+
