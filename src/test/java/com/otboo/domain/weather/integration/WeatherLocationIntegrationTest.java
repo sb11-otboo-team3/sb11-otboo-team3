@@ -38,9 +38,9 @@ class WeatherLocationIntegrationTest {
   }
 
   @Test
-  @DisplayName("카카오 API 호출이 실패하면 실제 서비스를 거쳐 502를 반환한다")
+  @DisplayName("카카오 API 호출이 실패하면 실제 서비스를 거쳐 400을 반환한다")
   @WithMockUser
-  void returns502WhenKakaoApiFails() throws Exception {
+  void returns400WhenKakaoApiFails() throws Exception {
     // given
     double latitude = 35.1796;
     double longitude = 129.0756;
@@ -51,6 +51,6 @@ class WeatherLocationIntegrationTest {
     mockMvc.perform(get("/api/weathers/location")
             .param("latitude", String.valueOf(latitude))
             .param("longitude", String.valueOf(longitude)))
-        .andExpect(status().isBadGateway());
+        .andExpect(status().isBadRequest());
   }
 }
