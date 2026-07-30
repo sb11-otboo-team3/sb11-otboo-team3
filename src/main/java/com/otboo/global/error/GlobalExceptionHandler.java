@@ -1,5 +1,6 @@
 package com.otboo.global.error;
 
+import jakarta.validation.ConstraintViolationException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -15,6 +16,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.bind.MissingRequestCookieException;
 
 @Slf4j
 @RestControllerAdvice
@@ -163,5 +165,35 @@ public class GlobalExceptionHandler {
         }
 
         return defaultMessage;
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolationException(
+        ConstraintViolationException e
+    ) {
+        ErrorResponse response = new ErrorResponse(
+            e.getClass().getSimpleName(),
+            "요청 값이 올바르지 않습니다.",
+            Map.of()
+        );
+
+      return ResponseEntity
+          .status(HttpStatus.BAD_REQUEST)
+          .body(response);
+    }
+
+    @ExceptionHandler(MissingRequestCookieException.class)
+    public ResponseEntity<ErrorResponse> handleMissingRequestCookieException(
+        MissingRequestCookieException exception
+    ) {
+        ErrorResponse response = new ErrorResponse(
+            exception.getClass().getSimpleName(),
+            "필수 쿠키가 누락되었습니다.",
+            Map.of("cookie", exception.getCookieName())
+        );
+
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(response);
     }
 }

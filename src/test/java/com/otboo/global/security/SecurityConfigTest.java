@@ -148,8 +148,14 @@ class SecurityConfigTest {
         .andExpect(cookie().exists("XSRF-TOKEN"));
   }
 
+  // NOTE: 인증되지 않은 상태(permitAll 대상)에서 CSRF 토큰이 없을 때,
+  // MockMvc 테스트 환경에서는 403이 반환된다. 다만 실제 curl로
+  // 직접 검증했을 때는 401이 반환되는 차이를 발견했다 (Spring Security
+  // 알려진 이슈: https://github.com/spring-projects/spring-security/issues/12642).
+  // 이 테스트는 MockMvc 환경 기준으로 작성되었으며, 실제 배포 환경에서
+  // 프론트엔드가 받는 응답은 401일 수 있다는 점을 참고할 것.
   @Test
-  @DisplayName("CSRF 토큰 없이 로그인 요청을 보내면 403을 반환한다")
+  @DisplayName("CSRF 토큰 없이 로그인 요청을 보내면 403을 반환한다 (MockMvc 환경 기준, 실서버는 401)")
   void signInWithoutCsrfTokenReturns403() throws Exception {
     mockMvc.perform(post("/api/auth/sign-in")
             .param("username", "test@otboo.io")
@@ -174,8 +180,14 @@ class SecurityConfigTest {
         .andExpect(status().isOk());
   }
 
+  // NOTE: 인증되지 않은 상태(permitAll 대상)에서 CSRF 토큰이 없을 때,
+  // MockMvc 테스트 환경에서는 403이 반환된다. 다만 실제 curl로
+  // 직접 검증했을 때는 401이 반환되는 차이를 발견했다 (Spring Security
+  // 알려진 이슈: https://github.com/spring-projects/spring-security/issues/12642).
+  // 이 테스트는 MockMvc 환경 기준으로 작성되었으며, 실제 배포 환경에서
+  // 프론트엔드가 받는 응답은 401일 수 있다는 점을 참고할 것.
   @Test
-  @DisplayName("CSRF 토큰 없이 회원가입 요청을 보내면 403을 반환한다")
+  @DisplayName("CSRF 토큰 없이 회원가입 요청을 보내면 403을 반환한다 (MockMvc 환경 기준, 실서버는 401)")
   void signUpWithoutCsrfTokenReturns403() throws Exception {
     mockMvc.perform(post("/api/users")
             .contentType(MediaType.APPLICATION_JSON)
