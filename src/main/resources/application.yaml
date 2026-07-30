@@ -22,3 +22,11 @@ management:
     health:
       show-details: never
       show-components: never
+
+
+
+
+kakao:
+  local:
+    api-key: ${KAKAO_REST_API_KEY}
+    base-url: https://dapi.kakao.com

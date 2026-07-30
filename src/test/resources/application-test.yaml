@@ -34,3 +34,7 @@ jwt:
   secret: k3kXIvo3YdC0cNUP2yMc9Rmhell9Te3CTFBlP3UA+ts=
   access-expiration: 900000
   refresh-expiration: 604800000
+kakao:
+  local:
+    api-key: test-api-key
+    base-url: https://dapi.kakao.com
