@@ -24,6 +24,7 @@ public class WeatherServiceImpl implements WeatherService {
   private final LocationRepository locationRepository;
   private final KakaoLocationClient kakaoLocationClient;
   private final LocationRecencyCache locationRecencyCache;
+  private final LocationSaver locationSaver;
 
   @Override
   @Transactional
@@ -65,9 +66,8 @@ public class WeatherServiceImpl implements WeatherService {
           .build();
 
       try {
-        locationRepository.save(location);
+        locationSaver.saveInNewTransaction(location);
       } catch (DataIntegrityViolationException e) {
-        // 동시성 문제 발생시,
         log.warn("행정구역 찾기 - 동시성 충돌 발생, province={}, city={}, district={}",
             region.province(), region.city(), region.district(), e);
       }

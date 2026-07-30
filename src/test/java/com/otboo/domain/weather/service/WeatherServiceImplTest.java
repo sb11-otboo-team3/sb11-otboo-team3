@@ -36,6 +36,9 @@ class WeatherServiceImplTest {
   @Mock
   private LocationRecencyCache locationRecencyCache;
 
+  @Mock
+  private LocationSaver locationSaver;
+
   private WeatherServiceImpl weatherService;
 
   @BeforeEach
@@ -44,7 +47,8 @@ class WeatherServiceImplTest {
         new GridConverter(),
         locationRepository,
         kakaoLocationClient,
-        locationRecencyCache
+        locationRecencyCache,
+        locationSaver
     );
   }
 
@@ -137,7 +141,7 @@ class WeatherServiceImplTest {
 
     // then
     ArgumentCaptor<Location> captor = ArgumentCaptor.forClass(Location.class);
-    verify(locationRepository).save(captor.capture());
+    verify(locationSaver).saveInNewTransaction(captor.capture());
     Location saved = captor.getValue();
     assertThat(saved.getX()).isEqualTo(60);
     assertThat(saved.getY()).isEqualTo(127);
@@ -158,8 +162,8 @@ class WeatherServiceImplTest {
     given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
     given(locationRepository.findByProvinceAndCityAndDistrict("서울특별시", "강서구", "마곡동"))
         .willReturn(Optional.empty());
-    given(locationRepository.save(any(Location.class)))
-        .willThrow(new DataIntegrityViolationException("duplicate key"));
+    Mockito.doThrow(new DataIntegrityViolationException("duplicate key"))
+        .when(locationSaver).saveInNewTransaction(any(Location.class));
 
     // when
     WeatherAPILocation result = weatherService.getLocation(latitude, longitude);
