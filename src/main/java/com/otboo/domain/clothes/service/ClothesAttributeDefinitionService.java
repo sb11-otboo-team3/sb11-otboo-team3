@@ -9,7 +9,9 @@ import com.otboo.domain.clothes.exception.DuplicateAttributeDefinitionNameExcept
 import com.otboo.domain.clothes.mapper.ClothesAttributeDefinitionMapper;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeDefinitionRepository;
+import com.otboo.domain.clothes.exception.InvalidSortConditionException;
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -26,12 +28,21 @@ public class ClothesAttributeDefinitionService {
     private final ClothesAttributeDefinitionRepository definitionRepository;
     private final AttributeSelectableValueRepository selectableValueRepository;
     private final ClothesAttributeDefinitionMapper mapper;
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("createdAt");
+    private static final Set<String> ALLOWED_SORT_DIRECTIONS = Set.of("ASCENDING", "DESCENDING");
 
     public List<ClothesAttributeDefinitionResponse> getList(String sortBy, String sortDirection, String keywordLike) {
-        Sort.Direction direction = "DESCENDING".equalsIgnoreCase(sortDirection)
+        if (!ALLOWED_SORT_FIELDS.contains(sortBy)) {
+            throw new InvalidSortConditionException("sortBy", sortBy);
+        }
+        Sort.Direction direction = "DESCENDING".equals(sortDirection)
                 ? Sort.Direction.DESC
                 : Sort.Direction.ASC;
         Sort sort = Sort.by(direction, sortBy);
+
+        if (!ALLOWED_SORT_DIRECTIONS.contains(sortDirection)) {
+            throw new InvalidSortConditionException("sortDirection", sortDirection);
+        }
         String keyword = keywordLike == null ? "" : keywordLike;
 
         List<ClothesAttributeDefinition> definitions =

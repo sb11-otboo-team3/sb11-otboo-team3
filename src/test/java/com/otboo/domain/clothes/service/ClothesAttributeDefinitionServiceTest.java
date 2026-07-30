@@ -6,6 +6,7 @@ import com.otboo.domain.clothes.entity.AttributeSelectableValue;
 import com.otboo.domain.clothes.entity.ClothesAttributeDefinition;
 import com.otboo.domain.clothes.exception.ClothesAttributeDefinitionNotFoundException;
 import com.otboo.domain.clothes.exception.DuplicateAttributeDefinitionNameException;
+import com.otboo.domain.clothes.exception.InvalidSortConditionException;
 import com.otboo.domain.clothes.mapper.ClothesAttributeDefinitionMapper;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeDefinitionRepository;
@@ -140,5 +141,18 @@ public class ClothesAttributeDefinitionServiceTest {
         //then
         assertThat(definition.getDeletedAt()).isNotNull();
         assertThat(value.getDeletedAt()).isNotNull();
+    }
+    @Test
+    void 잘못된_sortBy면_예외가_발생한다() {
+        //when & then
+        assertThatThrownBy(() -> service.getList("invalidField", "ASCENDING", null))
+                .isInstanceOf(InvalidSortConditionException.class);
+    }
+
+    @Test
+    void 잘못된_sortDirection이면_예외가_발생한다() {
+        //when & then
+        assertThatThrownBy(() -> service.getList("createdAt", "invalidDirection", null))
+                .isInstanceOf(InvalidSortConditionException.class);
     }
 }
