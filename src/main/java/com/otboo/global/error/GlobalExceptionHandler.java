@@ -17,6 +17,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.bind.MissingRequestCookieException;
+import org.springframework.security.access.AccessDeniedException;
 
 @Slf4j
 @RestControllerAdvice
@@ -194,6 +195,21 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
+            .body(response);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDeniedException(
+        AccessDeniedException exception
+    ) {
+        ErrorResponse response = new ErrorResponse(
+            exception.getClass().getSimpleName(),
+            "접근 권한이 없습니다.",
+            Map.of()
+        );
+
+        return ResponseEntity
+            .status(HttpStatus.FORBIDDEN)
             .body(response);
     }
 }
