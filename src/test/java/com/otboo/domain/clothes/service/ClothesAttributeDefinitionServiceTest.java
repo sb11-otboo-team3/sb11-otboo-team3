@@ -48,8 +48,8 @@ public class ClothesAttributeDefinitionServiceTest {
                 new ClothesAttributeDefinitionRequest("색상", List.of("빨강", "파랑"));
 
         given(definitionRepository.findByName("색상")).willReturn(Optional.empty());
-        given(definitionRepository.save(any(ClothesAttributeDefinition.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
+        given(definitionRepository.saveAndFlush(any(ClothesAttributeDefinition.class)))
+                        .willAnswer(invocation -> invocation.getArgument(0));
         given(selectableValueRepository.findByDefinitionAndValue(any(), any()))
                 .willReturn(Optional.empty());
         given(selectableValueRepository.save(any(AttributeSelectableValue.class)))

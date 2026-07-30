@@ -1,12 +1,11 @@
 package com.otboo.domain.clothes.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
-
 import java.util.List;
 
 public record ClothesAttributeDefinitionRequest(
         @NotBlank
         String name,
-        List<String> selectableValues
+        List<@NotBlank String> selectableValues
 ) {
 }

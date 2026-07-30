@@ -10,6 +10,7 @@ import com.otboo.domain.clothes.mapper.ClothesAttributeDefinitionMapper;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeDefinitionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,13 +64,22 @@ public class ClothesAttributeDefinitionService {
                     existing.restore();
                     return existing;
                 })
-                .orElseGet(() -> definitionRepository.save(new ClothesAttributeDefinition(name)));
+                .orElseGet(() -> saveNewDefinition(name));
 
         List<AttributeSelectableValue> selectableValues =
                 syncSelectableValues(definition, values);
 
         return mapper.toResponse(definition, selectableValues);
     }
+
+    private ClothesAttributeDefinition saveNewDefinition(String name) {
+        try {
+            return definitionRepository.saveAndFlush(new ClothesAttributeDefinition(name));
+        } catch (DataIntegrityViolationException e) {
+            throw new DuplicateAttributeDefinitionNameException(name);
+        }
+    }
+
     @Transactional
     public ClothesAttributeDefinitionResponse update(UUID definitionId, ClothesAttributeDefinitionRequest request) {
         ClothesAttributeDefinition definition = definitionRepository.findById(definitionId)
@@ -81,6 +91,11 @@ public class ClothesAttributeDefinitionService {
             throw new DuplicateAttributeDefinitionNameException(newName);
         }
         definition.updateName(newName);
+        try {
+            definitionRepository.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw new DuplicateAttributeDefinitionNameException(newName);
+        }
 
         List<String> values = normalizeValues(request.selectableValues());
         Set<String> newValueSet = new HashSet<>(values);
