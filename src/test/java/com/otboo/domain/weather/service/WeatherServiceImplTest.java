@@ -3,15 +3,16 @@ package com.otboo.domain.weather.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-import com.otboo.domain.weather.cache.LocationRecencyCache;
+import com.otboo.domain.weather.cache.GridRecencyCache;
 import com.otboo.domain.weather.client.KakaoLocationClient;
 import com.otboo.domain.weather.client.KakaoRegion;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
-import com.otboo.domain.weather.entity.Location;
-import com.otboo.domain.weather.repository.LocationRepository;
+import com.otboo.domain.weather.entity.Grid;
+import com.otboo.domain.weather.repository.GridRepository;
 import com.otboo.domain.weather.util.GridConverter;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,16 +29,16 @@ import org.springframework.dao.DataIntegrityViolationException;
 class WeatherServiceImplTest {
 
   @Mock
-  private LocationRepository locationRepository;
+  private GridRepository gridRepository;
 
   @Mock
   private KakaoLocationClient kakaoLocationClient;
 
   @Mock
-  private LocationRecencyCache locationRecencyCache;
+  private GridRecencyCache gridRecencyCache;
 
   @Mock
-  private LocationSaver locationSaver;
+  private GridSaver gridSaver;
 
   private WeatherServiceImpl weatherService;
 
@@ -45,10 +46,10 @@ class WeatherServiceImplTest {
   void setUp() {
     weatherService = new WeatherServiceImpl(
         new GridConverter(),
-        locationRepository,
+        gridRepository,
         kakaoLocationClient,
-        locationRecencyCache,
-        locationSaver
+        gridRecencyCache,
+        gridSaver
     );
   }
 
@@ -61,8 +62,7 @@ class WeatherServiceImplTest {
     KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
 
     given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
-    given(locationRepository.findByProvinceAndCityAndDistrict("서울특별시", "강서구", "마곡동"))
-        .willReturn(Optional.empty());
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.empty());
 
     // when
     WeatherAPILocation result = weatherService.getLocation(latitude, longitude);
@@ -77,7 +77,7 @@ class WeatherServiceImplTest {
   }
 
   @Test
-  @DisplayName("최근에 확인된 행정구역이면 DB를 건드리지 않고 바로 응답한다")
+  @DisplayName("최근에 확인된 격자면 DB를 건드리지 않고 바로 응답한다")
   void skipsDbWhenRecentlyConfirmed() {
     // given
     double latitude = 37.5665;
@@ -85,34 +85,28 @@ class WeatherServiceImplTest {
     KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
 
     given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
-    given(locationRecencyCache.isRecentlyConfirmed(region)).willReturn(true);
+    given(gridRecencyCache.isRecentlyConfirmed(any())).willReturn(true);
 
     // when
     WeatherAPILocation result = weatherService.getLocation(latitude, longitude);
 
     // then
     assertThat(result.locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
-    verifyNoInteractions(locationRepository);
+    verifyNoInteractions(gridRepository);
+    verifyNoInteractions(gridSaver);
   }
 
   @Test
-  @DisplayName("이미 저장된 행정구역이면 재사용하고 최근 요청 시각을 갱신한 뒤 캐시에 표시한다")
-  void reusesExistingLocationWhenAdministrativeRegionAlreadyStored() {
+  @DisplayName("이미 등록된 격자면 새로 저장하지 않고 최근 요청 시각만 갱신한다")
+  void refreshesRecencyWhenGridAlreadyRegistered() {
     // given
     double latitude = 37.5665;
     double longitude = 126.9780;
     KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
-    Location existing = Mockito.spy(Location.builder()
-        .x(60)
-        .y(127)
-        .province("서울특별시")
-        .city("강서구")
-        .district("마곡동")
-        .build());
+    Grid existing = Mockito.spy(Grid.builder().x(60).y(127).build());
 
     given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
-    given(locationRepository.findByProvinceAndCityAndDistrict("서울특별시", "강서구", "마곡동"))
-        .willReturn(Optional.of(existing));
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existing));
 
     // when
     WeatherAPILocation result = weatherService.getLocation(latitude, longitude);
@@ -120,39 +114,36 @@ class WeatherServiceImplTest {
     // then
     assertThat(result.locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
     verify(existing).refreshRequestedAt();
-    verify(locationRepository).save(existing);
-    verify(locationRecencyCache).markConfirmed(region);
+    verify(gridRepository).save(existing);
+    verify(gridSaver, never()).saveInNewTransaction(any(Grid.class));
+    verify(gridRecencyCache).markConfirmed(any());
   }
 
   @Test
-  @DisplayName("처음 보는 행정구역이면 새로 저장하고 캐시에 표시한다")
-  void savesNewLocationWhenAdministrativeRegionNotStored() {
+  @DisplayName("처음 보는 격자면 레지스트리에 등록한다")
+  void registersNewGridWhenNotYetRegistered() {
     // given
     double latitude = 37.5665;
     double longitude = 126.9780;
     KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
 
     given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
-    given(locationRepository.findByProvinceAndCityAndDistrict("서울특별시", "강서구", "마곡동"))
-        .willReturn(Optional.empty());
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.empty());
 
     // when
     weatherService.getLocation(latitude, longitude);
 
     // then
-    ArgumentCaptor<Location> captor = ArgumentCaptor.forClass(Location.class);
-    verify(locationSaver).saveInNewTransaction(captor.capture());
-    Location saved = captor.getValue();
+    ArgumentCaptor<Grid> captor = ArgumentCaptor.forClass(Grid.class);
+    verify(gridSaver).saveInNewTransaction(captor.capture());
+    Grid saved = captor.getValue();
     assertThat(saved.getX()).isEqualTo(60);
     assertThat(saved.getY()).isEqualTo(127);
-    assertThat(saved.getProvince()).isEqualTo("서울특별시");
-    assertThat(saved.getCity()).isEqualTo("강서구");
-    assertThat(saved.getDistrict()).isEqualTo("마곡동");
-    verify(locationRecencyCache).markConfirmed(region);
+    verify(gridRecencyCache).markConfirmed(any());
   }
 
   @Test
-  @DisplayName("동시에 같은 행정구역이 먼저 저장돼 유니크 제약 위반이 나도, 이미 확보한 카카오 응답으로 정상 반환한다")
+  @DisplayName("동시에 같은 격자가 먼저 등록돼 유니크 제약 위반이 나도, 이미 확보한 카카오 응답으로 정상 반환한다")
   void returnsFreshRegionEvenWhenConcurrentSaveConflicts() {
     // given
     double latitude = 37.5665;
@@ -160,16 +151,15 @@ class WeatherServiceImplTest {
     KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
 
     given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
-    given(locationRepository.findByProvinceAndCityAndDistrict("서울특별시", "강서구", "마곡동"))
-        .willReturn(Optional.empty());
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.empty());
     Mockito.doThrow(new DataIntegrityViolationException("duplicate key"))
-        .when(locationSaver).saveInNewTransaction(any(Location.class));
+        .when(gridSaver).saveInNewTransaction(any(Grid.class));
 
     // when
     WeatherAPILocation result = weatherService.getLocation(latitude, longitude);
 
     // then
     assertThat(result.locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
-    verify(locationRecencyCache).markConfirmed(region);
+    verify(gridRecencyCache).markConfirmed(any());
   }
 }

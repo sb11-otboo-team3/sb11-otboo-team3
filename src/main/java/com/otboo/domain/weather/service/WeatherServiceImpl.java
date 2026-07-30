@@ -1,11 +1,11 @@
 package com.otboo.domain.weather.service;
 
-import com.otboo.domain.weather.cache.LocationRecencyCache;
+import com.otboo.domain.weather.cache.GridRecencyCache;
 import com.otboo.domain.weather.client.KakaoLocationClient;
 import com.otboo.domain.weather.client.KakaoRegion;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
-import com.otboo.domain.weather.entity.Location;
-import com.otboo.domain.weather.repository.LocationRepository;
+import com.otboo.domain.weather.entity.Grid;
+import com.otboo.domain.weather.repository.GridRepository;
 import com.otboo.domain.weather.util.GridConverter;
 import com.otboo.domain.weather.util.WeatherGrid;
 import java.util.Optional;
@@ -21,10 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class WeatherServiceImpl implements WeatherService {
 
   private final GridConverter gridConverter;
-  private final LocationRepository locationRepository;
+  private final GridRepository gridRepository;
   private final KakaoLocationClient kakaoLocationClient;
-  private final LocationRecencyCache locationRecencyCache;
-  private final LocationSaver locationSaver;
+  private final GridRecencyCache gridRecencyCache;
+  private final GridSaver gridSaver;
 
   @Override
   @Transactional
@@ -34,46 +34,27 @@ public class WeatherServiceImpl implements WeatherService {
     // 카카오에서 조회
     KakaoRegion region = kakaoLocationClient.getRegion(latitude, longitude);
 
-    if (locationRecencyCache.isRecentlyConfirmed(region)) {
-      // 캐시가 있으며 저장하지 않음.(자주 최근 접근 시간을 갱신하지 않게)
+    if (gridRecencyCache.isRecentlyConfirmed(grid)) {
       return toDto(latitude, longitude, grid, region);
     }
 
-    // DB에서 가져오기
-    Optional<Location> existing = locationRepository.findByProvinceAndCityAndDistrict(
-        region.province(), region.city(), region.district());
-
-    //DB에 있으면 가져오기.
+    // 격자 레지스트리 갱신 (날씨 프리페치 배치가 실제로 쓰이는 격자만 골라낼 때 참고할 용도)
+    Optional<Grid> existing = gridRepository.findByXAndY(grid.x(), grid.y());
     if (existing.isPresent()) {
-      log.info("행정구역 찾기 - 기존 행정구역 재사용, province={}, city={}, district={}",
-          region.province(), region.city(), region.district());
-
-      Location location = existing.get();
-      location.refreshRequestedAt(); // 최근 사용 시간 기록 갱신.
-      locationRepository.save(location);
+      Grid found = existing.get();
+      found.refreshRequestedAt();
+      gridRepository.save(found);
     } else {
-
-      //없으면 값 새로 저장
-      log.info("행정구역 찾기 - 신규 행정구역 저장, province={}, city={}, district={}",
-          region.province(), region.city(), region.district());
-
-      Location location = Location.builder()
-          .x(grid.x())
-          .y(grid.y())
-          .province(region.province())
-          .city(region.city())
-          .district(region.district())
-          .build();
-
+      // REQUIRES_NEW로 분리된 저장 시도가 유니크 제약 위반으로 실패해도, 그 실패는 별도 트랜잭션 안에서
+      // 끝나므로 여기서 잡아도 이 메서드의 트랜잭션(바깥)엔 영향 없다.
       try {
-        locationSaver.saveInNewTransaction(location);
+        gridSaver.saveInNewTransaction(Grid.builder().x(grid.x()).y(grid.y()).build());
       } catch (DataIntegrityViolationException e) {
-        log.warn("행정구역 찾기 - 동시성 충돌 발생, province={}, city={}, district={}",
-            region.province(), region.city(), region.district(), e);
+        log.warn("격자 등록 - 동시성 충돌 발생, x={}, y={}", grid.x(), grid.y(), e);
       }
     }
 
-    locationRecencyCache.markConfirmed(region);
+    gridRecencyCache.markConfirmed(grid);
 
     return toDto(latitude, longitude, grid, region);
   }
