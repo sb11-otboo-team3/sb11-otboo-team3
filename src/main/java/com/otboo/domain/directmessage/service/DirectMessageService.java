@@ -14,6 +14,8 @@ import com.otboo.domain.directmessage.repository.DirectMessageRepository;
 import com.otboo.domain.directmessage.support.DirectMessageKeyGenerator;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -129,6 +131,14 @@ public class DirectMessageService {
 
     if (hasCursor != hasIdAfter) {
       throw new InvalidDirectMessageCursorException();
+    }
+
+    if (hasCursor) {
+      try {
+        Instant.parse(cursor);
+      } catch (DateTimeParseException e) {
+        throw new InvalidDirectMessageCursorException();
+      }
     }
   }
 }

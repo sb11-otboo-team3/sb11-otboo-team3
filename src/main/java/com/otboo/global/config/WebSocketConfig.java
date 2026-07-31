@@ -2,6 +2,7 @@ package com.otboo.global.config;
 
 import com.otboo.global.websocket.StompChannelInterceptor;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
@@ -16,10 +17,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
   private final StompChannelInterceptor stompChannelInterceptor;
 
+  @Value("${app.websocket.allowed-origin-patterns}")
+  private String[] allowedOriginPatterns;
+
   @Override
   public void registerStompEndpoints(StompEndpointRegistry registry) {
     registry.addEndpoint("/ws")
-        .setAllowedOriginPatterns("*")
+        .setAllowedOriginPatterns(allowedOriginPatterns)
         .withSockJS();
   }
 

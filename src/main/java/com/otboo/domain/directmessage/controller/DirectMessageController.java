@@ -1,5 +1,7 @@
 package com.otboo.domain.directmessage.controller;
 
+import com.otboo.domain.directmessage.controller.docs.DirectMessageApi;
+import com.otboo.domain.directmessage.controller.docs.GetDirectMessagesApi;
 import com.otboo.domain.directmessage.dto.response.DirectMessageDtoCursorResponse;
 import com.otboo.domain.directmessage.service.DirectMessageService;
 import jakarta.validation.constraints.Max;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@DirectMessageApi
 @Validated
 @RestController
 @RequiredArgsConstructor
@@ -22,6 +25,7 @@ public class DirectMessageController {
 
   private final DirectMessageService directMessageService;
 
+  @GetDirectMessagesApi
   @GetMapping
   public ResponseEntity<DirectMessageDtoCursorResponse> getDirectMessages(
       @RequestParam UUID userId,

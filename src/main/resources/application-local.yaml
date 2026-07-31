@@ -29,3 +29,7 @@ jwt:
   secret: ${JWT_SECRET:3WayDafV59YynmTwCpaDtnpeur8sokrAkQ+wFlXO4QY=}
   access-expiration: ${JWT_ACCESS_EXPIRATION:900000}
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
+
+app:
+  websocket:
+    allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://localhost:3000,http://localhost:8080}
