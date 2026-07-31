@@ -1,20 +1,27 @@
 package com.otboo.domain.auth.service;
 
 import com.otboo.domain.auth.dto.JwtDto;
+import com.otboo.domain.auth.dto.ResetPasswordRequest;
 import com.otboo.domain.auth.dto.SignInRequest;
 import com.otboo.domain.auth.exception.InvalidCredentialsException;
 import com.otboo.domain.auth.jwt.JwtProvider;
+import com.otboo.domain.auth.token.PasswordResetService;
 import com.otboo.domain.auth.token.RefreshTokenService;
+import com.otboo.domain.user.dto.ChangePasswordRequest;
 import com.otboo.domain.user.dto.UserDto;
 import com.otboo.domain.user.entity.User;
+import com.otboo.domain.user.exception.UserNotFoundException;
 import com.otboo.domain.user.repository.UserRepository;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.otboo.domain.auth.dto.ResetPasswordRequest;
+import com.otboo.domain.auth.token.PasswordResetService;
 
 @Slf4j
 @Service
@@ -29,6 +36,7 @@ public class AuthService {
   private final PasswordEncoder passwordEncoder;
   private final JwtProvider jwtProvider;
   private final RefreshTokenService refreshTokenService;
+  private final PasswordResetService passwordResetService;
 
   @Transactional
   public SignInResult signIn(SignInRequest request) {
@@ -41,8 +49,13 @@ public class AuthService {
         .orElse(DUMMY_PASSWORD_HASH);
     boolean passwordMatches = passwordEncoder.matches(request.password(), passwordHashToCheck);
 
+    boolean tempPasswordMatches = userOptional
+        .flatMap(user -> passwordResetService.find(user.getId()))
+        .map(tempPassword -> tempPassword.equals(request.password()))
+        .orElse(false);
+
     boolean emailNotFound = userOptional.isEmpty();
-    boolean passwordInvalid = !passwordMatches;
+    boolean passwordInvalid = !passwordMatches && !tempPasswordMatches;
     boolean accountLocked = userOptional.map(User::isLocked).orElse(false);
 
     if (emailNotFound || passwordInvalid || accountLocked) {
@@ -96,5 +109,24 @@ public class AuthService {
   }
 
   public record SignInResult(JwtDto jwtDto, String refreshToken) {
+  }
+
+  @Transactional(readOnly = true)
+  public void resetPassword(ResetPasswordRequest request) {
+    String normalizedEmail = request.email().toLowerCase(Locale.ROOT);
+    User user = userRepository.findByEmail(normalizedEmail)
+        .orElseThrow(() -> new UserNotFoundException(normalizedEmail));
+    passwordResetService.issue(user.getId());
+  }
+
+  @Transactional
+  public void changePassword(UUID userId, ChangePasswordRequest request) {
+    User user = userRepository.findById(userId)
+        .orElseThrow(() -> new UserNotFoundException(userId));
+
+    String encodedPassword = passwordEncoder.encode(request.password());
+    user.changePassword(encodedPassword);
+
+    passwordResetService.delete(userId);
   }
 }
