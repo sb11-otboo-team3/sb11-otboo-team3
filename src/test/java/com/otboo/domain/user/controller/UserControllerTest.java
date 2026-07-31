@@ -31,6 +31,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import com.otboo.domain.auth.service.AuthService;
 
 @WebMvcTest(UserController.class)
 @Import(SecurityConfig.class)
@@ -50,6 +51,9 @@ class UserControllerTest {
 
   @MockitoBean
   private UserRepository userRepository;
+
+  @MockitoBean
+  private AuthService authService;
 
   @Test
   @DisplayName("회원가입 요청이 유효하면 201을 반환한다")
@@ -268,5 +272,41 @@ class UserControllerTest {
                             """)
             .with(csrf()))
         .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @WithMockUser
+  @DisplayName("비밀번호 변경 요청이 성공하면 204를 반환한다")
+  void changePasswordReturns204() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+
+    // when & then
+    mockMvc.perform(patch("/api/users/{userId}/password", userId)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                            {"password":"newPassword1234"}
+                            """)
+            .with(csrf()))
+        .andExpect(status().isNoContent());
+  }
+
+  @Test
+  @WithMockUser
+  @DisplayName("존재하지 않는 사용자의 비밀번호를 변경하면 404를 반환한다")
+  void changePasswordWithNonExistentUserReturns404() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+    org.mockito.BDDMockito.willThrow(new com.otboo.domain.user.exception.UserNotFoundException(userId))
+        .given(authService).changePassword(any(), any());
+
+    // when & then
+    mockMvc.perform(patch("/api/users/{userId}/password", userId)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                            {"password":"newPassword1234"}
+                            """)
+            .with(csrf()))
+        .andExpect(status().isNotFound());
   }
 }

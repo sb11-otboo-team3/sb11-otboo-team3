@@ -210,19 +210,4 @@ public class GlobalExceptionHandler {
             .status(HttpStatus.BAD_REQUEST)
             .body(response);
     }
-
-    @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ErrorResponse> handleAccessDeniedException(
-        AccessDeniedException exception
-    ) {
-        ErrorResponse response = new ErrorResponse(
-            exception.getClass().getSimpleName(),
-            "접근 권한이 없습니다.",
-            Map.of()
-        );
-
-        return ResponseEntity
-            .status(HttpStatus.FORBIDDEN)
-            .body(response);
-    }
 }

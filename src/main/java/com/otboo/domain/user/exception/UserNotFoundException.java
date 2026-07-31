@@ -9,4 +9,8 @@ public class UserNotFoundException extends OtbooException {
   public UserNotFoundException(UUID userId) {
     super(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다: " + userId);
   }
+
+  public UserNotFoundException(String email) {
+    super(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다: " + email);
+  }
 }

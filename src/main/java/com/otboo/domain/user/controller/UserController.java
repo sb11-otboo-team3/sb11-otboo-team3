@@ -1,5 +1,7 @@
 package com.otboo.domain.user.controller;
 
+import com.otboo.domain.auth.service.AuthService;
+import com.otboo.domain.user.dto.ChangePasswordRequest;
 import com.otboo.domain.user.dto.UserCreateRequest;
 import com.otboo.domain.user.dto.UserDto;
 import com.otboo.domain.user.service.UserService;
@@ -24,6 +26,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class UserController {
 
   private final UserService userService;
+  private final AuthService authService;
 
   @PostMapping
   public ResponseEntity<UserDto> create(@Valid @RequestBody UserCreateRequest request) {
@@ -49,5 +52,14 @@ public class UserController {
   ) {
     UserDto response = userService.updateLock(userId, request);
     return ResponseEntity.ok(response);
+  }
+
+  @PatchMapping("/{userId}/password")
+  public ResponseEntity<Void> changePassword(
+      @PathVariable UUID userId,
+      @Valid @RequestBody ChangePasswordRequest request
+  ) {
+    authService.changePassword(userId, request);
+    return ResponseEntity.noContent().build();
   }
 }

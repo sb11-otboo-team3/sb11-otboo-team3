@@ -20,6 +20,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import com.otboo.domain.auth.jwt.JwtProvider;
@@ -138,5 +139,35 @@ class AuthControllerTest {
             .cookie(new jakarta.servlet.http.Cookie("REFRESH_TOKEN", "invalid-token"))
             .with(csrf()))
         .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  @DisplayName("비밀번호 초기화 요청이 성공하면 204를 반환한다")
+  void resetPasswordReturns204() throws Exception {
+    // when & then
+    mockMvc.perform(post("/api/auth/reset-password")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                            {"email":"resettest@otboo.io"}
+                            """)
+            .with(csrf()))
+        .andExpect(status().isNoContent());
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 이메일로 비밀번호 초기화 요청하면 404를 반환한다")
+  void resetPasswordWithNonExistentEmailReturns404() throws Exception {
+    // given
+    org.mockito.BDDMockito.willThrow(new com.otboo.domain.user.exception.UserNotFoundException("notfound@otboo.io"))
+        .given(authService).resetPassword(any());
+
+    // when & then
+    mockMvc.perform(post("/api/auth/reset-password")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                            {"email":"notfound@otboo.io"}
+                            """)
+            .with(csrf()))
+        .andExpect(status().isNotFound());
   }
 }
