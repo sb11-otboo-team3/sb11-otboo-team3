@@ -61,6 +61,7 @@ public class SecurityConfig {
             .requestMatchers(HttpMethod.POST, "/api/auth/sign-out").permitAll()
             .requestMatchers(HttpMethod.GET, "/api/auth/csrf-token").permitAll()
             .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+            .requestMatchers("/ws/**").permitAll()
             .requestMatchers(
                 "/swagger-ui/**",
                 "/swagger-ui.html",
