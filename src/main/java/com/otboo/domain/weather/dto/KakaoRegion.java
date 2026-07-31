@@ -1,4 +1,4 @@
-package com.otboo.domain.weather.client;
+package com.otboo.domain.weather.dto;
 
 public record KakaoRegion(
     String province,

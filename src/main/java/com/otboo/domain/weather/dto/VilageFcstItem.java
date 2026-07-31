@@ -1,4 +1,4 @@
-package com.otboo.domain.weather.client;
+package com.otboo.domain.weather.dto;
 
 import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
@@ -10,7 +10,7 @@ public record VilageFcstItem(
     LocalDateTime forecastAt,
     SkyStatus skyStatus,
     PrecipitationType precipitationType,
-    String precipitationAmountRaw,
+    Double precipitationAmount,
     Double precipitationProbability,
     Double humidity,
     Double temperature,

@@ -1,5 +1,6 @@
 package com.otboo.domain.weather.client;
 
+import com.otboo.domain.weather.dto.VilageFcstItem;
 import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
 import com.otboo.domain.weather.entity.WindStrength;
@@ -64,7 +65,7 @@ public class KmaWeatherClient {
         parseDateTime(first.fcstDate(), first.fcstTime()),
         mapSkyStatus(valuesByCategory.get("SKY")),
         mapPrecipitationType(valuesByCategory.get("PTY")),
-        valuesByCategory.get("PCP"),
+        parsePrecipitationAmount(valuesByCategory.get("PCP")),
         parseDoubleOrNull(valuesByCategory.get("POP")),
         parseDoubleOrNull(valuesByCategory.get("REH")),
         parseDoubleOrNull(valuesByCategory.get("TMP")),
@@ -80,6 +81,13 @@ public class KmaWeatherClient {
         LocalDate.parse(date, DateTimeFormatter.BASIC_ISO_DATE),
         LocalTime.parse(time, DateTimeFormatter.ofPattern("HHmm"))
     );
+  }
+
+  private Double parsePrecipitationAmount(String value) {
+    if (value == null || value.equals("-") || value.equals("강수없음")) {
+      return 0.0;
+    }
+    return parseDoubleOrNull(value);
   }
 
   private Double parseDoubleOrNull(String value) {

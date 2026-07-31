@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.otboo.domain.weather.dto.VilageFcstItem;
 import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
 import com.otboo.domain.weather.entity.WindStrength;
@@ -76,7 +77,7 @@ class KmaWeatherClientTest {
     assertThat(item.forecastAt()).isEqualTo(LocalDateTime.of(2026, 7, 30, 9, 0));
     assertThat(item.skyStatus()).isEqualTo(SkyStatus.CLEAR);
     assertThat(item.precipitationType()).isEqualTo(PrecipitationType.NONE);
-    assertThat(item.precipitationAmountRaw()).isEqualTo("강수없음");
+    assertThat(item.precipitationAmount()).isEqualTo(0.0);
     assertThat(item.precipitationProbability()).isEqualTo(20.0);
     assertThat(item.humidity()).isEqualTo(55.0);
     assertThat(item.temperature()).isEqualTo(23.0);

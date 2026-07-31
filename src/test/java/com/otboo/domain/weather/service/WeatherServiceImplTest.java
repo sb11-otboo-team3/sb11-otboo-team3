@@ -9,11 +9,23 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.otboo.domain.weather.cache.GridRecencyCache;
 import com.otboo.domain.weather.client.KakaoLocationClient;
-import com.otboo.domain.weather.client.KakaoRegion;
+import com.otboo.domain.weather.client.KmaWeatherClient;
+import com.otboo.domain.weather.dto.KakaoRegion;
+import com.otboo.domain.weather.dto.VilageFcstItem;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
+import com.otboo.domain.weather.dto.WeatherDto;
 import com.otboo.domain.weather.entity.Grid;
+import com.otboo.domain.weather.entity.PrecipitationType;
+import com.otboo.domain.weather.entity.SkyStatus;
+import com.otboo.domain.weather.entity.WindStrength;
 import com.otboo.domain.weather.repository.GridRepository;
 import com.otboo.domain.weather.util.GridConverter;
+import com.otboo.domain.weather.util.VilageFcstBaseTime;
+import com.otboo.domain.weather.util.VilageFcstBaseTimeResolver;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -40,6 +52,12 @@ class WeatherServiceImplTest {
   @Mock
   private GridSaver gridSaver;
 
+  @Mock
+  private VilageFcstBaseTimeResolver baseTimeResolver;
+
+  @Mock
+  private KmaWeatherClient kmaWeatherClient;
+
   private WeatherServiceImpl weatherService;
 
   @BeforeEach
@@ -49,7 +67,9 @@ class WeatherServiceImplTest {
         gridRepository,
         kakaoLocationClient,
         gridRecencyCache,
-        gridSaver
+        gridSaver,
+        baseTimeResolver,
+        kmaWeatherClient
     );
   }
 
@@ -161,5 +181,53 @@ class WeatherServiceImplTest {
     // then
     assertThat(result.locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
     verify(gridRecencyCache).markConfirmed(any());
+  }
+
+  @Test
+  @DisplayName("위경도로 조회하면 위치 정보와 기상청 예보를 조합해 목록을 반환한다")
+  void returnsWeatherListCombiningLocationAndForecast() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+
+    VilageFcstItem item = new VilageFcstItem(
+        LocalDateTime.of(2026, 7, 30, 5, 0),
+        LocalDateTime.of(2026, 7, 30, 9, 0),
+        SkyStatus.CLEAR,
+        PrecipitationType.NONE,
+        0.0,
+        20.0,
+        55.0,
+        23.0,
+        null,
+        null,
+        2.3,
+        WindStrength.WEAK
+    );
+    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(List.of(item));
+
+    // when
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+
+    // then
+    assertThat(result).hasSize(1);
+    WeatherDto dto = result.get(0);
+    assertThat(dto.location().locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
+    assertThat(dto.skyStatus()).isEqualTo(SkyStatus.CLEAR);
+    assertThat(dto.precipitation().type()).isEqualTo(PrecipitationType.NONE);
+    assertThat(dto.precipitation().amount()).isEqualTo(0.0);
+    assertThat(dto.precipitation().probability()).isEqualTo(20.0);
+    assertThat(dto.humidity().current()).isEqualTo(55.0);
+    assertThat(dto.temperature().current()).isEqualTo(23.0);
+    assertThat(dto.windSpeed().speed()).isEqualTo(2.3);
+    assertThat(dto.windSpeed().asWord()).isEqualTo(WindStrength.WEAK);
   }
 }
