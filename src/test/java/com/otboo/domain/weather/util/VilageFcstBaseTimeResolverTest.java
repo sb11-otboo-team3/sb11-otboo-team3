@@ -53,4 +53,32 @@ class VilageFcstBaseTimeResolverTest {
     assertThat(result.baseDate()).isEqualTo(LocalDate.of(2026, 7, 29));
     assertThat(result.baseTime()).isEqualTo(LocalTime.of(23, 0));
   }
+
+  @Test
+  @DisplayName("이전 발표시각을 구하면 같은 날의 한 슬롯 전을 반환한다")
+  void previousReturnsPriorSlotOnSameDay() {
+    // given
+    VilageFcstBaseTime current = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+
+    // when
+    VilageFcstBaseTime result = resolver.previous(current);
+
+    // then
+    assertThat(result.baseDate()).isEqualTo(LocalDate.of(2026, 7, 30));
+    assertThat(result.baseTime()).isEqualTo(LocalTime.of(2, 0));
+  }
+
+  @Test
+  @DisplayName("이전 발표시각이 하루의 첫 슬롯(02시)이면 전날의 마지막 슬롯(23시)을 반환한다")
+  void previousReturnsPreviousDayLastSlotWhenAtFirstSlot() {
+    // given
+    VilageFcstBaseTime current = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(2, 0));
+
+    // when
+    VilageFcstBaseTime result = resolver.previous(current);
+
+    // then
+    assertThat(result.baseDate()).isEqualTo(LocalDate.of(2026, 7, 29));
+    assertThat(result.baseTime()).isEqualTo(LocalTime.of(23, 0));
+  }
 }

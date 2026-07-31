@@ -34,4 +34,14 @@ public class VilageFcstBaseTimeResolver {
     LocalTime lastSlotOfDay = BASE_TIMES.get(BASE_TIMES.size() - 1);
     return new VilageFcstBaseTime(now.toLocalDate().minusDays(1), lastSlotOfDay);
   }
+
+  public VilageFcstBaseTime previous(VilageFcstBaseTime current) {
+    int index = BASE_TIMES.indexOf(current.baseTime());
+    if (index > 0) {
+      return new VilageFcstBaseTime(current.baseDate(), BASE_TIMES.get(index - 1));
+    }
+
+    LocalTime lastSlotOfDay = BASE_TIMES.get(BASE_TIMES.size() - 1);
+    return new VilageFcstBaseTime(current.baseDate().minusDays(1), lastSlotOfDay);
+  }
 }
