@@ -23,10 +23,11 @@ management:
       show-details: never
       show-components: never
 
-
-
-
 kakao:
   local:
     api-key: ${KAKAO_REST_API_KEY}
     base-url: https://dapi.kakao.com
+
+app:
+  websocket:
+    allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://localhost:3000,http://localhost:8080}
