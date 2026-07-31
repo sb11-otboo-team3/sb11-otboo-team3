@@ -85,7 +85,5 @@ uploads/
 cookies.txt
 
 ### md 파일 ###
-*.md
-
-### 개인 작업 노트 ###
+/CLAUDE.md
 notes/
