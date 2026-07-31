@@ -159,7 +159,7 @@ class ClothesAttributeDefinitionControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void 존재하지_않는_정의를_수정하면_404를_반환한다() throws Exception {
+    void 존재하지_않는_정의를_수정하면_400를_반환한다() throws Exception {
         // given
         UUID definitionId = UUID.randomUUID();
         ClothesAttributeDefinitionRequest request =
@@ -172,7 +172,7 @@ class ClothesAttributeDefinitionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request))
                         .with(csrf()))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isBadRequest());
     }
 
     @Test

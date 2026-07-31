@@ -22,10 +22,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 public class ClothesAttributeDefinitionServiceTest {
@@ -155,4 +155,138 @@ public class ClothesAttributeDefinitionServiceTest {
         assertThatThrownBy(() -> service.getList("createdAt", "invalidDirection", null))
                 .isInstanceOf(InvalidSortConditionException.class);
     }
+
+    @Test
+    void 수정_시_요청에_없는_기존_선택값은_논리_삭제된다() {
+        //given
+        UUID definitionId = UUID.randomUUID();
+        ClothesAttributeDefinition definition = new ClothesAttributeDefinition("색상");
+        AttributeSelectableValue red = new AttributeSelectableValue(definition, "빨강", 0);
+        AttributeSelectableValue blue = new AttributeSelectableValue(definition, "파랑", 1);
+
+        ClothesAttributeDefinitionRequest request = new ClothesAttributeDefinitionRequest("색상", List.of("빨강"));
+
+        given(definitionRepository.findById(definitionId)).willReturn(Optional.of(definition));
+        given(selectableValueRepository.findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(List.of(definition)))
+                .willReturn(List.of(red, blue));
+        given(selectableValueRepository.findByDefinitionAndValue(definition, "빨강"))
+                .willReturn(Optional.of(red));
+        given(mapper.toResponse(any(), any()))
+                .willReturn(new ClothesAttributeDefinitionResponse(definitionId, "색상", List.of("빨강"), null));
+
+        //when
+        service.update(definitionId, request);
+
+        //then
+        assertThat(blue.getDeletedAt()).isNotNull();
+        assertThat(red.getDeletedAt()).isNull();
+    }
+
+    @Test
+    void 수정_시_논리_삭제됐던_선택값을_다시_요청하면_복구된다() {
+        //given
+        UUID definitionId = UUID.randomUUID();
+        ClothesAttributeDefinition definition = new ClothesAttributeDefinition("색상");
+        AttributeSelectableValue green = new AttributeSelectableValue(definition, "초록", 0);
+        green.delete();
+
+        ClothesAttributeDefinitionRequest request = new ClothesAttributeDefinitionRequest("색상", List.of("초록"));
+
+        given(definitionRepository.findById(definitionId)).willReturn(Optional.of(definition));
+        given(selectableValueRepository.findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(List.of(definition)))
+                .willReturn(List.of());
+        given(selectableValueRepository.findByDefinitionAndValue(definition, "초록"))
+                .willReturn(Optional.of(green));
+        given(mapper.toResponse(any(), any()))
+                .willReturn(new ClothesAttributeDefinitionResponse(definitionId, "색상", List.of("초록"), null));
+
+        //when
+        service.update(definitionId, request);
+
+        //then
+        assertThat(green.getDeletedAt()).isNull();
+    }
+
+    @Test
+    void 수정_시_새로운_선택값은_새로_생성된다() {
+        //given
+        UUID definitionId = UUID.randomUUID();
+        ClothesAttributeDefinition definition = new ClothesAttributeDefinition("색상");
+
+        ClothesAttributeDefinitionRequest request = new ClothesAttributeDefinitionRequest("색상", List.of("노랑"));
+
+        given(definitionRepository.findById(definitionId)).willReturn(Optional.of(definition));
+        given(selectableValueRepository.findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(List.of(definition)))
+                .willReturn(List.of());
+        given(selectableValueRepository.findByDefinitionAndValue(definition, "노랑"))
+                .willReturn(Optional.empty());
+        given(selectableValueRepository.save(any(AttributeSelectableValue.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        given(mapper.toResponse(any(), any()))
+                .willReturn(new ClothesAttributeDefinitionResponse(definitionId, "색상", List.of("노랑"), null));
+
+        //when
+        service.update(definitionId, request);
+
+        //then
+        verify(selectableValueRepository).save(any(AttributeSelectableValue.class));
+    }
+
+    @Test
+    void 수정_시_요청_순서대로_displayOrder가_갱신된다() {
+        //given
+        UUID definitionId = UUID.randomUUID();
+        ClothesAttributeDefinition definition = new ClothesAttributeDefinition("색상");
+        AttributeSelectableValue red = new AttributeSelectableValue(definition, "빨강", 0);
+        AttributeSelectableValue blue = new AttributeSelectableValue(definition, "파랑", 1);
+
+        ClothesAttributeDefinitionRequest request = new ClothesAttributeDefinitionRequest("색상", List.of("파랑", "빨강"));
+
+        given(definitionRepository.findById(definitionId)).willReturn(Optional.of(definition));
+        given(selectableValueRepository.findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(List.of(definition)))
+                .willReturn(List.of(red, blue));
+        given(selectableValueRepository.findByDefinitionAndValue(definition, "빨강"))
+                .willReturn(Optional.of(red));
+        given(selectableValueRepository.findByDefinitionAndValue(definition, "파랑"))
+                .willReturn(Optional.of(blue));
+        given(mapper.toResponse(any(), any()))
+                .willReturn(new ClothesAttributeDefinitionResponse(definitionId, "색상", List.of("파랑", "빨강"), null));
+
+        //when
+        service.update(definitionId, request);
+
+        //then
+        assertThat(blue.getDisplayOrder()).isEqualTo(0);
+        assertThat(red.getDisplayOrder()).isEqualTo(1);
+    }
+
+    @Test
+    void 논리_삭제된_정의_재등록_시_요청한_선택값만_복구된다() {
+        //given
+        ClothesAttributeDefinition definition = new ClothesAttributeDefinition("색상");
+        definition.delete();
+        AttributeSelectableValue red = new AttributeSelectableValue(definition, "빨강", 0);
+        AttributeSelectableValue blue = new AttributeSelectableValue(definition, "파랑", 1);
+        red.delete();
+        blue.delete();
+
+        ClothesAttributeDefinitionRequest request =
+                new ClothesAttributeDefinitionRequest("색상", List.of("빨강"));
+
+        given(definitionRepository.findByName("색상")).willReturn(Optional.of(definition));
+        given(selectableValueRepository.findByDefinitionAndValue(definition, "빨강"))
+                .willReturn(Optional.of(red));
+        given(mapper.toResponse(any(), any()))
+                .willReturn(new ClothesAttributeDefinitionResponse(definition.getId(), "색상", List.of("빨강"),null));
+
+        //when
+        service.create(request);
+
+        //then
+        assertThat(definition.getDeletedAt()).isNull();
+        assertThat(red.getDeletedAt()).isNull();
+        assertThat(blue.getDeletedAt()).isNotNull();
+    }
+
+
 }

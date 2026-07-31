@@ -28,7 +28,7 @@ public class ClothesAttributeDefinitionService {
     private final ClothesAttributeDefinitionRepository definitionRepository;
     private final AttributeSelectableValueRepository selectableValueRepository;
     private final ClothesAttributeDefinitionMapper mapper;
-    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("createdAt");
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("createdAt", "name");
     private static final Set<String> ALLOWED_SORT_DIRECTIONS = Set.of("ASCENDING", "DESCENDING");
 
     public List<ClothesAttributeDefinitionResponse> getList(String sortBy, String sortDirection, String keywordLike) {

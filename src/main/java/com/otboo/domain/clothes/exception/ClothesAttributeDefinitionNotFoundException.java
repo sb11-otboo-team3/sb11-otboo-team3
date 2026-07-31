@@ -8,6 +8,6 @@ import java.util.UUID;
 public class ClothesAttributeDefinitionNotFoundException extends OtbooException {
 
     public ClothesAttributeDefinitionNotFoundException(UUID definitionId) {
-        super(HttpStatus.NOT_FOUND, "존재하지 않는 의상 속성 정의입니다: " + definitionId);
+        super(HttpStatus.BAD_REQUEST, "존재하지 않는 의상 속성 정의입니다: " + definitionId);
     }
 }
