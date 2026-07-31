@@ -4,7 +4,9 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
+import org.springframework.stereotype.Component;
 
+@Component
 public class VilageFcstBaseTimeResolver {
 
   //기상청 발표 시간

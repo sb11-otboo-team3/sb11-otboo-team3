@@ -30,3 +30,8 @@ kakao:
   local:
     api-key: ${KAKAO_REST_API_KEY}
     base-url: https://dapi.kakao.com
+
+kma:
+  vilage-fcst:
+    api-key: ${KMA_API_KEY}
+    base-url: https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0
