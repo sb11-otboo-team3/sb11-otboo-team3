@@ -2,6 +2,7 @@ package com.otboo.domain.user.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -21,6 +22,7 @@ import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.domain.user.service.UserService;
 import com.otboo.global.security.SecurityConfig;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,6 +30,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -308,5 +312,49 @@ class UserControllerTest {
                             """)
             .with(csrf()))
         .andExpect(status().isNotFound());
+  }
+
+  @Test
+  @DisplayName("8자 미만 비밀번호로 변경을 요청하면 400을 반환한다")
+  void changePasswordWithShortPasswordReturns400() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+    UsernamePasswordAuthenticationToken authentication =
+        new UsernamePasswordAuthenticationToken(
+            userId, null,
+            List.of(new SimpleGrantedAuthority("ROLE_USER"))
+        );
+
+    // when & then
+    mockMvc.perform(patch("/api/users/{userId}/password", userId)
+            .with(authentication(authentication))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                            {"password":"short1"}
+                            """)
+            .with(csrf()))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @DisplayName("8자 이상 비밀번호로 변경을 요청하면 204를 반환한다")
+  void changePasswordWithValidLengthPasswordReturns204() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+    UsernamePasswordAuthenticationToken authentication =
+        new UsernamePasswordAuthenticationToken(
+            userId, null,
+            List.of(new SimpleGrantedAuthority("ROLE_USER"))
+        );
+
+    // when & then
+    mockMvc.perform(patch("/api/users/{userId}/password", userId)
+            .with(authentication(authentication))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                            {"password":"validPassword1234"}
+                            """)
+            .with(csrf()))
+        .andExpect(status().isNoContent());
   }
 }
