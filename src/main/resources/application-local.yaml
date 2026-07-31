@@ -33,3 +33,9 @@ jwt:
 app:
   websocket:
     allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://localhost:3000,http://localhost:8080}
+
+
+kakao:
+  local:
+    api-key: ${KAKAO_REST_API_KEY:kakao-rest-api-key}
+    base-url: https://dapi.kakao.com
