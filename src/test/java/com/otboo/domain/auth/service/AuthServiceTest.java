@@ -23,6 +23,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
+import com.otboo.domain.auth.token.PasswordResetService;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -39,6 +40,9 @@ class AuthServiceTest {
   @Mock
   private RefreshTokenService refreshTokenService;
 
+  @Mock
+  private PasswordResetService passwordResetService;
+
   @InjectMocks
   private AuthService authService;
 
@@ -51,6 +55,7 @@ class AuthServiceTest {
 
     given(userRepository.findByEmail("test@otboo.io")).willReturn(Optional.of(user));
     given(passwordEncoder.matches("password1234", "encoded-password")).willReturn(true);
+    given(passwordResetService.find(any())).willReturn(Optional.empty());
     given(jwtProvider.createAccessToken(any(), any(), anyLong())).willReturn("access-token");
     given(refreshTokenService.issue(any(), anyLong())).willReturn("refresh-token-value");
 
@@ -84,6 +89,7 @@ class AuthServiceTest {
 
     given(userRepository.findByEmail("test@otboo.io")).willReturn(Optional.of(user));
     given(passwordEncoder.matches("wrong-password", "encoded-password")).willReturn(false);
+    given(passwordResetService.find(any())).willReturn(Optional.empty());
 
     // when & then
     assertThatThrownBy(() -> authService.signIn(request))
@@ -99,6 +105,7 @@ class AuthServiceTest {
     SignInRequest request = new SignInRequest("test@otboo.io", "password1234");
 
     given(userRepository.findByEmail("test@otboo.io")).willReturn(Optional.of(user));
+    given(passwordResetService.find(any())).willReturn(Optional.empty());
 
     // when & then
     assertThatThrownBy(() -> authService.signIn(request))
@@ -115,6 +122,7 @@ class AuthServiceTest {
 
     given(userRepository.findByEmail("test@otboo.io")).willReturn(Optional.of(user));
     given(passwordEncoder.matches("password1234", "encoded-password")).willReturn(true);
+    given(passwordResetService.find(any())).willReturn(Optional.empty());
     given(jwtProvider.createAccessToken(any(), any(), anyLong())).willReturn("access-token");
     given(refreshTokenService.issue(any(), anyLong())).willReturn("refresh-token-value");
 
