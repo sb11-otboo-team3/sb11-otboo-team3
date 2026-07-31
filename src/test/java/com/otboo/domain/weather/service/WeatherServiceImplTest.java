@@ -29,6 +29,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,6 +66,9 @@ class WeatherServiceImplTest {
   @Mock
   private WeatherRepository weatherRepository;
 
+  @Mock
+  private WeatherSaver weatherSaver;
+
   private WeatherServiceImpl weatherService;
 
   @BeforeEach
@@ -77,7 +81,8 @@ class WeatherServiceImplTest {
         gridSaver,
         baseTimeResolver,
         kmaWeatherClient,
-        weatherRepository
+        weatherRepository,
+        weatherSaver
     );
   }
 
@@ -233,6 +238,7 @@ class WeatherServiceImplTest {
     assertThat(dto.precipitation().type()).isEqualTo(PrecipitationType.NONE);
     assertThat(dto.precipitation().amount()).isEqualTo(0.0);
     assertThat(dto.precipitation().probability()).isEqualTo(20.0);
+    verify(weatherSaver).saveInNewTransaction(any(Weather.class));
     assertThat(dto.humidity().current()).isEqualTo(55.0);
     assertThat(dto.temperature().current()).isEqualTo(23.0);
     assertThat(dto.windSpeed().speed()).isEqualTo(2.3);
@@ -278,5 +284,105 @@ class WeatherServiceImplTest {
     assertThat(result).hasSize(1);
     assertThat(result.get(0).skyStatus()).isEqualTo(SkyStatus.CLEAR);
     verifyNoInteractions(kmaWeatherClient);
+  }
+
+  @Test
+  @DisplayName("하루 전 같은 시각 기록이 있으면 전일 대비 값을 계산해서 저장한다")
+  void computesComparedToDayBeforeWhenYesterdayRecordExists() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+
+    VilageFcstItem item = new VilageFcstItem(
+        LocalDateTime.of(2026, 7, 30, 5, 0),
+        LocalDateTime.of(2026, 7, 30, 9, 0),
+        SkyStatus.CLEAR,
+        PrecipitationType.NONE,
+        0.0,
+        20.0,
+        55.0,
+        23.0,
+        null,
+        null,
+        2.3,
+        WindStrength.WEAK
+    );
+    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(List.of(item));
+
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Instant dayBeforeForecastAt = forecastAt.minus(1, ChronoUnit.DAYS);
+    Weather yesterday = Weather.builder()
+        .grid(existingGrid)
+        .forecastedAt(dayBeforeForecastAt)
+        .forecastAt(dayBeforeForecastAt)
+        .skyStatus(SkyStatus.CLOUDY)
+        .precipitationType(PrecipitationType.NONE)
+        .humidityCurrent(50.0)
+        .temperatureCurrent(20.0)
+        .build();
+    given(weatherRepository.findByGridAndForecastAt(existingGrid, dayBeforeForecastAt))
+        .willReturn(Optional.of(yesterday));
+
+    // when
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+
+    // then
+    ArgumentCaptor<Weather> captor = ArgumentCaptor.forClass(Weather.class);
+    verify(weatherSaver).saveInNewTransaction(captor.capture());
+    Weather saved = captor.getValue();
+    assertThat(saved.getHumidityComparedToDayBefore()).isEqualTo(5.0);
+    assertThat(saved.getTemperatureComparedToDayBefore()).isEqualTo(3.0);
+
+    assertThat(result.get(0).humidity().comparedToDayBefore()).isEqualTo(5.0);
+    assertThat(result.get(0).temperature().comparedToDayBefore()).isEqualTo(3.0);
+  }
+
+  @Test
+  @DisplayName("동시에 같은 예보가 먼저 저장돼 유니크 제약 위반이 나도, 이미 확보한 예보로 정상 반환한다")
+  void returnsFreshForecastEvenWhenConcurrentSaveConflicts() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+
+    VilageFcstItem item = new VilageFcstItem(
+        LocalDateTime.of(2026, 7, 30, 5, 0),
+        LocalDateTime.of(2026, 7, 30, 9, 0),
+        SkyStatus.CLEAR,
+        PrecipitationType.NONE,
+        0.0,
+        20.0,
+        55.0,
+        23.0,
+        null,
+        null,
+        2.3,
+        WindStrength.WEAK
+    );
+    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(List.of(item));
+    Mockito.doThrow(new DataIntegrityViolationException("duplicate key"))
+        .when(weatherSaver).saveInNewTransaction(any(Weather.class));
+
+    // when
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+
+    // then
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).skyStatus()).isEqualTo(SkyStatus.CLEAR);
   }
 }

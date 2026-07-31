@@ -72,7 +72,7 @@ public class KmaWeatherClient {
         parseDoubleOrNull(valuesByCategory.get("TMN")),
         parseDoubleOrNull(valuesByCategory.get("TMX")),
         windSpeed,
-        mapWindStrength(windSpeed)
+        WindStrength.fromSpeed(windSpeed)
     );
   }
 
@@ -125,19 +125,6 @@ public class KmaWeatherClient {
       case "4" -> PrecipitationType.SHOWER;
       default -> null;
     };
-  }
-
-  private WindStrength mapWindStrength(Double windSpeed) {
-    if (windSpeed == null) {
-      return null;
-    }
-    if (windSpeed < 4.0) {
-      return WindStrength.WEAK;
-    }
-    if (windSpeed < 9.0) {
-      return WindStrength.MODERATE;
-    }
-    return WindStrength.STRONG;
   }
 
   private record KmaApiResponse(Response response) {
