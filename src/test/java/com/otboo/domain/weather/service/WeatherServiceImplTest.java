@@ -17,14 +17,18 @@ import com.otboo.domain.weather.dto.WeatherDto;
 import com.otboo.domain.weather.entity.Grid;
 import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
+import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.entity.WindStrength;
 import com.otboo.domain.weather.repository.GridRepository;
+import com.otboo.domain.weather.repository.WeatherRepository;
 import com.otboo.domain.weather.util.GridConverter;
 import com.otboo.domain.weather.util.VilageFcstBaseTime;
 import com.otboo.domain.weather.util.VilageFcstBaseTimeResolver;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -58,6 +62,9 @@ class WeatherServiceImplTest {
   @Mock
   private KmaWeatherClient kmaWeatherClient;
 
+  @Mock
+  private WeatherRepository weatherRepository;
+
   private WeatherServiceImpl weatherService;
 
   @BeforeEach
@@ -69,7 +76,8 @@ class WeatherServiceImplTest {
         gridRecencyCache,
         gridSaver,
         baseTimeResolver,
-        kmaWeatherClient
+        kmaWeatherClient,
+        weatherRepository
     );
   }
 
@@ -229,5 +237,46 @@ class WeatherServiceImplTest {
     assertThat(dto.temperature().current()).isEqualTo(23.0);
     assertThat(dto.windSpeed().speed()).isEqualTo(2.3);
     assertThat(dto.windSpeed().asWord()).isEqualTo(WindStrength.WEAK);
+  }
+
+  @Test
+  @DisplayName("이미 이 발표시각의 예보가 저장되어 있으면 기상청을 다시 호출하지 않는다")
+  void reusesStoredForecastsWhenAlreadyFetchedForThisBaseTime() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+
+    Instant forecastedAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Weather existingWeather = Weather.builder()
+        .grid(existingGrid)
+        .forecastedAt(forecastedAt)
+        .forecastAt(forecastAt)
+        .skyStatus(SkyStatus.CLEAR)
+        .precipitationType(PrecipitationType.NONE)
+        .precipitationAmount(0.0)
+        .precipitationProbability(20.0)
+        .humidityCurrent(55.0)
+        .temperatureCurrent(23.0)
+        .windSpeed(2.3)
+        .build();
+    given(weatherRepository.findByGridAndForecastedAt(existingGrid, forecastedAt))
+        .willReturn(List.of(existingWeather));
+
+    // when
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+
+    // then
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).skyStatus()).isEqualTo(SkyStatus.CLEAR);
+    verifyNoInteractions(kmaWeatherClient);
   }
 }
