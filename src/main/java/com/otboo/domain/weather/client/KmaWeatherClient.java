@@ -23,12 +23,13 @@ public class KmaWeatherClient {
     this.restClient = restClient;
     this.apiKey = apiKey;
   }
-
+//격자 단위, 현재 가지고 예보 발표 시간을 통해 기상청 api로부터 날씨 데이터를 가져온다.
   public List<VilageFcstItem> getForecast(int nx, int ny, VilageFcstBaseTime baseTime) {
+    //발표 시간 맞추기
     String baseDate = baseTime.baseDate().format(DateTimeFormatter.BASIC_ISO_DATE);
     String baseTimeValue = baseTime.baseTime().format(DateTimeFormatter.ofPattern("HHmm"));
 
-    KmaApiResponse response = restClient.get()
+    KmaApiResponse response = restClient.get() // 요청 보내기
         .uri(uriBuilder -> uriBuilder
             .path("/getVilageFcst")
             .queryParam("authKey", apiKey)
@@ -44,20 +45,21 @@ public class KmaWeatherClient {
         .body(KmaApiResponse.class);
 
     List<Item> items = response.response().body().items().item();
+    //응답 중첩된걸 벗겨내고 핵심만 가져오기
 
-    Map<String, List<Item>> groupedByForecastSlot = items.stream()
+    Map<String, List<Item>> groupedByForecastSlot = items.stream() //예보 대상 시간별로 데이터들 모으기.
         .collect(Collectors.groupingBy(item -> item.fcstDate() + item.fcstTime()));
 
-    return groupedByForecastSlot.values().stream()
+    return groupedByForecastSlot.values().stream() //VilageFcstItem Dto 리스트로 묶어 가져오기.
         .map(this::toVilageFcstItem)
         .toList();
   }
 
   private VilageFcstItem toVilageFcstItem(List<Item> group) {
-    Map<String, String> valuesByCategory = group.stream()
+    Map<String, String> valuesByCategory = group.stream() //묶음을 카테고리:값으로 변환.
         .collect(Collectors.toMap(Item::category, Item::fcstValue));
 
-    Item first = group.get(0);
+    Item first = group.get(0); //묶음의 첫줄에서 값 가져오기.
     Double windSpeed = parseDoubleOrNull(valuesByCategory.get("WSD"));
 
     return new VilageFcstItem(
@@ -83,6 +85,7 @@ public class KmaWeatherClient {
     );
   }
 
+  //강수량이 null또는 문자열 강수없음 등 으로 올때 0으로 변환
   private Double parsePrecipitationAmount(String value) {
     if (value == null || value.equals("-") || value.equals("강수없음")) {
       return 0.0;
@@ -90,6 +93,7 @@ public class KmaWeatherClient {
     return parseDoubleOrNull(value);
   }
 
+  //double 또는 null값만 유효
   private Double parseDoubleOrNull(String value) {
     if (value == null) {
       return null;
@@ -101,6 +105,7 @@ public class KmaWeatherClient {
     }
   }
 
+  // 기상청 api에서는 숫자로 하늘 상태를 알려줍니다. 그걸 변환
   private SkyStatus mapSkyStatus(String code) {
     if (code == null) {
       return null;
@@ -113,6 +118,7 @@ public class KmaWeatherClient {
     };
   }
 
+  //마찬가지로 비 상태 또한 숫자로 내려주는걸 변환
   private PrecipitationType mapPrecipitationType(String code) {
     if (code == null) {
       return null;

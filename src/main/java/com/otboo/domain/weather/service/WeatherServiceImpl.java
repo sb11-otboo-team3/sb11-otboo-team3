@@ -57,6 +57,7 @@ public class WeatherServiceImpl implements WeatherService {
     // 카카오에서 조회
     KakaoRegion region = kakaoLocationClient.getRegion(latitude, longitude);
 
+    //최근 접근 한적 있는 격자인지 캐시에서 체크.(너무 많은 최근 접근한 지역인지 DB 접근을 줄이기 위해)
     if (gridRecencyCache.isRecentlyConfirmed(grid)) {
       return toDto(latitude, longitude, grid, region);
     }
@@ -85,6 +86,7 @@ public class WeatherServiceImpl implements WeatherService {
   @Override
   public List<WeatherDto> getWeathers(double latitude, double longitude) {
     WeatherAPILocation location = getLocation(latitude, longitude);
+
     Grid grid = gridRepository.findByXAndY(location.x(), location.y())
         .orElseThrow(() -> new IllegalStateException("격자가 등록되어 있지 않습니다: x=" + location.x() + ", y=" + location.y()));
 

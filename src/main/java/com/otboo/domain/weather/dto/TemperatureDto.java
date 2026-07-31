@@ -1,10 +1,10 @@
 package com.otboo.domain.weather.dto;
 
 public record TemperatureDto(
-    double current,
-    double comparedToDayBefore,
-    double min,
-    double max
+    double current, //현재 온도
+    double comparedToDayBefore, //전날과의 비교
+    double min, //일일 최대 온도
+    double max // 일일 최저 온도
 ) {
 
 }

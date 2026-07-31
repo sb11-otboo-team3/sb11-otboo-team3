@@ -14,11 +14,13 @@ public class WeatherControllerImpl implements WeatherController {
   private final WeatherService weatherService;
 
   @Override
+  //카카오 api를 통해 현재 위치의 행정구역을 가져오는 api
   public WeatherAPILocation getLocation(double longitude, double latitude) {
     return weatherService.getLocation(latitude, longitude);
   }
 
   @Override
+  //기상청 api를 통해 현재 위치의 날씨를 가져오는 api
   public List<WeatherDto> getWeathers(double latitude, double longitude) {
     return weatherService.getWeathers(latitude, longitude);
   }
