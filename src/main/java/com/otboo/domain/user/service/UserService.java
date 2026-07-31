@@ -11,6 +11,10 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.otboo.domain.user.dto.UserLockUpdateRequest;
+import com.otboo.domain.user.dto.UserRoleUpdateRequest;
+import com.otboo.domain.user.exception.UserNotFoundException;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -44,6 +48,30 @@ public class UserService {
     }
 
     return UserDto.from(saved);
+  }
+
+  @Transactional
+  public UserDto changeRole(UUID userId, UserRoleUpdateRequest request) {
+    User user = userRepository.findById(userId)
+        .orElseThrow(() -> new UserNotFoundException(userId));
+
+    user.changeRole(request.role());
+
+    return UserDto.from(user);
+  }
+
+  @Transactional
+  public UserDto updateLock(UUID userId, UserLockUpdateRequest request) {
+    User user = userRepository.findById(userId)
+        .orElseThrow(() -> new UserNotFoundException(userId));
+
+    if (request.locked()) {
+      user.lock();
+    } else {
+      user.unlock();
+    }
+
+    return UserDto.from(user);
   }
 
   private boolean isEmailUniqueViolation(DataIntegrityViolationException e) {
