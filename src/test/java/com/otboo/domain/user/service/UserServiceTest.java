@@ -125,6 +125,7 @@ class UserServiceTest {
     User user = User.create("roletest@otboo.io", "권한테스트", "encoded-password");
     UUID userId = UUID.randomUUID();
     ReflectionTestUtils.setField(user, "id", userId);
+    long versionBeforeChange = user.getTokenVersion();
 
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
 
@@ -135,6 +136,7 @@ class UserServiceTest {
 
     // then
     assertThat(result.role()).isEqualTo(UserRole.ADMIN);
+    assertThat(user.getTokenVersion()).isEqualTo(versionBeforeChange + 1);
   }
 
   @Test
@@ -158,6 +160,7 @@ class UserServiceTest {
     User user = User.create("locktest@otboo.io", "잠금테스트", "encoded-password");
     UUID userId = UUID.randomUUID();
     ReflectionTestUtils.setField(user, "id", userId);
+    long versionBeforeLock = user.getTokenVersion();
 
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
 
@@ -168,6 +171,7 @@ class UserServiceTest {
 
     // then
     assertThat(result.locked()).isTrue();
+    assertThat(user.getTokenVersion()).isEqualTo(versionBeforeLock + 1);
   }
 
   @Test
@@ -178,6 +182,7 @@ class UserServiceTest {
     user.lock();
     UUID userId = UUID.randomUUID();
     ReflectionTestUtils.setField(user, "id", userId);
+    long versionAfterLock = user.getTokenVersion();
 
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
 
@@ -188,6 +193,7 @@ class UserServiceTest {
 
     // then
     assertThat(result.locked()).isFalse();
+    assertThat(user.getTokenVersion()).isEqualTo(versionAfterLock + 1);
   }
 
   @Test
@@ -203,4 +209,6 @@ class UserServiceTest {
     assertThatThrownBy(() -> userService.updateLock(userId, request))
         .isInstanceOf(UserNotFoundException.class);
   }
+
+
 }
