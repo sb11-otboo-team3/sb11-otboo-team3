@@ -315,8 +315,8 @@ class UserControllerTest {
   }
 
   @Test
-  @DisplayName("8자 미만 비밀번호로 변경을 요청하면 400을 반환한다")
-  void changePasswordWithShortPasswordReturns400() throws Exception {
+  @DisplayName("6자 미만 비밀번호로 변경을 요청하면 400을 반환한다")
+  void changePasswordWithTooShortPasswordReturns400() throws Exception {
     // given
     UUID userId = UUID.randomUUID();
     UsernamePasswordAuthenticationToken authentication =
@@ -330,15 +330,15 @@ class UserControllerTest {
             .with(authentication(authentication))
             .contentType(MediaType.APPLICATION_JSON)
             .content("""
-                            {"password":"short1"}
+                            {"password":"abc12"}
                             """)
             .with(csrf()))
         .andExpect(status().isBadRequest());
   }
 
   @Test
-  @DisplayName("8자 이상 비밀번호로 변경을 요청하면 204를 반환한다")
-  void changePasswordWithValidLengthPasswordReturns204() throws Exception {
+  @DisplayName("영문자가 없는 비밀번호로 변경을 요청하면 400을 반환한다")
+  void changePasswordWithoutLetterReturns400() throws Exception {
     // given
     UUID userId = UUID.randomUUID();
     UsernamePasswordAuthenticationToken authentication =
@@ -352,7 +352,73 @@ class UserControllerTest {
             .with(authentication(authentication))
             .contentType(MediaType.APPLICATION_JSON)
             .content("""
-                            {"password":"validPassword1234"}
+                            {"password":"123456"}
+                            """)
+            .with(csrf()))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @DisplayName("숫자가 없는 비밀번호로 변경을 요청하면 400을 반환한다")
+  void changePasswordWithoutDigitReturns400() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+    UsernamePasswordAuthenticationToken authentication =
+        new UsernamePasswordAuthenticationToken(
+            userId, null,
+            List.of(new SimpleGrantedAuthority("ROLE_USER"))
+        );
+
+    // when & then
+    mockMvc.perform(patch("/api/users/{userId}/password", userId)
+            .with(authentication(authentication))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                            {"password":"abcdef"}
+                            """)
+            .with(csrf()))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @DisplayName("허용되지 않은 특수문자가 포함된 비밀번호로 변경을 요청하면 400을 반환한다")
+  void changePasswordWithDisallowedSpecialCharacterReturns400() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+    UsernamePasswordAuthenticationToken authentication =
+        new UsernamePasswordAuthenticationToken(
+            userId, null,
+            List.of(new SimpleGrantedAuthority("ROLE_USER"))
+        );
+
+    // when & then
+    mockMvc.perform(patch("/api/users/{userId}/password", userId)
+            .with(authentication(authentication))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                            {"password":"abc123#"}
+                            """)
+            .with(csrf()))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @DisplayName("유효한 비밀번호로 변경을 요청하면 204를 반환한다")
+  void changePasswordWithValidPasswordReturns204() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+    UsernamePasswordAuthenticationToken authentication =
+        new UsernamePasswordAuthenticationToken(
+            userId, null,
+            List.of(new SimpleGrantedAuthority("ROLE_USER"))
+        );
+
+    // when & then
+    mockMvc.perform(patch("/api/users/{userId}/password", userId)
+            .with(authentication(authentication))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                            {"password":"abc123!"}
                             """)
             .with(csrf()))
         .andExpect(status().isNoContent());
