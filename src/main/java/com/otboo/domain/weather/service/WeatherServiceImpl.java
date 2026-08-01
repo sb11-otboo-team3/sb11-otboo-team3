@@ -2,6 +2,7 @@ package com.otboo.domain.weather.service;
 
 import com.otboo.domain.weather.cache.GridRecencyCache;
 import com.otboo.domain.weather.cache.WeatherForecastCache;
+import com.otboo.domain.weather.cache.WeatherForecastCache;
 import com.otboo.domain.weather.client.KakaoLocationClient;
 import com.otboo.domain.weather.client.KmaWeatherClient;
 import com.otboo.domain.weather.dto.HumidityDto;
@@ -53,6 +54,7 @@ public class WeatherServiceImpl implements WeatherService {
   private final WeatherSaver weatherSaver;
   private final DailyForecastSelector dailyForecastSelector;
   private final Clock clock;
+  private final WeatherForecastCache weatherForecastCache;
 
   @Override
   @Transactional
@@ -91,27 +93,50 @@ public class WeatherServiceImpl implements WeatherService {
   @Override
   public List<WeatherDto> getWeathers(double latitude, double longitude) {
     WeatherAPILocation location = getLocation(latitude, longitude);
-
-    Grid grid = gridRepository.findByXAndY(location.x(), location.y())
-        .orElseThrow(() -> new IllegalStateException("격자가 등록되어 있지 않습니다: x=" + location.x() + ", y=" + location.y()));
+    WeatherGrid weatherGrid = new WeatherGrid(location.x(), location.y());
 
     VilageFcstBaseTime baseTime = baseTimeResolver.resolve(LocalDateTime.now(clock));
     Instant forecastedAt = baseTime.baseDate().atTime(baseTime.baseTime()).atZone(KST).toInstant();
 
-    List<Weather> existing = weatherRepository.findByGridAndForecastedAt(grid, forecastedAt);
+    Optional<List<WeatherDto>> cached = weatherForecastCache.find(weatherGrid, forecastedAt);
     List<WeatherDto> allForecasts;
-    if (!existing.isEmpty()) {
-      allForecasts = existing.stream()
-          .map(weather -> toWeatherDto(weather, location))
+    if (cached.isPresent()) {
+      allForecasts = cached.get().stream()
+          .map(dto -> withLocation(dto, location))
           .toList();
     } else {
-      List<VilageFcstItem> forecasts = kmaWeatherClient.getForecast(location.x(), location.y(), baseTime);
-      allForecasts = forecasts.stream()
-          .map(item -> saveAndConvert(item, grid, location))
-          .toList();
+      Grid grid = gridRepository.findByXAndY(location.x(), location.y())
+          .orElseThrow(() -> new IllegalStateException("격자가 등록되어 있지 않습니다: x=" + location.x() + ", y=" + location.y()));
+
+      List<Weather> existing = weatherRepository.findByGridAndForecastedAt(grid, forecastedAt);
+      if (!existing.isEmpty()) {
+        allForecasts = existing.stream()
+            .map(weather -> toWeatherDto(weather, location))
+            .toList();
+      } else {
+        List<VilageFcstItem> forecasts = kmaWeatherClient.getForecast(location.x(), location.y(), baseTime);
+        allForecasts = forecasts.stream()
+            .map(item -> saveAndConvert(item, grid, location))
+            .toList();
+      }
+      weatherForecastCache.save(weatherGrid, forecastedAt, allForecasts);
     }
 
     return dailyForecastSelector.select(allForecasts, clock.instant());
+  }
+
+  private WeatherDto withLocation(WeatherDto dto, WeatherAPILocation location) {
+    return new WeatherDto(
+        dto.id(),
+        dto.forecastedAt(),
+        dto.forecastAt(),
+        location,
+        dto.skyStatus(),
+        dto.precipitation(),
+        dto.humidity(),
+        dto.temperature(),
+        dto.windSpeed()
+    );
   }
 
   private WeatherDto saveAndConvert(VilageFcstItem item, Grid grid, WeatherAPILocation location) {
