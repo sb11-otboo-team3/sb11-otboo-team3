@@ -2,7 +2,6 @@ package com.otboo.domain.weather.service;
 
 import com.otboo.domain.weather.cache.GridRecencyCache;
 import com.otboo.domain.weather.cache.WeatherForecastCache;
-import com.otboo.domain.weather.cache.WeatherForecastCache;
 import com.otboo.domain.weather.client.KakaoLocationClient;
 import com.otboo.domain.weather.client.KmaWeatherClient;
 import com.otboo.domain.weather.dto.HumidityDto;
@@ -16,6 +15,7 @@ import com.otboo.domain.weather.dto.WindSpeedDto;
 import com.otboo.domain.weather.entity.Grid;
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.entity.WindStrength;
+import com.otboo.domain.weather.exception.KmaApiException;
 import com.otboo.domain.weather.repository.GridRepository;
 import com.otboo.domain.weather.repository.WeatherRepository;
 import com.otboo.domain.weather.util.DailyForecastSelector;
@@ -113,16 +113,46 @@ public class WeatherServiceImpl implements WeatherService {
         allForecasts = existing.stream()
             .map(weather -> toWeatherDto(weather, location))
             .toList();
+        weatherForecastCache.save(weatherGrid, forecastedAt, allForecasts);
       } else {
-        List<VilageFcstItem> forecasts = kmaWeatherClient.getForecast(location.x(), location.y(), baseTime);
-        allForecasts = forecasts.stream()
-            .map(item -> saveAndConvert(item, grid, location))
-            .toList();
+        try {
+          List<VilageFcstItem> forecasts = kmaWeatherClient.getForecast(location.x(), location.y(), baseTime);
+          allForecasts = forecasts.stream()
+              .map(item -> saveAndConvert(item, grid, location))
+              .toList();
+          weatherForecastCache.save(weatherGrid, forecastedAt, allForecasts);
+        } catch (KmaApiException e) {
+          log.error("기상청 호출 실패 - 이전 판으로 폴백 시도, x={}, y={}, baseTime={}",
+              weatherGrid.x(), weatherGrid.y(), baseTime, e);
+          allForecasts = fallbackToPreviousForecast(weatherGrid, grid, baseTime, location)
+              .orElseThrow(() -> e);
+        }
       }
-      weatherForecastCache.save(weatherGrid, forecastedAt, allForecasts);
     }
 
     return dailyForecastSelector.select(allForecasts, clock.instant());
+  }
+
+  private Optional<List<WeatherDto>> fallbackToPreviousForecast(
+      WeatherGrid weatherGrid, Grid grid, VilageFcstBaseTime baseTime, WeatherAPILocation location
+  ) {
+    VilageFcstBaseTime previousBaseTime = baseTimeResolver.previous(baseTime);
+    Instant previousForecastedAt = previousBaseTime.baseDate().atTime(previousBaseTime.baseTime()).atZone(KST).toInstant();
+
+    Optional<List<WeatherDto>> cached = weatherForecastCache.find(weatherGrid, previousForecastedAt);
+    if (cached.isPresent()) {
+      return Optional.of(cached.get().stream()
+          .map(dto -> withLocation(dto, location))
+          .toList());
+    }
+
+    List<Weather> previous = weatherRepository.findByGridAndForecastedAt(grid, previousForecastedAt);
+    if (previous.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(previous.stream()
+        .map(weather -> toWeatherDto(weather, location))
+        .toList());
   }
 
   private WeatherDto withLocation(WeatherDto dto, WeatherAPILocation location) {

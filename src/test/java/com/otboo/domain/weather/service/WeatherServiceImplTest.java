@@ -599,6 +599,9 @@ class WeatherServiceImplTest {
     given(kmaWeatherClient.getForecast(60, 127, baseTime))
         .willThrow(new KmaApiException(60, 127, baseTime, new RuntimeException("기상청 장애")));
 
+    Instant forecastedAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    given(weatherForecastCache.find(new WeatherGrid(60, 127), forecastedAt)).willReturn(Optional.empty());
+
     Instant previousForecastedAt = LocalDateTime.of(2026, 7, 30, 2, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
     Instant previousForecastAt = LocalDateTime.of(2026, 7, 30, 6, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
     WeatherDto cachedPrevious = new WeatherDto(
@@ -643,6 +646,9 @@ class WeatherServiceImplTest {
 
     given(kmaWeatherClient.getForecast(60, 127, baseTime))
         .willThrow(new KmaApiException(60, 127, baseTime, new RuntimeException("기상청 장애")));
+
+    Instant forecastedAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    given(weatherRepository.findByGridAndForecastedAt(existingGrid, forecastedAt)).willReturn(List.of());
 
     Instant previousForecastedAt = LocalDateTime.of(2026, 7, 30, 2, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
     Instant previousForecastAt = LocalDateTime.of(2026, 7, 30, 6, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();

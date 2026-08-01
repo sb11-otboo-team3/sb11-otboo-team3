@@ -4,6 +4,7 @@ import com.otboo.domain.weather.dto.VilageFcstItem;
 import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
 import com.otboo.domain.weather.entity.WindStrength;
+import com.otboo.domain.weather.exception.KmaApiException;
 import com.otboo.domain.weather.util.VilageFcstBaseTime;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 public class KmaWeatherClient {
 
@@ -29,20 +31,25 @@ public class KmaWeatherClient {
     String baseDate = baseTime.baseDate().format(DateTimeFormatter.BASIC_ISO_DATE);
     String baseTimeValue = baseTime.baseTime().format(DateTimeFormatter.ofPattern("HHmm"));
 
-    KmaApiResponse response = restClient.get() // 요청 보내기
-        .uri(uriBuilder -> uriBuilder
-            .path("/getVilageFcst")
-            .queryParam("authKey", apiKey)
-            .queryParam("numOfRows", 1000)
-            .queryParam("pageNo", 1)
-            .queryParam("dataType", "JSON")
-            .queryParam("base_date", baseDate)
-            .queryParam("base_time", baseTimeValue)
-            .queryParam("nx", nx)
-            .queryParam("ny", ny)
-            .build())
-        .retrieve()
-        .body(KmaApiResponse.class);
+    KmaApiResponse response;
+    try {
+      response = restClient.get() // 요청 보내기
+          .uri(uriBuilder -> uriBuilder
+              .path("/getVilageFcst")
+              .queryParam("authKey", apiKey)
+              .queryParam("numOfRows", 1000)
+              .queryParam("pageNo", 1)
+              .queryParam("dataType", "JSON")
+              .queryParam("base_date", baseDate)
+              .queryParam("base_time", baseTimeValue)
+              .queryParam("nx", nx)
+              .queryParam("ny", ny)
+              .build())
+          .retrieve()
+          .body(KmaApiResponse.class);
+    } catch (RestClientException e) {
+      throw new KmaApiException(nx, ny, baseTime, e);
+    }
 
     List<Item> items = response.response().body().items().item();
     //응답 중첩된걸 벗겨내고 핵심만 가져오기
