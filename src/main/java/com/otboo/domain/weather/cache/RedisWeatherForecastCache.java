@@ -22,7 +22,7 @@ public class RedisWeatherForecastCache implements WeatherForecastCache {
 
   private static final String KEY_PREFIX = "weather:";
   private static final String DELIMITER = ":";
-  private static final Duration TTL = Duration.ofHours(3);
+  private static final Duration TTL = Duration.ofHours(3); //TTL 3시간.
 
   private final StringRedisTemplate redisTemplate;
   private final ObjectMapper objectMapper;

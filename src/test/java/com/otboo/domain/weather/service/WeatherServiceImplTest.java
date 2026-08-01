@@ -1,6 +1,7 @@
 package com.otboo.domain.weather.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -25,6 +26,7 @@ import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.entity.WindStrength;
+import com.otboo.domain.weather.exception.KmaApiException;
 import com.otboo.domain.weather.repository.GridRepository;
 import com.otboo.domain.weather.repository.WeatherRepository;
 import com.otboo.domain.weather.util.DailyForecastSelector;
@@ -575,5 +577,121 @@ class WeatherServiceImplTest {
     // then
     verify(weatherForecastCache).save(eq(new WeatherGrid(60, 127)), eq(forecastedAt), any());
     verifyNoInteractions(kmaWeatherClient);
+  }
+
+  @Test
+  @DisplayName("기상청 호출이 실패해도 캐시에 이전 판 데이터가 있으면 그걸로 폴백한다")
+  void fallsBackToCachedPreviousForecastWhenKmaCallFails() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+    VilageFcstBaseTime previousBaseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(2, 0));
+    given(baseTimeResolver.previous(baseTime)).willReturn(previousBaseTime);
+
+    given(kmaWeatherClient.getForecast(60, 127, baseTime))
+        .willThrow(new KmaApiException(60, 127, baseTime, new RuntimeException("기상청 장애")));
+
+    Instant previousForecastedAt = LocalDateTime.of(2026, 7, 30, 2, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Instant previousForecastAt = LocalDateTime.of(2026, 7, 30, 6, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    WeatherDto cachedPrevious = new WeatherDto(
+        null,
+        previousForecastedAt,
+        previousForecastAt,
+        null,
+        SkyStatus.CLEAR,
+        new PrecipitationDto(PrecipitationType.NONE, 0.0, 20.0),
+        new HumidityDto(55.0, 0.0),
+        new TemperatureDto(23.0, 0.0, 20.0, 26.0),
+        new WindSpeedDto(2.3, WindStrength.WEAK)
+    );
+    given(weatherForecastCache.find(new WeatherGrid(60, 127), previousForecastedAt))
+        .willReturn(Optional.of(List.of(cachedPrevious)));
+
+    // when
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+
+    // then
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).forecastedAt()).isEqualTo(previousForecastedAt);
+    assertThat(result.get(0).location().locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
+  }
+
+  @Test
+  @DisplayName("기상청 호출이 실패하고 캐시에도 없지만 DB에 이전 판 데이터가 있으면 그걸로 폴백한다")
+  void fallsBackToDbStoredPreviousForecastWhenKmaCallFailsAndCacheEmpty() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+    VilageFcstBaseTime previousBaseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(2, 0));
+    given(baseTimeResolver.previous(baseTime)).willReturn(previousBaseTime);
+
+    given(kmaWeatherClient.getForecast(60, 127, baseTime))
+        .willThrow(new KmaApiException(60, 127, baseTime, new RuntimeException("기상청 장애")));
+
+    Instant previousForecastedAt = LocalDateTime.of(2026, 7, 30, 2, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Instant previousForecastAt = LocalDateTime.of(2026, 7, 30, 6, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Weather previousWeather = Weather.builder()
+        .grid(existingGrid)
+        .forecastedAt(previousForecastedAt)
+        .forecastAt(previousForecastAt)
+        .skyStatus(SkyStatus.CLOUDY)
+        .precipitationType(PrecipitationType.NONE)
+        .precipitationAmount(0.0)
+        .precipitationProbability(10.0)
+        .humidityCurrent(50.0)
+        .temperatureCurrent(19.0)
+        .windSpeed(1.5)
+        .build();
+    given(weatherRepository.findByGridAndForecastedAt(existingGrid, previousForecastedAt))
+        .willReturn(List.of(previousWeather));
+
+    // when
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+
+    // then
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).skyStatus()).isEqualTo(SkyStatus.CLOUDY);
+    assertThat(result.get(0).forecastedAt()).isEqualTo(previousForecastedAt);
+  }
+
+  @Test
+  @DisplayName("기상청 호출도 실패하고 이전 판 데이터도 전혀 없으면 예외가 그대로 전파된다")
+  void propagatesExceptionWhenKmaCallFailsAndNoPreviousDataExistsAnywhere() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+    VilageFcstBaseTime previousBaseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(2, 0));
+    given(baseTimeResolver.previous(baseTime)).willReturn(previousBaseTime);
+
+    given(kmaWeatherClient.getForecast(60, 127, baseTime))
+        .willThrow(new KmaApiException(60, 127, baseTime, new RuntimeException("기상청 장애")));
+
+    // when & then
+    assertThatThrownBy(() -> weatherService.getWeathers(latitude, longitude))
+        .isInstanceOf(KmaApiException.class);
   }
 }

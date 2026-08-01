@@ -1,13 +1,16 @@
 package com.otboo.domain.weather.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.otboo.domain.weather.dto.VilageFcstItem;
 import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
 import com.otboo.domain.weather.entity.WindStrength;
+import com.otboo.domain.weather.exception.KmaApiException;
 import com.otboo.domain.weather.util.VilageFcstBaseTime;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -223,5 +226,22 @@ class KmaWeatherClientTest {
     assertThat(result).hasSize(1);
     assertThat(result.get(0).skyStatus()).isNull();
     assertThat(result.get(0).precipitationType()).isNull();
+  }
+
+  @Test
+  @DisplayName("기상청 API 호출이 실패하면 KmaApiException을 던진다")
+  void throwsKmaApiExceptionWhenCallFails() {
+    // given
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+
+    mockServer.expect(requestTo(
+            "https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst"
+                + "?authKey=test-api-key&numOfRows=1000&pageNo=1&dataType=JSON"
+                + "&base_date=20260730&base_time=0500&nx=60&ny=127"))
+        .andRespond(withServerError());
+
+    // when & then
+    assertThatThrownBy(() -> kmaWeatherClient.getForecast(60, 127, baseTime))
+        .isInstanceOf(KmaApiException.class);
   }
 }
