@@ -16,10 +16,12 @@ import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.entity.WindStrength;
 import com.otboo.domain.weather.repository.GridRepository;
 import com.otboo.domain.weather.repository.WeatherRepository;
+import com.otboo.domain.weather.util.DailyForecastSelector;
 import com.otboo.domain.weather.util.GridConverter;
 import com.otboo.domain.weather.util.VilageFcstBaseTime;
 import com.otboo.domain.weather.util.VilageFcstBaseTimeResolver;
 import com.otboo.domain.weather.util.WeatherGrid;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -48,6 +50,8 @@ public class WeatherServiceImpl implements WeatherService {
   private final KmaWeatherClient kmaWeatherClient;
   private final WeatherRepository weatherRepository;
   private final WeatherSaver weatherSaver;
+  private final DailyForecastSelector dailyForecastSelector;
+  private final Clock clock;
 
   @Override
   @Transactional
@@ -90,21 +94,23 @@ public class WeatherServiceImpl implements WeatherService {
     Grid grid = gridRepository.findByXAndY(location.x(), location.y())
         .orElseThrow(() -> new IllegalStateException("격자가 등록되어 있지 않습니다: x=" + location.x() + ", y=" + location.y()));
 
-    VilageFcstBaseTime baseTime = baseTimeResolver.resolve(LocalDateTime.now());
+    VilageFcstBaseTime baseTime = baseTimeResolver.resolve(LocalDateTime.now(clock));
     Instant forecastedAt = baseTime.baseDate().atTime(baseTime.baseTime()).atZone(KST).toInstant();
 
     List<Weather> existing = weatherRepository.findByGridAndForecastedAt(grid, forecastedAt);
+    List<WeatherDto> allForecasts;
     if (!existing.isEmpty()) {
-      return existing.stream()
+      allForecasts = existing.stream()
           .map(weather -> toWeatherDto(weather, location))
+          .toList();
+    } else {
+      List<VilageFcstItem> forecasts = kmaWeatherClient.getForecast(location.x(), location.y(), baseTime);
+      allForecasts = forecasts.stream()
+          .map(item -> saveAndConvert(item, grid, location))
           .toList();
     }
 
-    List<VilageFcstItem> forecasts = kmaWeatherClient.getForecast(location.x(), location.y(), baseTime);
-
-    return forecasts.stream()
-        .map(item -> saveAndConvert(item, grid, location))
-        .toList();
+    return dailyForecastSelector.select(allForecasts, clock.instant());
   }
 
   private WeatherDto saveAndConvert(VilageFcstItem item, Grid grid, WeatherAPILocation location) {

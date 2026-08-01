@@ -21,9 +21,11 @@ import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.entity.WindStrength;
 import com.otboo.domain.weather.repository.GridRepository;
 import com.otboo.domain.weather.repository.WeatherRepository;
+import com.otboo.domain.weather.util.DailyForecastSelector;
 import com.otboo.domain.weather.util.GridConverter;
 import com.otboo.domain.weather.util.VilageFcstBaseTime;
 import com.otboo.domain.weather.util.VilageFcstBaseTimeResolver;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -69,6 +71,11 @@ class WeatherServiceImplTest {
   @Mock
   private WeatherSaver weatherSaver;
 
+  private final Clock clock = Clock.fixed(
+      LocalDateTime.of(2026, 7, 30, 9, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant(),
+      ZoneId.of("Asia/Seoul")
+  );
+
   private WeatherServiceImpl weatherService;
 
   @BeforeEach
@@ -82,7 +89,9 @@ class WeatherServiceImplTest {
         baseTimeResolver,
         kmaWeatherClient,
         weatherRepository,
-        weatherSaver
+        weatherSaver,
+        new DailyForecastSelector(),
+        clock
     );
   }
 
@@ -343,6 +352,60 @@ class WeatherServiceImplTest {
 
     assertThat(result.get(0).humidity().comparedToDayBefore()).isEqualTo(5.0);
     assertThat(result.get(0).temperature().comparedToDayBefore()).isEqualTo(3.0);
+  }
+
+  @Test
+  @DisplayName("여러 날짜의 예보가 오면 날짜별로 대표 시간대 하나씩만 골라 반환한다")
+  void returnsOnlyOneRepresentativeSlotPerDate() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+
+    List<VilageFcstItem> items = List.of(
+        vilageFcstItem(LocalDateTime.of(2026, 7, 30, 6, 0)),
+        vilageFcstItem(LocalDateTime.of(2026, 7, 30, 9, 0)), // clock의 now와 정확히 일치 (대표 시각)
+        vilageFcstItem(LocalDateTime.of(2026, 7, 30, 12, 0)),
+        vilageFcstItem(LocalDateTime.of(2026, 7, 31, 8, 0)), // 대표시각(9시)과 1시간 차이 (최근접)
+        vilageFcstItem(LocalDateTime.of(2026, 7, 31, 11, 0)),
+        vilageFcstItem(LocalDateTime.of(2026, 8, 1, 9, 0)) // 대표시각과 정확히 일치
+    );
+    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(items);
+
+    // when
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+
+    // then
+    ZoneId kst = ZoneId.of("Asia/Seoul");
+    assertThat(result).extracting(WeatherDto::forecastAt).containsExactly(
+        LocalDateTime.of(2026, 7, 30, 9, 0).atZone(kst).toInstant(),
+        LocalDateTime.of(2026, 7, 31, 8, 0).atZone(kst).toInstant(),
+        LocalDateTime.of(2026, 8, 1, 9, 0).atZone(kst).toInstant()
+    );
+  }
+
+  private VilageFcstItem vilageFcstItem(LocalDateTime forecastAt) {
+    return new VilageFcstItem(
+        LocalDateTime.of(2026, 7, 30, 5, 0),
+        forecastAt,
+        SkyStatus.CLEAR,
+        PrecipitationType.NONE,
+        0.0,
+        20.0,
+        55.0,
+        23.0,
+        null,
+        null,
+        2.3,
+        WindStrength.WEAK
+    );
   }
 
   @Test
