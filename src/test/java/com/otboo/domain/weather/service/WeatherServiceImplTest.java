@@ -8,12 +8,17 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.otboo.domain.weather.cache.GridRecencyCache;
+import com.otboo.domain.weather.cache.WeatherForecastCache;
 import com.otboo.domain.weather.client.KakaoLocationClient;
 import com.otboo.domain.weather.client.KmaWeatherClient;
+import com.otboo.domain.weather.dto.HumidityDto;
 import com.otboo.domain.weather.dto.KakaoRegion;
+import com.otboo.domain.weather.dto.PrecipitationDto;
+import com.otboo.domain.weather.dto.TemperatureDto;
 import com.otboo.domain.weather.dto.VilageFcstItem;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
 import com.otboo.domain.weather.dto.WeatherDto;
+import com.otboo.domain.weather.dto.WindSpeedDto;
 import com.otboo.domain.weather.entity.Grid;
 import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
@@ -25,6 +30,7 @@ import com.otboo.domain.weather.util.DailyForecastSelector;
 import com.otboo.domain.weather.util.GridConverter;
 import com.otboo.domain.weather.util.VilageFcstBaseTime;
 import com.otboo.domain.weather.util.VilageFcstBaseTimeResolver;
+import com.otboo.domain.weather.util.WeatherGrid;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -71,6 +77,9 @@ class WeatherServiceImplTest {
   @Mock
   private WeatherSaver weatherSaver;
 
+  @Mock
+  private WeatherForecastCache weatherForecastCache;
+
   private final Clock clock = Clock.fixed(
       LocalDateTime.of(2026, 7, 30, 9, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant(),
       ZoneId.of("Asia/Seoul")
@@ -91,7 +100,8 @@ class WeatherServiceImplTest {
         weatherRepository,
         weatherSaver,
         new DailyForecastSelector(),
-        clock
+        clock,
+        weatherForecastCache
     );
   }
 
@@ -447,5 +457,122 @@ class WeatherServiceImplTest {
     // then
     assertThat(result).hasSize(1);
     assertThat(result.get(0).skyStatus()).isEqualTo(SkyStatus.CLEAR);
+  }
+
+  @Test
+  @DisplayName("캐시에 예보가 있으면 DB와 기상청 모두 건드리지 않고 캐시 값을 사용한다")
+  void usesCachedForecastsWithoutTouchingDbOrKma() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
+
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(gridRecencyCache.isRecentlyConfirmed(any())).willReturn(true);
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+
+    Instant forecastedAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    WeatherDto cachedDto = new WeatherDto(
+        null,
+        forecastedAt,
+        forecastAt,
+        null, // 캐시에는 location이 없는 채로 저장되어 있음
+        SkyStatus.CLEAR,
+        new PrecipitationDto(PrecipitationType.NONE, 0.0, 20.0),
+        new HumidityDto(55.0, 0.0),
+        new TemperatureDto(23.0, 0.0, 20.0, 26.0),
+        new WindSpeedDto(2.3, WindStrength.WEAK)
+    );
+    given(weatherForecastCache.find(new WeatherGrid(60, 127), forecastedAt))
+        .willReturn(Optional.of(List.of(cachedDto)));
+
+    // when
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+
+    // then
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).location().locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
+    assertThat(result.get(0).skyStatus()).isEqualTo(SkyStatus.CLEAR);
+    verifyNoInteractions(gridRepository);
+    verifyNoInteractions(weatherRepository);
+    verifyNoInteractions(kmaWeatherClient);
+    verifyNoInteractions(weatherSaver);
+  }
+
+  @Test
+  @DisplayName("캐시가 비어 있어 기상청까지 호출하면, 날짜별로 고르기 전 전체 예보를 캐시에 저장한다")
+  void savesFullForecastListToCacheAfterFetchingFromKma() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+
+    List<VilageFcstItem> items = List.of(
+        vilageFcstItem(LocalDateTime.of(2026, 7, 30, 9, 0)), // clock의 now와 정확히 일치
+        vilageFcstItem(LocalDateTime.of(2026, 7, 30, 12, 0))
+    );
+    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(items);
+
+    Instant forecastedAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+
+    // when
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+
+    // then
+    assertThat(result).hasSize(1); // 응답은 대표 시각 하나로 좁혀짐
+
+    ArgumentCaptor<List<WeatherDto>> captor = ArgumentCaptor.forClass(List.class);
+    verify(weatherForecastCache).save(eq(new WeatherGrid(60, 127)), eq(forecastedAt), captor.capture());
+    assertThat(captor.getValue()).hasSize(2); // 캐시에는 선택 전 전체 목록이 저장됨
+  }
+
+  @Test
+  @DisplayName("캐시가 비어 있고 DB에 이미 저장된 예보를 찾으면, 그 값을 캐시에 저장한다")
+  void savesDbSourcedForecastsToCacheOnCacheMiss() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+
+    Instant forecastedAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Weather existingWeather = Weather.builder()
+        .grid(existingGrid)
+        .forecastedAt(forecastedAt)
+        .forecastAt(forecastAt)
+        .skyStatus(SkyStatus.CLEAR)
+        .precipitationType(PrecipitationType.NONE)
+        .precipitationAmount(0.0)
+        .precipitationProbability(20.0)
+        .humidityCurrent(55.0)
+        .temperatureCurrent(23.0)
+        .windSpeed(2.3)
+        .build();
+    given(weatherRepository.findByGridAndForecastedAt(existingGrid, forecastedAt))
+        .willReturn(List.of(existingWeather));
+
+    // when
+    weatherService.getWeathers(latitude, longitude);
+
+    // then
+    verify(weatherForecastCache).save(eq(new WeatherGrid(60, 127)), eq(forecastedAt), any());
+    verifyNoInteractions(kmaWeatherClient);
   }
 }

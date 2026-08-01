@@ -1,6 +1,7 @@
 package com.otboo.domain.weather.service;
 
 import com.otboo.domain.weather.cache.GridRecencyCache;
+import com.otboo.domain.weather.cache.WeatherForecastCache;
 import com.otboo.domain.weather.client.KakaoLocationClient;
 import com.otboo.domain.weather.client.KmaWeatherClient;
 import com.otboo.domain.weather.dto.HumidityDto;
