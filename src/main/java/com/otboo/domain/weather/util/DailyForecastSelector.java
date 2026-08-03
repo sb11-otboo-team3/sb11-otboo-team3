@@ -23,6 +23,10 @@ public class DailyForecastSelector {
 
 
   public List<WeatherDto> select(List<WeatherDto> forecasts, Instant now) {
+    if (forecasts.isEmpty()) {
+      log.warn("일별 대표 예보 선정 - 입력 예보 목록이 비어있음");
+      return List.of();
+    }
 
     // 예보 대상 시각별로 매핑
     Map<LocalDate, List<WeatherDto>> byDate = forecasts.stream()
