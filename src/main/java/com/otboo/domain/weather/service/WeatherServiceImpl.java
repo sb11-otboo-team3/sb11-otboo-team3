@@ -11,6 +11,7 @@ import com.otboo.domain.weather.dto.TemperatureDto;
 import com.otboo.domain.weather.dto.VilageFcstItem;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
 import com.otboo.domain.weather.dto.WeatherDto;
+import com.otboo.domain.weather.dto.WeatherSummaryDto;
 import com.otboo.domain.weather.dto.WindSpeedDto;
 import com.otboo.domain.weather.entity.Grid;
 import com.otboo.domain.weather.entity.Weather;
@@ -25,11 +26,13 @@ import com.otboo.domain.weather.util.VilageFcstBaseTimeResolver;
 import com.otboo.domain.weather.util.WeatherGrid;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -146,6 +149,55 @@ public class WeatherServiceImpl implements WeatherService {
     return dailyForecastSelector.select(allForecasts, clock.instant());
   }
 
+  @Override
+  public WeatherSummaryDto getWeatherSummary(UUID weatherId) {
+    Weather weather = weatherRepository.findById(weatherId)
+        .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 날씨 정보입니다: id=" + weatherId));
+
+    LocalDate date = weather.getForecastAt().atZone(KST).toLocalDate();
+    Instant dayStart = date.atStartOfDay(KST).toInstant();
+    Instant dayEnd = date.plusDays(1).atStartOfDay(KST).toInstant();
+    WeatherGrid weatherGrid = new WeatherGrid(weather.getGrid().getX(), weather.getGrid().getY());
+
+    TemperatureRange range = weatherForecastCache.find(weatherGrid, weather.getForecastedAt())
+        .map(cached -> dailyTemperatureRangeFromCache(cached, dayStart, dayEnd))
+        .orElseGet(() -> dailyTemperatureRangeFromDb(weather.getGrid(), weather.getForecastedAt(), dayStart, dayEnd));
+
+    return weather.toSummaryDto(range.min(), range.max());
+  }
+
+  private record TemperatureRange(double min, double max) {
+  }
+
+  // 캐시엔 그날 하나가 아니라 배치 전체(여러 날짜)가 들어있어서 날짜로 한 번 더 걸러야 함
+  private TemperatureRange dailyTemperatureRangeFromCache(
+      List<WeatherDto> cachedForecasts, Instant dayStart, Instant dayEnd
+  ) {
+    List<WeatherDto> dayForecasts = cachedForecasts.stream()
+        .filter(dto -> !dto.forecastAt().isBefore(dayStart) && dto.forecastAt().isBefore(dayEnd))
+        .toList();
+    return new TemperatureRange(
+        dayForecasts.stream().mapToDouble(dto -> dto.temperature().min()).min().orElseThrow(),
+        dayForecasts.stream().mapToDouble(dto -> dto.temperature().max()).max().orElseThrow()
+    );
+  }
+
+  // 캐시가 만료됐을 때(TTL 3시간 지남) DB로 폴백
+  private TemperatureRange dailyTemperatureRangeFromDb(
+      Grid grid, Instant forecastedAt, Instant dayStart, Instant dayEnd
+  ) {
+    List<Weather> dayForecasts = weatherRepository.findByGridAndForecastedAtAndForecastAtBetween(
+        grid, forecastedAt, dayStart, dayEnd);
+    return new TemperatureRange(
+        dayForecasts.stream()
+            .mapToDouble(w -> w.getTemperatureMin() != null ? w.getTemperatureMin() : w.getTemperatureCurrent())
+            .min().orElseThrow(),
+        dayForecasts.stream()
+            .mapToDouble(w -> w.getTemperatureMax() != null ? w.getTemperatureMax() : w.getTemperatureCurrent())
+            .max().orElseThrow()
+    );
+  }
+
   //가장 최근 발표 시각의 데이터가 없을 경우에 그 전 데이터로 대체.
   private Optional<List<WeatherDto>> fallbackToPreviousForecast(
       WeatherGrid weatherGrid, Grid grid, VilageFcstBaseTime baseTime, WeatherAPILocation location
@@ -235,7 +287,10 @@ public class WeatherServiceImpl implements WeatherService {
     } catch (DataIntegrityViolationException e) {
       log.warn("날씨 저장 - 동시성 충돌 발생, grid={}, forecastAt={}, forecastedAt={}",
           grid.getId(), forecastAt, forecastedAt, e);
-      return toWeatherDto(item, location);
+      // 이 스레드는 저장에 실패했지만, 동시에 이긴 다른 요청이 저장한 row가 실제로 존재하므로 그걸 다시 조회해서 id를 채워준다.
+      return weatherRepository.findByGridAndForecastAtAndForecastedAt(grid, forecastAt, forecastedAt)
+          .map(existing -> toWeatherDto(existing, location))
+          .orElseGet(() -> toWeatherDto(item, location));
     }
 
     return toWeatherDto(weather, location);

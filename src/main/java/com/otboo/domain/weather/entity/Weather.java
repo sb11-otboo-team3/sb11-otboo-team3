@@ -104,7 +104,8 @@ public class Weather extends BaseEntity {
     this.windSpeed = windSpeed;
   }
 
-  public WeatherSummaryDto toSummaryDto() {
+  // dailyTemperatureMin/Max는 이 row 하나만으론 계산할 수 없음(그날 다른 슬롯들을 모아야 함) - 호출부에서 집계해서 넘겨줌
+  public WeatherSummaryDto toSummaryDto(double dailyTemperatureMin, double dailyTemperatureMax) {
     return new WeatherSummaryDto(
         getId(),
         skyStatus,
@@ -112,8 +113,8 @@ public class Weather extends BaseEntity {
         new TemperatureDto(
             orElseZero(temperatureCurrent),
             orElseZero(temperatureComparedToDayBefore),
-            orElseZero(temperatureMin != null ? temperatureMin : temperatureCurrent),
-            orElseZero(temperatureMax != null ? temperatureMax : temperatureCurrent)
+            dailyTemperatureMin,
+            dailyTemperatureMax
         )
     );
   }
