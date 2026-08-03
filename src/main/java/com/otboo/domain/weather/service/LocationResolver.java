@@ -13,7 +13,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Component
@@ -26,7 +25,6 @@ public class LocationResolver {
   private final GridRecencyCache gridRecencyCache;
   private final GridSaver gridSaver;
 
-  @Transactional
   public WeatherAPILocation resolve(double latitude, double longitude) {
     WeatherGrid grid = gridConverter.convert(latitude, longitude);
 

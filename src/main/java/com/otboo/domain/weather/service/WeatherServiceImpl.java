@@ -166,8 +166,9 @@ public class WeatherServiceImpl implements WeatherService {
   private TemperatureRange dailyTemperatureRangeFromDb(
       Grid grid, Instant forecastedAt, Instant dayStart, Instant dayEnd
   ) {
-    List<Weather> dayForecasts = weatherRepository.findByGridAndForecastedAtAndForecastAtBetween(
-        grid, forecastedAt, dayStart, dayEnd);
+    List<Weather> dayForecasts = weatherRepository
+        .findByGridAndForecastedAtAndForecastAtGreaterThanEqualAndForecastAtLessThan(
+            grid, forecastedAt, dayStart, dayEnd);
     return new TemperatureRange(
         dayForecasts.stream()
             .mapToDouble(w -> orElseZero(w.getTemperatureMin() != null ? w.getTemperatureMin() : w.getTemperatureCurrent()))

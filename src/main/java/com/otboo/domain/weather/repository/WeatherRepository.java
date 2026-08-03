@@ -20,6 +20,8 @@ public interface WeatherRepository extends JpaRepository<Weather, UUID> {
   Optional<Weather> findByGridAndForecastAtAndForecastedAt(Grid grid, Instant forecastAt, Instant forecastedAt);
 
   // 같은 발표(batch) 내에서 특정 날짜에 속하는 예보들 - 일 최저/최고기온 집계용(캐시 미스 시 폴백)
-  List<Weather> findByGridAndForecastedAtAndForecastAtBetween(
-      Grid grid, Instant forecastedAt, Instant forecastAtStart, Instant forecastAtEnd);
+  // [forecastAtStart, forecastAtEndExclusive) 반열림 구간 - 캐시 쪽 필터링과 경계 포함 여부를 맞추기 위해
+  // Between(양끝 포함) 대신 GreaterThanEqual/LessThan 조합을 씀.
+  List<Weather> findByGridAndForecastedAtAndForecastAtGreaterThanEqualAndForecastAtLessThan(
+      Grid grid, Instant forecastedAt, Instant forecastAtStart, Instant forecastAtEndExclusive);
 }
