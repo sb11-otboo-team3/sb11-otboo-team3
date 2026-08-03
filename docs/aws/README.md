@@ -226,6 +226,7 @@ GitHub Actions 자동 Push와 ECS 배포는 Issue #46 범위에 포함하지 않
 AWS 서비스별 상세 설정과 검증 절차는 하위 문서에서 관리합니다.
 
 * [Amazon ECR 구성 및 이미지 검증](./ecr/README.md)
+* [RDS PostgreSQL 및 S3 구성](./rds-s3/README.md)
 * RDS PostgreSQL 및 S3 운영 환경: Issue #21에서 작성
 * ECS 및 ALB 운영 환경: Issue #22에서 작성
 * GitHub Actions OIDC 및 자동 배포: 후속 CD 이슈에서 작성
