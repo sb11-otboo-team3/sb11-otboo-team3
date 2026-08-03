@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -70,6 +71,9 @@ public class KmaWeatherClient {
 
     List<VilageFcstItem> result = groupedByForecastSlot.values().stream() //VilageFcstItem Dto 리스트로 묶어 가져오기.
         .map(this::toVilageFcstItem)
+        // 예보 시각 오름차순으로 정렬 - WeatherServiceImpl이 전날 대비 계산 시 같은 배치 내에서도
+        // 하루 앞선 항목이 먼저 저장돼 있도록 순서를 보장하기 위함(HashMap 그룹핑은 순서 미보장).
+        .sorted(Comparator.comparing(VilageFcstItem::forecastAt))
         .toList();
 
     log.info("기상청 예보 조회 완료: nx={}, ny={}, baseDate={}, baseTime={}, count={}",

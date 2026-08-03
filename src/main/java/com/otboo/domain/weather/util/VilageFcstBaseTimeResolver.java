@@ -33,10 +33,12 @@ public class VilageFcstBaseTimeResolver {
       }
     }
 
+    //오늘 이전에 발표한 시각이 없으면 전날 23시 발표분을 가지고 옴(예 : 1시면 그전에 발표한게 없음)
     LocalTime lastSlotOfDay = BASE_TIMES.get(BASE_TIMES.size() - 1);
     return new VilageFcstBaseTime(now.toLocalDate().minusDays(1), lastSlotOfDay);
   }
 
+  // 현재 슬롯의 앞 시간대를 리턴
   public VilageFcstBaseTime previous(VilageFcstBaseTime current) {
     int index = BASE_TIMES.indexOf(current.baseTime());
     if (index > 0) {
