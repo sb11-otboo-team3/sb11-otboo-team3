@@ -155,8 +155,10 @@ public class WeatherServiceImpl implements WeatherService {
         .filter(dto -> !dto.forecastAt().isBefore(dayStart) && dto.forecastAt().isBefore(dayEnd))
         .toList();
     return new TemperatureRange(
-        dayForecasts.stream().mapToDouble(dto -> dto.temperature().min()).min().orElseThrow(),
-        dayForecasts.stream().mapToDouble(dto -> dto.temperature().max()).max().orElseThrow()
+        dayForecasts.stream().mapToDouble(dto -> dto.temperature().min()).min()
+            .orElseThrow(() -> noDailyForecastsFound(dayStart)),
+        dayForecasts.stream().mapToDouble(dto -> dto.temperature().max()).max()
+            .orElseThrow(() -> noDailyForecastsFound(dayStart))
     );
   }
 
@@ -168,12 +170,17 @@ public class WeatherServiceImpl implements WeatherService {
         grid, forecastedAt, dayStart, dayEnd);
     return new TemperatureRange(
         dayForecasts.stream()
-            .mapToDouble(w -> w.getTemperatureMin() != null ? w.getTemperatureMin() : w.getTemperatureCurrent())
-            .min().orElseThrow(),
+            .mapToDouble(w -> orElseZero(w.getTemperatureMin() != null ? w.getTemperatureMin() : w.getTemperatureCurrent()))
+            .min().orElseThrow(() -> noDailyForecastsFound(dayStart)),
         dayForecasts.stream()
-            .mapToDouble(w -> w.getTemperatureMax() != null ? w.getTemperatureMax() : w.getTemperatureCurrent())
-            .max().orElseThrow()
+            .mapToDouble(w -> orElseZero(w.getTemperatureMax() != null ? w.getTemperatureMax() : w.getTemperatureCurrent()))
+            .max().orElseThrow(() -> noDailyForecastsFound(dayStart))
     );
+  }
+
+  // grid+forecastedAt으로 찾은 배치 안에 그 날짜(dayStart 기준) 예보가 하나도 없는, 정상적으로는 있을 수 없는 상태
+  private IllegalStateException noDailyForecastsFound(Instant dayStart) {
+    return new IllegalStateException("해당 날짜의 예보를 찾을 수 없습니다: date=" + dayStart);
   }
 
   //가장 최근 발표 시각의 데이터가 없을 경우에 그 전 데이터로 대체.
