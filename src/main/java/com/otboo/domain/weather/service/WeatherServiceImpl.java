@@ -134,6 +134,7 @@ public class WeatherServiceImpl implements WeatherService {
           log.debug("날씨 조회 - 기상청 API 호출, x={}, y={}, forecastedAt={}", weatherGrid.x(), weatherGrid.y(), forecastedAt);
           allForecasts = forecasts.stream()
               .map(item -> saveAndConvert(item, grid, location))
+              .flatMap(Optional::stream)
               .toList();
           weatherForecastCache.save(weatherGrid, forecastedAt, allForecasts);
         } catch (KmaApiException e) {
@@ -245,9 +246,18 @@ public class WeatherServiceImpl implements WeatherService {
     );
   }
 
-  private WeatherDto saveAndConvert(VilageFcstItem item, Grid grid, WeatherAPILocation location) {
+  private Optional<WeatherDto> saveAndConvert(VilageFcstItem item, Grid grid, WeatherAPILocation location) {
     Instant forecastAt = item.forecastAt().atZone(KST).toInstant();
     Instant forecastedAt = item.forecastedAt().atZone(KST).toInstant();
+
+    // 기상청이 매핑 안 되는(혹은 응답에 아예 없는) 상태 코드를 내려주면 sky_status/precipitation_type이
+    // null이 되는데, 두 컬럼 다 NOT NULL이라 그대로 저장하면 DataIntegrityViolationException.
+    // 임의로 기본값을 지어내는 대신 이 시간대 항목만 건너뛴다.
+    if (item.skyStatus() == null || item.precipitationType() == null) {
+      log.warn("미지원 기상청 상태 코드 - 예보 항목 스킵, grid=({},{}), forecastAt={}, forecastedAt={}, skyStatus={}, precipitationType={}",
+          grid.getX(), grid.getY(), forecastAt, forecastedAt, item.skyStatus(), item.precipitationType());
+      return Optional.empty();
+    }
 
     Double humidityComparedToDayBefore = null;
     Double temperatureComparedToDayBefore = null;
@@ -288,12 +298,14 @@ public class WeatherServiceImpl implements WeatherService {
       log.warn("날씨 저장 - 동시성 충돌 발생, grid={}, forecastAt={}, forecastedAt={}",
           grid.getId(), forecastAt, forecastedAt, e);
       // 이 스레드는 저장에 실패했으니 다시 조회해서 id를 채워준다.
-      return weatherRepository.findByGridAndForecastAtAndForecastedAt(grid, forecastAt, forecastedAt)
-          .map(existing -> toWeatherDto(existing, location))
-          .orElseGet(() -> toWeatherDto(item, location));
+      return Optional.of(
+          weatherRepository.findByGridAndForecastAtAndForecastedAt(grid, forecastAt, forecastedAt)
+              .map(existing -> toWeatherDto(existing, location))
+              .orElseGet(() -> toWeatherDto(item, location))
+      );
     }
 
-    return toWeatherDto(weather, location);
+    return Optional.of(toWeatherDto(weather, location));
   }
 
   // 객체에서 Dto
