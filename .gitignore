@@ -83,3 +83,7 @@ tmp/
 temp/
 uploads/
 cookies.txt
+
+### md 파일 ###
+/CLAUDE.md
+notes/

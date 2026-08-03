@@ -1,6 +1,5 @@
 package com.otboo.domain.follow.dto.response;
 
-import com.otboo.domain.user.entity.User;
 import java.util.UUID;
 
 public record UserSummary(
@@ -9,11 +8,4 @@ public record UserSummary(
     String profileImageUrl
 ) {
 
-  public static UserSummary from(User user) {
-    return new UserSummary(
-        user.getId(),
-        user.getName(),
-        null
-    );
-  }
 }

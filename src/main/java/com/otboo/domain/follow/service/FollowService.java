@@ -11,6 +11,7 @@ import com.otboo.domain.follow.exception.FollowNotFoundException;
 import com.otboo.domain.follow.exception.FollowUserNotFoundException;
 import com.otboo.domain.follow.exception.InvalidFollowCursorException;
 import com.otboo.domain.follow.exception.SelfFollowNotAllowedException;
+import com.otboo.domain.follow.mapper.FollowMapper;
 import com.otboo.domain.follow.repository.FollowRepository;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
@@ -56,7 +57,7 @@ public class FollowService {
     Follow follow = Follow.create(follower, followee);
     Follow savedFollow = followRepository.save(follow);
 
-    return FollowDto.from(savedFollow);
+    return FollowMapper.toDto(savedFollow);
   }
 
   @Transactional
@@ -99,7 +100,7 @@ public class FollowService {
     }
 
     List<FollowDto> data = follows.stream()
-        .map(FollowDto::from)
+        .map(FollowMapper::toDto)
         .toList();
 
     // 기본은 다음 페이지 없음
@@ -153,7 +154,7 @@ public class FollowService {
     }
 
     List<FollowDto> data = follows.stream()
-        .map(FollowDto::from)
+        .map(FollowMapper::toDto)
         .toList();
 
     // 기본은 다음 페이지 없음

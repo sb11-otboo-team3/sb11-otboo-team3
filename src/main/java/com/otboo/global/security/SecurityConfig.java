@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -17,9 +18,11 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
 
   @Bean
@@ -57,10 +60,12 @@ public class SecurityConfig {
         .authorizeHttpRequests(auth -> auth
             .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/auth/sign-in").permitAll()
+            .requestMatchers(HttpMethod.POST, "/api/auth/reset-password").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/auth/refresh").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/auth/sign-out").permitAll()
             .requestMatchers(HttpMethod.GET, "/api/auth/csrf-token").permitAll()
             .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+            .requestMatchers("/ws/**").permitAll()
             .requestMatchers(
                 "/swagger-ui/**",
                 "/swagger-ui.html",
