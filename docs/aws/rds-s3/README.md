@@ -171,7 +171,11 @@ RestrictPublicBuckets=true
 
 ### HTTPS 강제
 
-Bucket Policy에서 `aws:SecureTransport=false`인 요청을 거부합니다.
+Bucket Policy에서 `aws:SecureTransport=false`이고
+`aws:PrincipalIsAWSService=false`인 요청을 거부합니다.
+
+이를 통해 암호화되지 않은 일반 요청을 차단하면서,
+AWS 서비스 주체의 요청은 거부 조건에서 제외합니다.
 
 정책 파일:
 
@@ -301,7 +305,7 @@ AWS_SESSION_TOKEN
 - ECS Task에서 S3 업로드·조회·삭제 검증
 - 필요 시 Presigned URL 및 CORS 구성
 
-## 10. 비용 및 리소스 종료 기준
+## 11. 비용 및 리소스 종료 기준
 
 ### 예상 비용
 
