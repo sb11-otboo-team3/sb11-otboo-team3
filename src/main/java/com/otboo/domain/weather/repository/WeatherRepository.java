@@ -12,7 +12,9 @@ public interface WeatherRepository extends JpaRepository<Weather, UUID> {
 
   List<Weather> findByGridAndForecastedAt(Grid grid, Instant forecastedAt);
 
-  Optional<Weather> findByGridAndForecastAt(Grid grid, Instant forecastAt);
+  // 같은 grid+forecastAt(대상 시각)에 발표시각이 다른 row가 여러 개 있을 수 있어(유니크 제약이 forecastedAt까지 포함)
+  // 가장 최근 발표(forecastedAt 최신)를 하나 골라 가져온다.
+  Optional<Weather> findFirstByGridAndForecastAtOrderByForecastedAtDesc(Grid grid, Instant forecastAt);
 
   // 유니크 제약(grid_id, forecast_at, forecasted_at) 그대로 - 동시 저장 충돌 시 이긴 쪽 row 조회용
   Optional<Weather> findByGridAndForecastAtAndForecastedAt(Grid grid, Instant forecastAt, Instant forecastedAt);

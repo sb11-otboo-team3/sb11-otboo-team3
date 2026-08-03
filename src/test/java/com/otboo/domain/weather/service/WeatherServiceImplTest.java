@@ -350,7 +350,7 @@ class WeatherServiceImplTest {
         .humidityCurrent(50.0)
         .temperatureCurrent(20.0)
         .build();
-    given(weatherRepository.findByGridAndForecastAt(existingGrid, dayBeforeForecastAt))
+    given(weatherRepository.findFirstByGridAndForecastAtOrderByForecastedAtDesc(existingGrid, dayBeforeForecastAt))
         .willReturn(Optional.of(yesterday));
 
     // when

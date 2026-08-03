@@ -261,7 +261,8 @@ public class WeatherServiceImpl implements WeatherService {
 
     Double humidityComparedToDayBefore = null;
     Double temperatureComparedToDayBefore = null;
-    Optional<Weather> dayBefore = weatherRepository.findByGridAndForecastAt(grid, forecastAt.minus(1, ChronoUnit.DAYS));
+    Optional<Weather> dayBefore = weatherRepository.findFirstByGridAndForecastAtOrderByForecastedAtDesc(
+        grid, forecastAt.minus(1, ChronoUnit.DAYS));
     if (dayBefore.isPresent()) {
       Double humidityDayBefore = dayBefore.get().getHumidityCurrent();
       Double temperatureDayBefore = dayBefore.get().getTemperatureCurrent();
