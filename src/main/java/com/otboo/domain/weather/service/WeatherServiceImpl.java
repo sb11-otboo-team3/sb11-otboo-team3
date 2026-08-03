@@ -43,6 +43,7 @@ public class WeatherServiceImpl implements WeatherService {
 
   private final GridRepository gridRepository;
   private final LocationResolver locationResolver;
+  private final GridSaver gridSaver;
   private final VilageFcstBaseTimeResolver baseTimeResolver;
   private final KmaWeatherClient kmaWeatherClient;
   private final WeatherRepository weatherRepository;
@@ -79,8 +80,7 @@ public class WeatherServiceImpl implements WeatherService {
           .toList();
     } else { // 캐시에 없으면 DB에서 찾아보기.
       Grid grid = gridRepository.findByXAndY(location.x(), location.y())
-          .orElseThrow(() -> new IllegalStateException("격자가 등록되어 있지 않습니다: x=" + location.x() + ", y=" + location.y()));
-
+          .orElseGet(() -> registerGrid(weatherGrid));
 
       List<Weather> existing = weatherRepository.findByGridAndForecastedAt(grid, forecastedAt);
       //DB에 날씨 정보 있으면 가져오고 캐시 등록
@@ -111,6 +111,20 @@ public class WeatherServiceImpl implements WeatherService {
     }
 
     return dailyForecastSelector.select(allForecasts, clock.instant());
+  }
+
+  // gridRecencyCache가 살아있는 동안 DB의 격자 row가 지워지면(예: DB만 초기화하고 앱은 재시작 안 한 경우)
+  // getLocation()이 재등록을 건너뛰어서 여기서 격자를 못 찾을 수 있다. 그 경우 여기서 스스로 등록한다.
+  private Grid registerGrid(WeatherGrid weatherGrid) {
+    log.warn("격자 없음 - 재등록 시도, x={}, y={}", weatherGrid.x(), weatherGrid.y());
+    try {
+      gridSaver.saveInNewTransaction(Grid.builder().x(weatherGrid.x()).y(weatherGrid.y()).build());
+    } catch (DataIntegrityViolationException e) {
+      log.warn("격자 재등록 - 동시성 충돌 발생, x={}, y={}", weatherGrid.x(), weatherGrid.y(), e);
+    }
+    return gridRepository.findByXAndY(weatherGrid.x(), weatherGrid.y())
+        .orElseThrow(() -> new IllegalStateException(
+            "격자 등록에 실패했습니다: x=" + weatherGrid.x() + ", y=" + weatherGrid.y()));
   }
 
   @Override

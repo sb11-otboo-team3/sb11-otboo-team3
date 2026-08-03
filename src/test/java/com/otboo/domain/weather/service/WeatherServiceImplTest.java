@@ -58,6 +58,9 @@ class WeatherServiceImplTest {
   private LocationResolver locationResolver;
 
   @Mock
+  private GridSaver gridSaver;
+
+  @Mock
   private VilageFcstBaseTimeResolver baseTimeResolver;
 
   @Mock
@@ -84,6 +87,7 @@ class WeatherServiceImplTest {
     weatherService = new WeatherServiceImpl(
         gridRepository,
         locationResolver,
+        gridSaver,
         baseTimeResolver,
         kmaWeatherClient,
         weatherRepository,
@@ -163,6 +167,33 @@ class WeatherServiceImplTest {
     assertThat(dto.temperature().current()).isEqualTo(23.0);
     assertThat(dto.windSpeed().speed()).isEqualTo(2.3);
     assertThat(dto.windSpeed().asWord()).isEqualTo(WindStrength.WEAK);
+  }
+
+  @Test
+  @DisplayName("recency 캐시는 살아있는데 격자 row가 없으면 스스로 재등록하고 계속 진행한다")
+  void reregistersGridWhenMissingDespiteWarmRecencyCache() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    WeatherAPILocation location = location(latitude, longitude);
+    Grid registeredGrid = Grid.builder().x(60).y(127).build();
+
+    given(locationResolver.resolve(latitude, longitude)).willReturn(location);
+    // DB가 초기화됐지만 recency 캐시는 아직 살아있어 getLocation()이 재등록을 건너뛴 상황을 흉내낸다.
+    given(gridRepository.findByXAndY(60, 127))
+        .willReturn(Optional.empty(), Optional.of(registeredGrid));
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+    given(kmaWeatherClient.getForecast(60, 127, baseTime))
+        .willReturn(List.of(vilageFcstItem(LocalDateTime.of(2026, 7, 30, 9, 0))));
+
+    // when
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+
+    // then
+    assertThat(result).hasSize(1);
+    verify(gridSaver).saveInNewTransaction(any(Grid.class));
   }
 
   @Test
