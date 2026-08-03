@@ -2,13 +2,11 @@ package com.otboo.domain.clothes.service;
 
 import com.otboo.domain.clothes.dto.request.ClothesAttributeRequest;
 import com.otboo.domain.clothes.dto.request.ClothesCreateRequest;
+import com.otboo.domain.clothes.dto.request.ClothesUpdateRequest;
 import com.otboo.domain.clothes.dto.response.ClothesListResponse;
 import com.otboo.domain.clothes.dto.response.ClothesResponse;
 import com.otboo.domain.clothes.entity.*;
-import com.otboo.domain.clothes.exception.ClothesAttributeDefinitionNotFoundException;
-import com.otboo.domain.clothes.exception.DuplicateClothesAttributeException;
-import com.otboo.domain.clothes.exception.InvalidClothesAttributeValueException;
-import com.otboo.domain.clothes.exception.InvalidClothesCursorException;
+import com.otboo.domain.clothes.exception.*;
 import com.otboo.domain.clothes.mapper.ClothesMapper;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeDefinitionRepository;
@@ -25,12 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Function;
+import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 @Service
@@ -44,15 +39,13 @@ public class ClothesService {
     private final ClothesMapper clothesMapper;
 
     @Transactional
-    public ClothesResponse create(UUID currentUserId, ClothesCreateRequest
-            request) {
+    public ClothesResponse create(UUID currentUserId, ClothesCreateRequest request) {
         if (!request.ownerId().equals(currentUserId)) {
             throw new AccessDeniedException("본인 명의로만 의상을 등록할 수 있습니다.");
         }
 
         User owner = userRepository.findById(request.ownerId())
-                .orElseThrow(() -> new
-                        UserNotFoundException(request.ownerId()));
+                .orElseThrow(() -> new UserNotFoundException(request.ownerId()));
 
         Clothes clothes = clothesRepository.save(
                 new Clothes(owner, request.name().trim(), null, request.type())
@@ -60,6 +53,43 @@ public class ClothesService {
 
         List<ClothesAttributeRequest> attributeRequests =
                 request.attributes() == null ? List.of() : request.attributes();
+
+        Map<UUID, ClothesAttributeDefinition> definitionById = resolveDefinitions(attributeRequests);
+        Map<UUID, List<String>> activeValuesByDefinitionId = resolveActiveValues(definitionById.values());
+        List<ClothesAttribute> attributes = saveAttributes(clothes, attributeRequests, definitionById,
+                activeValuesByDefinitionId);
+
+        return clothesMapper.toResponse(clothes, attributes, activeValuesByDefinitionId);
+    }
+
+    @Transactional
+    public ClothesResponse update(UUID currentUserId, UUID clothesId, ClothesUpdateRequest request) {
+        Clothes clothes = clothesRepository.findById(clothesId)
+                .filter(found -> found.getDeletedAt() == null)
+                .orElseThrow(() -> new ClothesNotFoundException(clothesId));
+
+        if (!clothes.getOwner().getId().equals(currentUserId)) {
+            throw new AccessDeniedException("본인 의상만 수정할 수 있습니다.");
+        }
+
+        clothes.update(request.name().trim(), request.type());
+        clothesAttributeRepository.deleteByClothes(clothes);
+
+        List<ClothesAttributeRequest> attributeRequests =
+                request.attributes() == null ? List.of() : request.attributes();
+
+        Map<UUID, ClothesAttributeDefinition> definitionById =
+                resolveDefinitions(attributeRequests);
+        Map<UUID, List<String>> activeValuesByDefinitionId =
+                resolveActiveValues(definitionById.values());
+        List<ClothesAttribute> attributes =
+                saveAttributes(clothes, attributeRequests, definitionById, activeValuesByDefinitionId);
+
+        return clothesMapper.toResponse(clothes, attributes, activeValuesByDefinitionId);
+    }
+
+    private Map<UUID, ClothesAttributeDefinition> resolveDefinitions(
+            List<ClothesAttributeRequest> attributeRequests) {
         List<UUID> definitionIds = attributeRequests.stream()
                 .map(ClothesAttributeRequest::definitionId)
                 .toList();
@@ -68,46 +98,42 @@ public class ClothesService {
             throw new DuplicateClothesAttributeException();
         }
 
-        Map<UUID, ClothesAttributeDefinition> definitionsById =
-                definitionRepository.findAllById(definitionIds)
-                        .stream()
-                        .filter(definition -> definition.getDeletedAt() == null)
-                        .collect(Collectors.toMap(ClothesAttributeDefinition::getId,
-                                Function.identity()));
+        return definitionRepository.findAllById(definitionIds).stream()
+                .filter(definition -> definition.getDeletedAt() == null)
+                .collect(Collectors.toMap(ClothesAttributeDefinition::getId, Function.identity()));
+    }
 
-        Map<UUID, List<String>> activeValuesByDefinitionId =
-                selectableValueRepository
-                        .findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(List
-                                .copyOf(definitionsById.values()))
-                        .stream()
-                        .collect(Collectors.groupingBy(
-                                value -> value.getDefinition().getId(),
-                                Collectors.mapping(AttributeSelectableValue::getValue,
-                                        Collectors.toList())
-                        ));
+    private Map<UUID, List<String>> resolveActiveValues(Collection<ClothesAttributeDefinition> definitions) {
+        return selectableValueRepository
+                .findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(List.copyOf(definitions))
+                .stream()
+                .collect(Collectors.groupingBy(
+                        value -> value.getDefinition().getId(),
+                        Collectors.mapping(AttributeSelectableValue::getValue, Collectors.toList())
+                ));
+    }
 
+    private List<ClothesAttribute> saveAttributes(
+            Clothes clothes,
+            List<ClothesAttributeRequest> attributeRequests,
+            Map<UUID, ClothesAttributeDefinition> definitionsById,
+            Map<UUID, List<String>> activeValuesByDefinitionId
+    ) {
         List<ClothesAttribute> attributes = new ArrayList<>();
         for (ClothesAttributeRequest attributeRequest : attributeRequests) {
-            ClothesAttributeDefinition definition =
-                    definitionsById.get(attributeRequest.definitionId());
+            ClothesAttributeDefinition definition = definitionsById.get(attributeRequest.definitionId());
             if (definition == null) {
-                throw new
-                        ClothesAttributeDefinitionNotFoundException(attributeRequest.definitionId());
+                throw new ClothesAttributeDefinitionNotFoundException(attributeRequest.definitionId());
             }
 
             String value = attributeRequest.value().trim();
-            if (!activeValuesByDefinitionId.getOrDefault(definition.getId(),
-                    List.of()).contains(value)) {
-                throw new
-                        InvalidClothesAttributeValueException(definition.getId(), value);
+            if (!activeValuesByDefinitionId.getOrDefault(definition.getId(), List.of()).contains(value)) {
+                throw new InvalidClothesAttributeValueException(definition.getId(), value);
             }
-
-            attributes.add(clothesAttributeRepository.save(new
-                    ClothesAttribute(clothes, definition, value)));
+            attributes.add(clothesAttributeRepository.save(new ClothesAttribute(clothes, definition, value)));
         }
 
-        return clothesMapper.toResponse(clothes, attributes,
-                activeValuesByDefinitionId);
+        return attributes;
     }
 
     @Transactional(readOnly = true)
@@ -134,25 +160,24 @@ public class ClothesService {
             clothesList = clothesList.subList(0, limit);
         }
 
-        List<ClothesAttribute> attributes = clothesAttributeRepository.findByClothesIn(clothesList);
-        Map<UUID, List<ClothesAttribute>> attributesByClothesId = attributes.stream()
-                .collect(Collectors.groupingBy(attribute -> attribute.getClothes().getId()));
+        List<ClothesAttribute> attributes =
+                clothesAttributeRepository.findByClothesIn(clothesList);
+        Map<UUID, List<ClothesAttribute>> attributesByClothesId =
+                attributes.stream()
+                        .collect(Collectors.groupingBy(attribute ->
+                                attribute.getClothes().getId()));
 
         List<ClothesAttributeDefinition> definitions = attributes.stream()
                 .map(ClothesAttribute::getDefinition)
                 .distinct()
                 .toList();
-        Map<UUID, List<String>> selectableValuesByDefinitionId = selectableValueRepository
-                .findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(definitions)
-                .stream()
-                .collect(Collectors.groupingBy(
-                        value -> value.getDefinition().getId(),
-                        Collectors.mapping(AttributeSelectableValue::getValue, Collectors.toList())
-                ));
+        Map<UUID, List<String>> selectableValuesByDefinitionId =
+                resolveActiveValues(definitions);
 
         List<ClothesResponse> data = clothesList.stream()
                 .map(item -> clothesMapper.toResponse(item,
-                        attributesByClothesId.getOrDefault(item.getId(), List.of()), selectableValuesByDefinitionId
+                        attributesByClothesId.getOrDefault(item.getId(),
+                                List.of()), selectableValuesByDefinitionId
                 ))
                 .toList();
 
@@ -167,7 +192,8 @@ public class ClothesService {
         long totalCount = clothesRepository.countClothes(ownerId, typeEqual);
 
         return new ClothesListResponse(
-                data, nextCursor, nextIdAfter, hasNext, totalCount, "createdAt", "DESCENDING");
+                data, nextCursor, nextIdAfter, hasNext, totalCount, "createdAt",
+                "DESCENDING");
     }
 
     private Instant parseCursor(String cursor, UUID idAfter) {
@@ -178,7 +204,7 @@ public class ClothesService {
             throw new InvalidClothesCursorException();
         }
 
-        if (!hasCursor){
+        if (!hasCursor) {
             return null;
         }
 

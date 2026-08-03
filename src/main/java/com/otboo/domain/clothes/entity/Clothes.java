@@ -55,4 +55,8 @@ public class Clothes extends SoftDeletableEntity {
         return type;
     }
 
+    public void update(String name, ClothesType type) {
+        this.name = name;
+        this.type = type;
+    }
 }

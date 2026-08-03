@@ -1,6 +1,7 @@
 package com.otboo.domain.clothes.controller;
 
 import com.otboo.domain.clothes.dto.request.ClothesCreateRequest;
+import com.otboo.domain.clothes.dto.request.ClothesUpdateRequest;
 import com.otboo.domain.clothes.dto.response.ClothesListResponse;
 import com.otboo.domain.clothes.dto.response.ClothesResponse;
 import com.otboo.domain.clothes.entity.ClothesType;
@@ -40,10 +41,22 @@ public class ClothesController {
             @RequestParam(required = false) String cursor,
             @RequestParam(required = false) UUID idAfter,
             @RequestParam int limit
-            ) {
+    ) {
         ClothesListResponse response = clothesService.getList(
                 currentUserId, ownerId, typeEqual, cursor, idAfter, limit
         );
+        return ResponseEntity.ok(response);
+    }
+
+    @PatchMapping(value = "/{clothesId}", consumes =
+            MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ClothesResponse> update(
+            @AuthenticationPrincipal UUID currentUserId,
+            @PathVariable UUID clothesId,
+            @RequestPart("request") @Valid ClothesUpdateRequest request
+    ) {
+        ClothesResponse response = clothesService.update(currentUserId,
+                clothesId, request);
         return ResponseEntity.ok(response);
     }
 }
