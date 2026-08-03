@@ -303,16 +303,76 @@ manual-abcdef1-amd64
 
 이미지는 ECS 환경을 고려하여 `linux/amd64`로 빌드합니다.
 
+이미지 태그의 Git Commit SHA와 실제 빌드 내용이 일치하도록,
+빌드 전에 Docker 이미지에 영향을 주는 파일의 변경 여부를 확인합니다.
+
+```bash
+IMAGE_CONTEXT_CHANGES="$(
+  git status --porcelain -- \
+    Dockerfile \
+    gradlew \
+    gradle \
+    build.gradle \
+    settings.gradle \
+    src
+)"
+
+if [ -n "$IMAGE_CONTEXT_CHANGES" ]; then
+  echo "이미지 빌드에 영향을 주는 커밋되지 않은 변경사항이 있습니다."
+  printf '%s\n' "$IMAGE_CONTEXT_CHANGES"
+  exit 1
+fi
+```
+
+작업 트리가 깨끗한 경우 현재 Commit을 이미지 태그와
+OCI Label의 공통 원본으로 사용합니다.
+
+```bash
+AWS_REGION="ap-northeast-2"
+AWS_PROFILE="otboo"
+ECR_REPOSITORY="otboo/backend"
+
+IMAGE_SOURCE_COMMIT="$(git rev-parse HEAD)"
+IMAGE_SOURCE_SHA="$(git rev-parse --short=7 "$IMAGE_SOURCE_COMMIT")"
+
+IMAGE_TAG="manual-${IMAGE_SOURCE_SHA}-amd64"
+LOCAL_IMAGE="otboo:${IMAGE_TAG}"
+```
+
+ECR Repository URI는 AWS CLI를 통해 조회하며
+실제 URI는 공개 문서에 기록하지 않습니다.
+
+```bash
+ECR_REPOSITORY_URI="$(
+  aws ecr describe-repositories \
+    --repository-names "$ECR_REPOSITORY" \
+    --region "$AWS_REGION" \
+    --profile "$AWS_PROFILE" \
+    --query 'repositories[0].repositoryUri' \
+    --output text \
+    --no-cli-pager
+)"
+
+ECR_REGISTRY="${ECR_REPOSITORY_URI%%/*}"
+ECR_IMAGE="${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
+```
+
+Docker 이미지를 빌드합니다.
+
 ```bash
 docker buildx build \
   --platform linux/amd64 \
-  --provenance=false \
-  --sbom=false \
   --build-arg IMAGE_SOURCE_COMMIT="$IMAGE_SOURCE_COMMIT" \
   --tag "$LOCAL_IMAGE" \
   --load \
   .
 ```
+
+현재 수동 검증에서는 Build 결과를 로컬 Docker 저장소에 적재한 뒤
+ECR에 Push합니다.
+
+Provenance와 SBOM은 후속 GitHub Actions CD에서
+이미지를 ECR로 직접 Push하는 방식으로 전환할 때 적용을 검토합니다.
 
 ECR 로그인에는 Access Key나 비밀번호를 직접 작성하지 않고
 `get-login-password`와 `--password-stdin`을 사용합니다.
@@ -326,7 +386,7 @@ aws ecr get-login-password \
       --password-stdin "$ECR_REGISTRY"
 ```
 
-이미지 Push:
+이미지에 ECR 태그를 지정한 뒤 Push합니다.
 
 ```bash
 docker tag "$LOCAL_IMAGE" "$ECR_IMAGE"
@@ -336,18 +396,23 @@ docker push "$ECR_IMAGE"
 ## 14. 취약점 대응
 
 ECR Basic Scan에서 확인된 수정 가능한 CRITICAL 및 HIGH 취약점은
-Dockerfile에서 관련 패키지만 제한적으로 업데이트했습니다.
+패키지의 실제 사용 여부와 수정 버전을 확인한 뒤 대응합니다.
 
 전체 OS 패키지를 일괄 변경하는 `apt-get upgrade`는 사용하지 않습니다.
 
-| 구분       | 대상 패키지                         | 최소 수정 버전            |
-| -------- | ------------------------------ | ------------------- |
-| glibc    | `libc6`, `libc-bin`, `locales` | `2.35-0ubuntu3.14`  |
-| Wget     | `wget`                         | `1.21.2-2ubuntu1.3` |
-| Kerberos | `libkrb5-3` 외 관련 패키지           | `1.19.2-2ubuntu0.8` |
+| 구분       | 대상 패키지                         | 대응 방식                         |
+| -------- | ------------------------------ | ----------------------------- |
+| glibc    | `libc6`, `libc-bin`, `locales` | `2.35-0ubuntu3.14` 이상으로 업데이트  |
+| Wget     | `wget`                         | 런타임에서 사용하지 않아 제거              |
+| Kerberos | `libkrb5-3` 외 관련 패키지           | `1.19.2-2ubuntu0.8` 이상으로 업데이트 |
 
-Dockerfile에서는 대상 패키지 8개의 설치 버전을 각각 확인하며,
+Spring Actuator 기반 Health Check와 애플리케이션 기능에서
+`wget`을 사용하지 않으므로 Runtime 이미지에서 제거합니다.
+
+Dockerfile에서는 glibc 및 Kerberos 관련 패키지 7개의 버전을 각각 확인하며,
 최소 보안 수정 버전에 미달하면 이미지 빌드를 실패시킵니다.
+
+또한 `wget` 명령이 Runtime 이미지에 남아 있지 않은지 확인합니다.
 
 대응한 취약점:
 
@@ -358,22 +423,61 @@ CVE-2026-40355
 CVE-2026-40356
 ```
 
-최종 스캔 결과:
+## 15. 이미지 검증
+
+### 최종 검증 이미지
+
+최종 스캔 결과가 어떤 이미지에 대한 것인지 확인할 수 있도록
+Repository, 이미지 태그, Digest 및 스캔 완료 시각을 함께 기록합니다.
+
+아래 값은 변경된 Dockerfile로 이미지를 다시 빌드하고
+ECR 스캔을 완료한 뒤 실제 결과로 갱신합니다.
+
+```text
+Repository: otboo/backend
+Tag: manual-<GIT_SHORT_SHA>-amd64
+Digest: sha256:<IMAGE_DIGEST>
+Scan completed at: <UTC_TIMESTAMP>
+```
+
+스캔 결과는 다음 명령으로 조회합니다.
+
+```bash
+aws ecr wait image-scan-complete \
+  --repository-name "$ECR_REPOSITORY" \
+  --image-id imageTag="$IMAGE_TAG" \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE"
+
+aws ecr describe-image-scan-findings \
+  --repository-name "$ECR_REPOSITORY" \
+  --image-id imageTag="$IMAGE_TAG" \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE" \
+  --query '{
+    Tag:imageId.imageTag,
+    Digest:imageId.imageDigest,
+    Status:imageScanStatus.status,
+    CompletedAt:imageScanFindings.imageScanCompletedAt,
+    Findings:imageScanFindings.findingSeverityCounts
+  }' \
+  --output json \
+  --no-cli-pager
+```
+
+재검증 후 실제 스캔 결과를 기록합니다.
 
 ```text
 Status: COMPLETE
 CRITICAL: 0
 HIGH: 0
-MEDIUM: 14
-UNDEFINED: 2
+MEDIUM: <재검증 결과>
+UNDEFINED: <재검증 결과>
 ```
 
-MEDIUM 및 UNDEFINED 항목은 베이스 이미지 갱신과
-후속 운영 보안 점검에서 수정 가능 여부와 서비스 영향을 확인합니다.
+### Runtime 이미지 검증
 
-## 15. 이미지 검증
-
-최종 이미지에서 다음 항목을 확인했습니다.
+최종 이미지에서 다음 항목을 확인합니다.
 
 * OS: `linux`
 * Architecture: `amd64`
@@ -383,17 +487,26 @@ MEDIUM 및 UNDEFINED 항목은 베이스 이미지 갱신과
 * `javac` 미포함
 * `/app/app.jar` 존재
 * 이미지 태그와 원본 Commit Label 일치
-* 취약 패키지 최소 수정 버전 적용
+* glibc 및 Kerberos 관련 패키지의 최소 수정 버전 적용
+* Runtime 이미지에서 `wget` 제거
 * CRITICAL 취약점 0건
 * HIGH 취약점 0건
 
+### 이미지 태그 불변성 검증
+
 원본과 Digest가 다른 이미지를 동일한 태그로 Push하여
-`IMMUTABLE` 설정으로 Push가 차단되는 것도 확인했습니다.
+`IMMUTABLE` 설정으로 Push가 차단되는지 확인합니다.
 
-불변성 검증 전후의 원격 이미지 Digest는 변경되지 않았습니다.
+불변성 검증 전후의 원격 이미지 Digest를 비교하여
+기존 이미지가 변경되지 않았는지 확인합니다.
 
-로컬 ECR 이미지를 제거한 뒤 다시 Pull하여
-ECR의 Image Digest와 Pull 이미지의 RepoDigest가 일치하는지 확인했습니다.
+### 이미지 Pull 및 Digest 검증
+
+로컬 ECR 태그 이미지를 삭제한 뒤
+ECR에서 동일한 태그의 이미지를 다시 Pull합니다.
+
+ECR에서 조회한 Image Digest와
+Pull 이미지의 RepoDigest가 일치하는지 확인합니다.
 
 ## 16. Lifecycle Policy
 
@@ -413,7 +526,7 @@ manual- 이미지: 최근 10개만 유지
 정책 적용 전 Preview를 실행하여
 예상하지 않은 이미지가 삭제 대상에 포함되지 않았는지 확인합니다.
 
-적용 후에는 ECR에 저장된 정책과
+정책 적용 후에는 ECR에 저장된 정책과
 `docs/aws/ecr/lifecycle-policy.json`의 내용이 일치하는지 확인합니다.
 
 운영 이미지에는 `manual-` 접두사를 사용하지 않습니다.
@@ -421,9 +534,9 @@ manual- 이미지: 최근 10개만 유지
 ECR 이미지를 수동으로 삭제하기 전에는
 ECS Task Definition이 해당 이미지 태그 또는 Digest를 참조하고 있는지 확인합니다.
 
-## 17. 최종 결과
+## 17. Issue #46 완료 기준
 
-Issue #46에서 다음 작업을 완료했습니다.
+Issue #46에서는 다음 항목을 완료 기준으로 사용합니다.
 
 ```text
 ECR Private Repository 구성
@@ -433,17 +546,23 @@ AES256 암호화 확인
 BASIC 및 SCAN_ON_PUSH 적용
 베이스 이미지 Digest 고정
 Git Commit 기반 이미지 태그 적용
+빌드 전 이미지 관련 작업 트리 검사
 linux/amd64 이미지 빌드
 비루트 사용자 실행
 /app 디렉터리 권한 설정
+불필요한 Wget 패키지 제거
 수정 가능한 CRITICAL 및 HIGH 취약점 대응
 ECR 이미지 Push
+이미지 스캔 결과와 Digest 연결
 이미지 태그 불변성 확인
 ECR 이미지 재Pull
 Push·Pull Digest 일치 확인
 Lifecycle Policy Preview 및 적용
 AWS 인증정보 비노출 확인
 ```
+
+Dockerfile 또는 이미지 빌드 방식이 변경된 경우,
+새 Git Commit SHA를 기준으로 이미지 빌드와 ECR 검증을 다시 수행합니다.
 
 ## 18. 후속 작업
 
@@ -453,6 +572,7 @@ AWS 인증정보 비노출 확인
 * 후속 CD 이슈: GitHub Actions OIDC, ECR Push 및 ECS 자동 배포
 * 후속 보안 점검: MEDIUM 및 UNDEFINED 취약점 영향 분석
 * 후속 운영 점검: 베이스 이미지 Digest 갱신
+* 후속 공급망 보안 점검: Provenance 및 SBOM 적용
 
 GitHub Actions에서는 사람용 IAM 사용자의 Access Key를 사용하지 않습니다.
 
