@@ -287,7 +287,7 @@ public class WeatherServiceImpl implements WeatherService {
     } catch (DataIntegrityViolationException e) {
       log.warn("날씨 저장 - 동시성 충돌 발생, grid={}, forecastAt={}, forecastedAt={}",
           grid.getId(), forecastAt, forecastedAt, e);
-      // 이 스레드는 저장에 실패했지만, 동시에 이긴 다른 요청이 저장한 row가 실제로 존재하므로 그걸 다시 조회해서 id를 채워준다.
+      // 이 스레드는 저장에 실패했으니 다시 조회해서 id를 채워준다.
       return weatherRepository.findByGridAndForecastAtAndForecastedAt(grid, forecastAt, forecastedAt)
           .map(existing -> toWeatherDto(existing, location))
           .orElseGet(() -> toWeatherDto(item, location));
@@ -296,6 +296,7 @@ public class WeatherServiceImpl implements WeatherService {
     return toWeatherDto(weather, location);
   }
 
+  // 객체에서 Dto
   private WeatherDto toWeatherDto(Weather weather, WeatherAPILocation location) {
     return new WeatherDto(
         weather.getId(),
@@ -317,10 +318,12 @@ public class WeatherServiceImpl implements WeatherService {
     );
   }
 
+  // null이면 0.0으로 리턴
   private double orElseZero(Double value) {
     return value != null ? value : 0.0;
   }
 
+  // 기상청 api에서 Dto
   private WeatherDto toWeatherDto(VilageFcstItem item, WeatherAPILocation location) {
     return new WeatherDto(
         null,
