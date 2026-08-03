@@ -70,4 +70,14 @@ public class DirectMessageRepositoryImpl implements DirectMessageRepositoryCusto
         );
   }
 
+  @Override
+  public long deleteMessages(){
+    return queryFactory
+        .delete(directMessage)
+        .where(
+            directMessage.sender.isNull(),
+            directMessage.receiver.isNull()
+        )
+        .execute();
+  }
 }

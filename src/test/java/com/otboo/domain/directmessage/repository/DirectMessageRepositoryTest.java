@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.otboo.domain.directmessage.entity.DirectMessage;
 import com.otboo.domain.directmessage.support.DirectMessageKeyGenerator;
 import com.otboo.domain.user.entity.User;
+import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.global.config.JpaAuditingConfig;
 import com.otboo.global.config.QuerydslConfig;
 import jakarta.persistence.EntityManager;
@@ -23,6 +24,9 @@ class DirectMessageRepositoryTest {
 
   @Autowired
   private DirectMessageRepository directMessageRepository;
+
+  @Autowired
+  private UserRepository userRepository;
 
   @Autowired
   private EntityManager entityManager;
@@ -147,5 +151,75 @@ class DirectMessageRepositoryTest {
         .executeUpdate();
 
     entityManager.flush();
+  }
+
+  @Test
+  @DisplayName("sender와 receiver가 모두 null인 DM만 삭제 테스트")
+  void deleteOrphanMessages_deletesOnlyMessagesWithoutSenderAndReceiver() {
+    User sender = userRepository.save(User.create(
+        "sender@test.com",
+        "sender",
+        "password"
+    ));
+    User receiver = userRepository.save(User.create(
+        "receiver@test.com",
+        "receiver",
+        "password"
+    ));
+
+    DirectMessage normalMessage = DirectMessage.create(
+        sender,
+        receiver,
+        "dm-key-1",
+        "정상 메시지"
+    );
+
+    DirectMessage senderNullMessage = DirectMessage.create(
+        null,
+        receiver,
+        "dm-key-2",
+        "sender만 null인 메시지"
+    );
+
+    DirectMessage receiverNullMessage = DirectMessage.create(
+        sender,
+        null,
+        "dm-key-3",
+        "receiver만 null인 메시지"
+    );
+
+    DirectMessage orphanMessage = DirectMessage.create(
+        null,
+        null,
+        "dm-key-4",
+        "고아 메시지"
+    );
+
+    directMessageRepository.saveAll(List.of(
+        normalMessage,
+        senderNullMessage,
+        receiverNullMessage,
+        orphanMessage
+    ));
+
+    entityManager.flush();
+    entityManager.clear();
+
+    long deletedCount = directMessageRepository.deleteMessages();
+
+    entityManager.flush();
+    entityManager.clear();
+
+    assertThat(deletedCount).isEqualTo(1);
+
+    List<DirectMessage> remainingMessages = directMessageRepository.findAll();
+
+    assertThat(remainingMessages)
+        .extracting(DirectMessage::getContent)
+        .containsExactlyInAnyOrder(
+            "정상 메시지",
+            "sender만 null인 메시지",
+            "receiver만 null인 메시지"
+        );
   }
 }
