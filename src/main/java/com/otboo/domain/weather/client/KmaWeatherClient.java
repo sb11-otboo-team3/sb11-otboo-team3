@@ -13,9 +13,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+@Slf4j
 public class KmaWeatherClient {
 
   private final RestClient restClient;
@@ -30,6 +32,8 @@ public class KmaWeatherClient {
     //발표 시간 맞추기
     String baseDate = baseTime.baseDate().format(DateTimeFormatter.BASIC_ISO_DATE);
     String baseTimeValue = baseTime.baseTime().format(DateTimeFormatter.ofPattern("HHmm"));
+
+    log.info("기상청 예보 조회 요청 시작: nx={}, ny={}, baseDate={}, baseTime={}", nx, ny, baseDate, baseTimeValue);
 
     KmaApiResponse response;
     try {
@@ -48,7 +52,14 @@ public class KmaWeatherClient {
           .retrieve()
           .body(KmaApiResponse.class);
     } catch (RestClientException e) {
+      log.error("기상청 예보 조회 실패: nx={}, ny={}, baseDate={}, baseTime={}", nx, ny, baseDate, baseTimeValue, e);
       throw new KmaApiException(nx, ny, baseTime, e);
+    }
+
+    if (response == null || response.response() == null || response.response().body() == null
+        || response.response().body().items() == null || response.response().body().items().item() == null) {
+      log.error("기상청 예보 응답 본문이 비어있음: nx={}, ny={}, baseDate={}, baseTime={}", nx, ny, baseDate, baseTimeValue);
+      throw new KmaApiException(nx, ny, baseTime, null);
     }
 
     List<Item> items = response.response().body().items().item();
@@ -57,9 +68,14 @@ public class KmaWeatherClient {
     Map<String, List<Item>> groupedByForecastSlot = items.stream() //예보 대상 시간별로 데이터들 모으기.
         .collect(Collectors.groupingBy(item -> item.fcstDate() + item.fcstTime()));
 
-    return groupedByForecastSlot.values().stream() //VilageFcstItem Dto 리스트로 묶어 가져오기.
+    List<VilageFcstItem> result = groupedByForecastSlot.values().stream() //VilageFcstItem Dto 리스트로 묶어 가져오기.
         .map(this::toVilageFcstItem)
         .toList();
+
+    log.info("기상청 예보 조회 완료: nx={}, ny={}, baseDate={}, baseTime={}, count={}",
+        nx, ny, baseDate, baseTimeValue, result.size());
+
+    return result;
   }
 
   private VilageFcstItem toVilageFcstItem(List<Item> group) {

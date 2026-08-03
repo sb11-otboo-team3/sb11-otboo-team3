@@ -92,36 +92,49 @@ public class WeatherServiceImpl implements WeatherService {
 
   @Override
   public List<WeatherDto> getWeathers(double latitude, double longitude) {
+
+    // 위치 가져오기.
+    //TODO: 프로필에 있으면 프로필 위치 정보 가져오기
     WeatherAPILocation location = getLocation(latitude, longitude);
     WeatherGrid weatherGrid = new WeatherGrid(location.x(), location.y());
 
+    //필요한 날씨 발표 시각 걔산
     VilageFcstBaseTime baseTime = baseTimeResolver.resolve(LocalDateTime.now(clock));
     Instant forecastedAt = baseTime.baseDate().atTime(baseTime.baseTime()).atZone(KST).toInstant();
 
+    // 캐쉬에서 찾아보기.
     Optional<List<WeatherDto>> cached = weatherForecastCache.find(weatherGrid, forecastedAt);
     List<WeatherDto> allForecasts;
+    //캐시에 있으면 가져오기.
     if (cached.isPresent()) {
+      log.debug("날씨 조회 - 캐시 히트, x={}, y={}, forecastedAt={}", weatherGrid.x(), weatherGrid.y(), forecastedAt);
       allForecasts = cached.get().stream()
           .map(dto -> withLocation(dto, location))
           .toList();
-    } else {
+    } else { // 캐시에 없으면 DB에서 찾아보기.
       Grid grid = gridRepository.findByXAndY(location.x(), location.y())
           .orElseThrow(() -> new IllegalStateException("격자가 등록되어 있지 않습니다: x=" + location.x() + ", y=" + location.y()));
 
+
       List<Weather> existing = weatherRepository.findByGridAndForecastedAt(grid, forecastedAt);
+      //DB에 날씨 정보 있으면 가져오고 캐시 등록
       if (!existing.isEmpty()) {
+        log.debug("날씨 조회 - DB 히트, x={}, y={}, forecastedAt={}", weatherGrid.x(), weatherGrid.y(), forecastedAt);
         allForecasts = existing.stream()
             .map(weather -> toWeatherDto(weather, location))
             .toList();
         weatherForecastCache.save(weatherGrid, forecastedAt, allForecasts);
       } else {
+        // DB에도 날씨 정보 없으면 기상청 API 호출
         try {
           List<VilageFcstItem> forecasts = kmaWeatherClient.getForecast(location.x(), location.y(), baseTime);
+          log.debug("날씨 조회 - 기상청 API 호출, x={}, y={}, forecastedAt={}", weatherGrid.x(), weatherGrid.y(), forecastedAt);
           allForecasts = forecasts.stream()
               .map(item -> saveAndConvert(item, grid, location))
               .toList();
           weatherForecastCache.save(weatherGrid, forecastedAt, allForecasts);
         } catch (KmaApiException e) {
+          // 기상청 API에서 응답을 못받았을시 이전 발표로 폴백
           log.error("기상청 호출 실패 - 이전 판으로 폴백 시도, x={}, y={}, baseTime={}",
               weatherGrid.x(), weatherGrid.y(), baseTime, e);
           allForecasts = fallbackToPreviousForecast(weatherGrid, grid, baseTime, location)
@@ -133,23 +146,34 @@ public class WeatherServiceImpl implements WeatherService {
     return dailyForecastSelector.select(allForecasts, clock.instant());
   }
 
+  //가장 최근 발표 시각의 데이터가 없을 경우에 그 전 데이터로 대체.
   private Optional<List<WeatherDto>> fallbackToPreviousForecast(
       WeatherGrid weatherGrid, Grid grid, VilageFcstBaseTime baseTime, WeatherAPILocation location
   ) {
+    // 전타임 시간
     VilageFcstBaseTime previousBaseTime = baseTimeResolver.previous(baseTime);
     Instant previousForecastedAt = previousBaseTime.baseDate().atTime(previousBaseTime.baseTime()).atZone(KST).toInstant();
 
+    // 캐시에서 찾기
     Optional<List<WeatherDto>> cached = weatherForecastCache.find(weatherGrid, previousForecastedAt);
     if (cached.isPresent()) {
+      log.warn("이전 발표로 폴백 성공(캐시), x={}, y={}, previousBaseTime={}",
+          weatherGrid.x(), weatherGrid.y(), previousBaseTime);
       return Optional.of(cached.get().stream()
           .map(dto -> withLocation(dto, location))
           .toList());
     }
 
+    // 캐시에서 없으면 DB에서 찾기.
     List<Weather> previous = weatherRepository.findByGridAndForecastedAt(grid, previousForecastedAt);
     if (previous.isEmpty()) {
+      log.error("이전 발표로 폴백 실패 - 대체 데이터 없음, x={}, y={}, previousBaseTime={}",
+          weatherGrid.x(), weatherGrid.y(), previousBaseTime);
       return Optional.empty();
     }
+
+    log.warn("이전 발표로 폴백 성공(DB), x={}, y={}, previousBaseTime={}",
+        weatherGrid.x(), weatherGrid.y(), previousBaseTime);
     return Optional.of(previous.stream()
         .map(weather -> toWeatherDto(weather, location))
         .toList());
@@ -177,8 +201,14 @@ public class WeatherServiceImpl implements WeatherService {
     Double temperatureComparedToDayBefore = null;
     Optional<Weather> dayBefore = weatherRepository.findByGridAndForecastAt(grid, forecastAt.minus(1, ChronoUnit.DAYS));
     if (dayBefore.isPresent()) {
-      humidityComparedToDayBefore = item.humidity() - dayBefore.get().getHumidityCurrent();
-      temperatureComparedToDayBefore = item.temperature() - dayBefore.get().getTemperatureCurrent();
+      Double humidityDayBefore = dayBefore.get().getHumidityCurrent();
+      Double temperatureDayBefore = dayBefore.get().getTemperatureCurrent();
+      if (item.humidity() != null && humidityDayBefore != null) {
+        humidityComparedToDayBefore = item.humidity() - humidityDayBefore;
+      }
+      if (item.temperature() != null && temperatureDayBefore != null) {
+        temperatureComparedToDayBefore = item.temperature() - temperatureDayBefore;
+      }
     }
 
     Weather weather = Weather.builder()
@@ -219,15 +249,16 @@ public class WeatherServiceImpl implements WeatherService {
         location,
         weather.getSkyStatus(),
         new PrecipitationDto(
-            weather.getPrecipitationType(), weather.getPrecipitationAmount(), weather.getPrecipitationProbability()),
-        new HumidityDto(weather.getHumidityCurrent(), orElseZero(weather.getHumidityComparedToDayBefore())),
+            weather.getPrecipitationType(), orElseZero(weather.getPrecipitationAmount()),
+            orElseZero(weather.getPrecipitationProbability())),
+        new HumidityDto(orElseZero(weather.getHumidityCurrent()), orElseZero(weather.getHumidityComparedToDayBefore())),
         new TemperatureDto(
-            weather.getTemperatureCurrent(),
+            orElseZero(weather.getTemperatureCurrent()),
             orElseZero(weather.getTemperatureComparedToDayBefore()),
-            weather.getTemperatureMin() != null ? weather.getTemperatureMin() : weather.getTemperatureCurrent(),
-            weather.getTemperatureMax() != null ? weather.getTemperatureMax() : weather.getTemperatureCurrent()
+            orElseZero(weather.getTemperatureMin() != null ? weather.getTemperatureMin() : weather.getTemperatureCurrent()),
+            orElseZero(weather.getTemperatureMax() != null ? weather.getTemperatureMax() : weather.getTemperatureCurrent())
         ),
-        new WindSpeedDto(weather.getWindSpeed(), WindStrength.fromSpeed(weather.getWindSpeed()))
+        new WindSpeedDto(orElseZero(weather.getWindSpeed()), WindStrength.fromSpeed(weather.getWindSpeed()))
     );
   }
 
@@ -242,15 +273,16 @@ public class WeatherServiceImpl implements WeatherService {
         item.forecastAt().atZone(KST).toInstant(),
         location,
         item.skyStatus(),
-        new PrecipitationDto(item.precipitationType(), item.precipitationAmount(), item.precipitationProbability()),
-        new HumidityDto(item.humidity(), 0.0),
+        new PrecipitationDto(item.precipitationType(), orElseZero(item.precipitationAmount()),
+            orElseZero(item.precipitationProbability())),
+        new HumidityDto(orElseZero(item.humidity()), 0.0),
         new TemperatureDto(
-            item.temperature(),
+            orElseZero(item.temperature()),
             0.0,
-            item.temperatureMin() != null ? item.temperatureMin() : item.temperature(),
-            item.temperatureMax() != null ? item.temperatureMax() : item.temperature()
+            orElseZero(item.temperatureMin() != null ? item.temperatureMin() : item.temperature()),
+            orElseZero(item.temperatureMax() != null ? item.temperatureMax() : item.temperature())
         ),
-        new WindSpeedDto(item.windSpeed(), item.windStrength())
+        new WindSpeedDto(orElseZero(item.windSpeed()), item.windStrength())
     );
   }
 

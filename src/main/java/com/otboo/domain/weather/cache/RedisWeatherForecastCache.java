@@ -52,6 +52,7 @@ public class RedisWeatherForecastCache implements WeatherForecastCache {
       String json = objectMapper.writeValueAsString(withoutLocation);
       redisTemplate.opsForValue().set(key(grid, forecastedAt), json, TTL);
     } catch (JsonProcessingException e) {
+      log.error("날씨 캐시 직렬화 실패, grid=({},{}), forecastedAt={}", grid.x(), grid.y(), forecastedAt, e);
       throw new UncheckedIOException("날씨 캐시 직렬화 실패", e);
     }
   }
@@ -70,7 +71,7 @@ public class RedisWeatherForecastCache implements WeatherForecastCache {
     );
   }
 
-  private String key(WeatherGrid grid, Instant forecastedAt) {
+  private String key(WeatherGrid grid, Instant forecastedAt) { //캐시 키.
     return KEY_PREFIX + grid.x() + DELIMITER + grid.y() + DELIMITER + forecastedAt.getEpochSecond();
   }
 }

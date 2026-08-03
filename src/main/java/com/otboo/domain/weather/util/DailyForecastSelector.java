@@ -10,8 +10,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @Component
 public class DailyForecastSelector {
 
@@ -22,7 +24,12 @@ public class DailyForecastSelector {
         .collect(Collectors.groupingBy(dto -> dto.forecastAt().atZone(KST).toLocalDate()));
 
     LocalDate today = now.atZone(KST).toLocalDate();
-    WeatherDto representative = closest(byDate.get(today), now);
+    List<WeatherDto> todayForecasts = byDate.get(today);
+    if (todayForecasts == null) {
+      log.warn("일별 대표 예보 선정 - 오늘({}) 예보 없음, 전체 예보 중 현재 시각과 가장 가까운 항목으로 대체", today);
+      todayForecasts = forecasts;
+    }
+    WeatherDto representative = closest(todayForecasts, now);
     LocalTime representativeTime = representative.forecastAt().atZone(KST).toLocalTime();
 
     return byDate.entrySet().stream()

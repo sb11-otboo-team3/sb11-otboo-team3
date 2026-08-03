@@ -1,5 +1,8 @@
 package com.otboo.domain.weather.entity;
 
+import com.otboo.domain.weather.dto.PrecipitationDto;
+import com.otboo.domain.weather.dto.TemperatureDto;
+import com.otboo.domain.weather.dto.WeatherSummaryDto;
 import com.otboo.global.common.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -99,5 +102,23 @@ public class Weather extends BaseEntity {
     this.temperatureMin = temperatureMin;
     this.temperatureMax = temperatureMax;
     this.windSpeed = windSpeed;
+  }
+
+  public WeatherSummaryDto toSummaryDto() {
+    return new WeatherSummaryDto(
+        getId(),
+        skyStatus,
+        new PrecipitationDto(precipitationType, orElseZero(precipitationAmount), orElseZero(precipitationProbability)),
+        new TemperatureDto(
+            orElseZero(temperatureCurrent),
+            orElseZero(temperatureComparedToDayBefore),
+            orElseZero(temperatureMin != null ? temperatureMin : temperatureCurrent),
+            orElseZero(temperatureMax != null ? temperatureMax : temperatureCurrent)
+        )
+    );
+  }
+
+  private double orElseZero(Double value) {
+    return value != null ? value : 0.0;
   }
 }
