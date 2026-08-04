@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -138,7 +139,7 @@ public class NotificationService {
     });
   }
 
-  @Transactional
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
   public NotificationDto createNotification(UUID receiverId, String title, String content, NotificationLevel level) {
     User receiver = userRepository.findById(receiverId)
         .orElseThrow(() -> new NotificationUserNotFoundException(receiverId));
