@@ -26,7 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
-import com.otboo.domain.user.repository.ProfileRepository;
+import com.otboo.domain.profile.repository.ProfileRepository;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {

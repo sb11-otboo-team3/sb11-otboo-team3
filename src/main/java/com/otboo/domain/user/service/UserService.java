@@ -2,10 +2,10 @@ package com.otboo.domain.user.service;
 
 import com.otboo.domain.user.dto.UserCreateRequest;
 import com.otboo.domain.user.dto.UserDto;
-import com.otboo.domain.user.entity.Profile;
+import com.otboo.domain.profile.entity.Profile;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.exception.DuplicateEmailException;
-import com.otboo.domain.user.repository.ProfileRepository;
+import com.otboo.domain.profile.repository.ProfileRepository;
 import com.otboo.domain.user.repository.UserRepository;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;

@@ -1,14 +1,15 @@
-package com.otboo.domain.user.service;
+package com.otboo.domain.profile.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 
-import com.otboo.domain.user.dto.ProfileDto;
-import com.otboo.domain.user.entity.Profile;
+import com.otboo.domain.profile.dto.ProfileDto;
+import com.otboo.domain.profile.service.ProfileService;
+import com.otboo.domain.profile.entity.Profile;
 import com.otboo.domain.user.entity.User;
-import com.otboo.domain.user.exception.ProfileNotFoundException;
-import com.otboo.domain.user.repository.ProfileRepository;
+import com.otboo.domain.profile.exception.ProfileNotFoundException;
+import com.otboo.domain.profile.repository.ProfileRepository;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;

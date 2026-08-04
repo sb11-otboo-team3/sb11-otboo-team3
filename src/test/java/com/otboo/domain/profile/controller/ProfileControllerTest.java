@@ -1,4 +1,4 @@
-package com.otboo.domain.user.controller;
+package com.otboo.domain.profile.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
@@ -6,11 +6,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.otboo.domain.auth.jwt.JwtProvider;
-import com.otboo.domain.user.dto.LocationDto;
-import com.otboo.domain.user.dto.ProfileDto;
-import com.otboo.domain.user.exception.ProfileNotFoundException;
+import com.otboo.domain.profile.dto.LocationDto;
+import com.otboo.domain.profile.dto.ProfileDto;
+import com.otboo.domain.profile.exception.ProfileNotFoundException;
 import com.otboo.domain.user.repository.UserRepository;
-import com.otboo.domain.user.service.ProfileService;
+import com.otboo.domain.profile.service.ProfileService;
 import com.otboo.global.security.SecurityConfig;
 import java.time.LocalDate;
 import java.util.List;

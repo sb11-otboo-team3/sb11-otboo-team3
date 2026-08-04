@@ -1,9 +1,9 @@
-package com.otboo.domain.user.service;
+package com.otboo.domain.profile.service;
 
-import com.otboo.domain.user.dto.ProfileDto;
-import com.otboo.domain.user.entity.Profile;
-import com.otboo.domain.user.exception.ProfileNotFoundException;
-import com.otboo.domain.user.repository.ProfileRepository;
+import com.otboo.domain.profile.dto.ProfileDto;
+import com.otboo.domain.profile.entity.Profile;
+import com.otboo.domain.profile.exception.ProfileNotFoundException;
+import com.otboo.domain.profile.repository.ProfileRepository;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

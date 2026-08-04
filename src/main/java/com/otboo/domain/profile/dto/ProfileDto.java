@@ -1,7 +1,7 @@
-package com.otboo.domain.user.dto;
+package com.otboo.domain.profile.dto;
 
-import com.otboo.domain.user.entity.Gender;
-import com.otboo.domain.user.entity.Profile;
+import com.otboo.domain.profile.entity.Gender;
+import com.otboo.domain.profile.entity.Profile;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;

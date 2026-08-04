@@ -1,4 +1,4 @@
-package com.otboo.domain.user.exception;
+package com.otboo.domain.profile.exception;
 
 import com.otboo.global.error.OtbooException;
 import java.util.UUID;

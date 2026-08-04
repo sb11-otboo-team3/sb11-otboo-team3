@@ -1,7 +1,7 @@
-package com.otboo.domain.user.controller;
+package com.otboo.domain.profile.controller;
 
-import com.otboo.domain.user.dto.ProfileDto;
-import com.otboo.domain.user.service.ProfileService;
+import com.otboo.domain.profile.dto.ProfileDto;
+import com.otboo.domain.profile.service.ProfileService;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

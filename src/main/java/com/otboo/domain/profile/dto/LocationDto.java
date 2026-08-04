@@ -1,4 +1,4 @@
-package com.otboo.domain.user.dto;
+package com.otboo.domain.profile.dto;
 
 import java.util.List;
 
@@ -9,4 +9,5 @@ public record LocationDto(
     Integer y,
     List<String> locationNames
 ) {
+
 }

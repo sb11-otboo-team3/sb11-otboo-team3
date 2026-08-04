@@ -1,5 +1,6 @@
-package com.otboo.domain.user.entity;
+package com.otboo.domain.profile.entity;
 
+import com.otboo.domain.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
