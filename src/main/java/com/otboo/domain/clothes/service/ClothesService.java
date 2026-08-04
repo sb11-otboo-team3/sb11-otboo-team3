@@ -214,4 +214,17 @@ public class ClothesService {
             throw new InvalidClothesCursorException();
         }
     }
+
+    @Transactional
+    public void delete(UUID currentUserId, UUID clothesId){
+        Clothes clothes = clothesRepository.findById(clothesId)
+                .filter(found -> found.getDeletedAt() == null)
+                .orElseThrow(() -> new ClothesNotFoundException(clothesId));
+
+        if (!clothes.getOwner().getId().equals(currentUserId)) {
+            throw new AccessDeniedException("본인 의상만 삭제할 수 있습니다.");
+        }
+
+        clothes.delete();
+    }
 }

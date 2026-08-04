@@ -59,4 +59,13 @@ public class ClothesController {
                 clothesId, request);
         return ResponseEntity.ok(response);
     }
+
+    @DeleteMapping("/{clothesId}")
+    public ResponseEntity<Void> delete(
+            @AuthenticationPrincipal UUID currentUserId,
+            @PathVariable UUID clothesId
+    ) {
+        clothesService.delete(currentUserId, clothesId);
+        return ResponseEntity.noContent().build();
+    }
 }
