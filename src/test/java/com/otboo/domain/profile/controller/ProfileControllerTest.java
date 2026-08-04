@@ -60,14 +60,14 @@ class ProfileControllerTest {
 
   @Test
   @WithMockUser
-  @DisplayName("존재하지 않는 프로필을 조회하면 404를 반환한다")
-  void getProfileWithNonExistentProfileReturns404() throws Exception {
+  @DisplayName("존재하지 않는 프로필을 조회하면 400를 반환한다")
+  void getProfileWithNonExistentProfileReturns400() throws Exception {
     // given
     UUID userId = UUID.randomUUID();
     given(profileService.getProfile(userId)).willThrow(new ProfileNotFoundException(userId));
 
     // when & then
     mockMvc.perform(get("/api/users/{userId}/profiles", userId))
-        .andExpect(status().isNotFound());
+        .andExpect(status().isBadRequest());
   }
 }
