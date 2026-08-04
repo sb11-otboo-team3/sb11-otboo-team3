@@ -1,5 +1,8 @@
 package com.otboo.domain.notification.controller;
 
+import com.otboo.domain.notification.controller.docs.DeleteNotificationApi;
+import com.otboo.domain.notification.controller.docs.GetNotificationsApi;
+import com.otboo.domain.notification.controller.docs.NotificationApi;
 import com.otboo.domain.notification.dto.response.NotificationDtoCursorResponse;
 import com.otboo.domain.notification.service.NotificationService;
 import jakarta.validation.constraints.Max;
@@ -16,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@NotificationApi
 @Validated
 @RestController
 @RequiredArgsConstructor
@@ -24,6 +28,7 @@ public class NotificationController {
 
   private final NotificationService notificationService;
 
+  @GetNotificationsApi
   @GetMapping
   public ResponseEntity<NotificationDtoCursorResponse> getNotifications(
       @RequestParam (required = false) String cursor,
@@ -40,6 +45,7 @@ public class NotificationController {
     return ResponseEntity.ok(response);
   }
 
+  @DeleteNotificationApi
   @DeleteMapping("/{notificationId}")
   public ResponseEntity<Void> deleteNotification(
       @PathVariable UUID notificationId,

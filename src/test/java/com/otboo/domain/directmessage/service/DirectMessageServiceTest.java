@@ -19,6 +19,7 @@ import com.otboo.domain.directmessage.dto.response.DirectMessageDto;
 import com.otboo.domain.directmessage.entity.DirectMessage;
 import com.otboo.domain.directmessage.repository.DirectMessageRepository;
 import com.otboo.domain.directmessage.support.DirectMessageKeyGenerator;
+import com.otboo.domain.notification.event.NotificationEvent;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import java.util.List;
@@ -27,6 +28,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -40,6 +42,9 @@ public class DirectMessageServiceTest {
 
   @Mock
   private UserRepository userRepository;
+
+  @Mock
+  private ApplicationEventPublisher eventPublisher;
 
   @InjectMocks
   private DirectMessageService directMessageService;
@@ -82,6 +87,7 @@ public class DirectMessageServiceTest {
     assertThat(result.content()).isEqualTo("안녕하세요");
 
     verify(directMessageRepository).save(any(DirectMessage.class));
+    verify(eventPublisher).publishEvent(any(NotificationEvent.class));
   }
 
   @Test

@@ -19,6 +19,7 @@ import com.otboo.domain.follow.exception.FollowNotFoundException;
 import com.otboo.domain.follow.exception.FollowUserNotFoundException;
 import com.otboo.domain.follow.exception.SelfFollowNotAllowedException;
 import com.otboo.domain.follow.repository.FollowRepository;
+import com.otboo.domain.notification.event.NotificationEvent;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import java.util.List;
@@ -30,6 +31,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,6 +42,9 @@ class FollowServiceTest {
 
   @Mock
   private UserRepository userRepository;
+
+  @Mock
+  private ApplicationEventPublisher eventPublisher;
 
   @InjectMocks
   private FollowService followService;
@@ -68,6 +73,7 @@ class FollowServiceTest {
     assertThat(result.followee().name()).isEqualTo("followee");
 
     verify(followRepository).save(any(Follow.class));
+    verify(eventPublisher).publishEvent(any(NotificationEvent.class));
   }
 
   @Test
