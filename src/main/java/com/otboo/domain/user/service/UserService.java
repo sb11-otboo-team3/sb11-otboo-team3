@@ -2,8 +2,10 @@ package com.otboo.domain.user.service;
 
 import com.otboo.domain.user.dto.UserCreateRequest;
 import com.otboo.domain.user.dto.UserDto;
+import com.otboo.domain.user.entity.Profile;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.exception.DuplicateEmailException;
+import com.otboo.domain.user.repository.ProfileRepository;
 import com.otboo.domain.user.repository.UserRepository;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +26,7 @@ public class UserService {
   private static final String EMAIL_UNIQUE_CONSTRAINT = "uk6dotkott2kjsp8vw4d0m25fb7";
 
   private final UserRepository userRepository;
+  private final ProfileRepository profileRepository;
   private final PasswordEncoder passwordEncoder;
 
   @Transactional
@@ -46,6 +49,9 @@ public class UserService {
       }
       throw e;
     }
+
+    Profile profile = Profile.createDefault(saved);
+    profileRepository.save(profile);
 
     return UserDto.from(saved);
   }
