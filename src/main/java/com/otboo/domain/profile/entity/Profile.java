@@ -81,16 +81,36 @@ public class Profile {
       String district,
       Integer temperatureSensitivity
   ) {
-    this.gender = gender;
-    this.birthDate = birthDate;
-    this.latitude = latitude;
-    this.longitude = longitude;
-    this.x = x;
-    this.y = y;
-    this.province = province;
-    this.city = city;
-    this.district = district;
-    this.temperatureSensitivity = temperatureSensitivity;
+    if (gender != null) {
+      this.gender = gender;
+    }
+    if (birthDate != null) {
+      this.birthDate = birthDate;
+    }
+    if (latitude != null) {
+      this.latitude = latitude;
+    }
+    if (longitude != null) {
+      this.longitude = longitude;
+    }
+    if (x != null) {
+      this.x = x;
+    }
+    if (y != null) {
+      this.y = y;
+    }
+    if (province != null) {
+      this.province = province;
+    }
+    if (city != null) {
+      this.city = city;
+    }
+    if (district != null) {
+      this.district = district;
+    }
+    if (temperatureSensitivity != null) {
+      this.temperatureSensitivity = temperatureSensitivity;
+    }
   }
 
   public void updateImageUrl(String imageUrl) {

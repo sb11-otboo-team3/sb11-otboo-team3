@@ -4,10 +4,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
 import com.otboo.domain.auth.jwt.JwtProvider;
 import com.otboo.domain.profile.dto.LocationDto;
 import com.otboo.domain.profile.dto.ProfileDto;
+import com.otboo.domain.profile.dto.ProfileUpdateRequest;
 import com.otboo.domain.profile.exception.ProfileNotFoundException;
 import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.domain.profile.service.ProfileService;
@@ -20,9 +23,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import com.otboo.domain.profile.entity.Gender;
+import org.springframework.mock.web.MockPart;
 
 @WebMvcTest(ProfileController.class)
 @Import(SecurityConfig.class)
@@ -68,6 +75,64 @@ class ProfileControllerTest {
 
     // when & then
     mockMvc.perform(get("/api/users/{userId}/profiles", userId))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @WithMockUser
+  @DisplayName("프로필 수정 요청이 성공하면 200을 반환한다")
+  void updateProfileReturns200() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+    LocationDto location = new LocationDto(37.5, 127.0, 60, 127, List.of("서울특별시", "강남구", "역삼동"));
+    ProfileDto response = new ProfileDto(
+        userId, "새이름", Gender.MALE, LocalDate.of(1995, 5, 5),
+        location, 3, null
+    );
+    given(profileService.updateProfile(any(UUID.class), any(ProfileUpdateRequest.class)))
+        .willReturn(response);
+
+    MockPart requestPart = new MockPart(
+        "request",
+        "{\"name\":\"새이름\",\"gender\":\"MALE\",\"birthDate\":\"1995-05-05\",\"location\":{\"latitude\":37.5,\"longitude\":127.0},\"temperatureSensitivity\":3}".getBytes()
+    );
+    requestPart.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+
+    // when & then
+    mockMvc.perform(multipart("/api/users/{userId}/profiles", userId)
+            .part(requestPart)
+            .with(request -> {
+              request.setMethod("PATCH");
+              return request;
+            })
+            .with(csrf()))
+        .andDo(org.springframework.test.web.servlet.result.MockMvcResultHandlers.print())
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  @WithMockUser
+  @DisplayName("존재하지 않는 프로필을 수정하면 400을 반환한다")
+  void updateProfileWithNonExistentProfileReturns400() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+    given(profileService.updateProfile(any(UUID.class), any(ProfileUpdateRequest.class)))
+        .willThrow(new ProfileNotFoundException(userId));
+
+    MockPart requestPart = new MockPart(
+        "request",
+        "{\"name\":\"새이름\"}".getBytes()
+    );
+    requestPart.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+
+    // when & then
+    mockMvc.perform(multipart("/api/users/{userId}/profiles", userId)
+            .part(requestPart)
+            .with(request -> {
+              request.setMethod("PATCH");
+              return request;
+            })
+            .with(csrf()))
         .andExpect(status().isBadRequest());
   }
 }
