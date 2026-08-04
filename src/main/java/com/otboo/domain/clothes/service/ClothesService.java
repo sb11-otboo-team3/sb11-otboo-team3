@@ -31,6 +31,9 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class ClothesService {
+
+    private static final int MAX_LIMIT = 100;
+
     private final ClothesRepository clothesRepository;
     private final ClothesAttributeRepository clothesAttributeRepository;
     private final ClothesAttributeDefinitionRepository definitionRepository;
@@ -147,6 +150,10 @@ public class ClothesService {
     ) {
         if (!ownerId.equals(currentUserId)) {
             throw new AccessDeniedException("본인 옷장만 조회할 수 있습니다.");
+        }
+
+        if (limit < 1 || limit > MAX_LIMIT) {
+            throw new InvalidClothesLimitException(limit);
         }
 
         Instant cursorInstant = parseCursor(cursor, idAfter);
