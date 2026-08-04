@@ -28,6 +28,11 @@ kakao:
     api-key: ${KAKAO_REST_API_KEY}
     base-url: https://dapi.kakao.com
 
+kma:
+  vilage-fcst:
+    api-key: ${KMA_API_KEY}
+    base-url: https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0
+
 app:
   websocket:
     allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://localhost:3000,http://localhost:8080}

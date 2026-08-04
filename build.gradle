@@ -79,8 +79,20 @@ dependencies {
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-
 }
+
+def jacocoExcludePatterns = [
+		'**/Q*.class'
+]
+
+def jacocoClassDirectories = files(
+		sourceSets.main.output.classesDirs.files.collect { classDirectory ->
+			fileTree(
+					dir: classDirectory,
+					exclude: jacocoExcludePatterns
+			)
+		}
+)
 
 tasks.named('test') {
 	useJUnitPlatform()
@@ -92,9 +104,15 @@ tasks.named('test') {
 tasks.named('jacocoTestReport') {
 	dependsOn tasks.named('test')
 
+	classDirectories.setFrom(jacocoClassDirectories)
+
 	reports {
 		html.required = true
 		xml.required = true
 		csv.required = false
 	}
+}
+
+tasks.named('jacocoTestCoverageVerification') {
+	classDirectories.setFrom(jacocoClassDirectories)
 }
