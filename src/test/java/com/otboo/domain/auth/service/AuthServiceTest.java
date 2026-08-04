@@ -58,7 +58,6 @@ class AuthServiceTest {
 
     given(userRepository.findByEmail("test@otboo.io")).willReturn(Optional.of(user));
     given(passwordEncoder.matches("password1234", "encoded-password")).willReturn(true);
-    given(passwordResetService.find(any())).willReturn(Optional.empty());
     given(jwtProvider.createAccessToken(any(), any(), anyLong())).willReturn("access-token");
     given(refreshTokenService.issue(any(), anyLong())).willReturn("refresh-token-value");
 
@@ -125,7 +124,6 @@ class AuthServiceTest {
 
     given(userRepository.findByEmail("test@otboo.io")).willReturn(Optional.of(user));
     given(passwordEncoder.matches("password1234", "encoded-password")).willReturn(true);
-    given(passwordResetService.find(any())).willReturn(Optional.empty());
     given(jwtProvider.createAccessToken(any(), any(), anyLong())).willReturn("access-token");
     given(refreshTokenService.issue(any(), anyLong())).willReturn("refresh-token-value");
 
@@ -325,12 +323,13 @@ class AuthServiceTest {
   }
 
   @Test
-  @DisplayName("비밀번호를 변경하면 새 비밀번호로 저장되고 임시비밀번호가 파기된다")
+  @DisplayName("비밀번호를 변경하면 새 비밀번호로 저장되고 임시비밀번호가 파기되며 tokenVersion이 증가한다")
   void changePasswordUpdatesPasswordAndDeletesTempPassword() throws Exception {
     // given
     User user = User.create("changetest@otboo.io", "변경테스트", "encoded-password");
     UUID userId = UUID.randomUUID();
     ReflectionTestUtils.setField(user, "id", userId);
+    long versionBeforeChange = user.getTokenVersion();
 
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
     given(passwordEncoder.encode("newPassword1234")).willReturn("new-encoded-password");
@@ -342,6 +341,7 @@ class AuthServiceTest {
 
     // then
     assertThat(user.getPasswordHash()).isEqualTo("new-encoded-password");
+    assertThat(user.getTokenVersion()).isEqualTo(versionBeforeChange + 1);
     verify(passwordResetService).delete(userId);
   }
 

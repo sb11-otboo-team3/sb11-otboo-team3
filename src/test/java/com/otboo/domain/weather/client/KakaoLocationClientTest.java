@@ -7,6 +7,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.otboo.domain.weather.dto.KakaoRegion;
 import com.otboo.domain.weather.exception.KakaoApiException;
 import com.otboo.domain.weather.exception.KakaoRegionNotFoundException;
 import org.junit.jupiter.api.BeforeEach;

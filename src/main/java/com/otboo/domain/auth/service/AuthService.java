@@ -49,7 +49,10 @@ public class AuthService {
         .orElse(DUMMY_PASSWORD_HASH);
     boolean passwordMatches = passwordEncoder.matches(request.password(), passwordHashToCheck);
 
-    boolean tempPasswordMatches = userOptional
+    // 기존 비밀번호가 일치하지 않을 때만 임시비밀번호(Redis)를 확인합니다.
+    // Redis 장애 시에도 정상 비밀번호로 로그인하는 사용자는 영향받지
+    // 않도록, 불필요한 경우 Redis 조회를 하지 않습니다.
+    boolean tempPasswordMatches = !passwordMatches && userOptional
         .flatMap(user -> passwordResetService.find(user.getId()))
         .map(tempPassword -> tempPassword.equals(request.password()))
         .orElse(false);

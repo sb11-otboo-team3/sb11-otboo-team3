@@ -1,6 +1,7 @@
 package com.otboo.domain.weather.client;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.otboo.domain.weather.dto.KakaoRegion;
 import com.otboo.domain.weather.exception.KakaoApiException;
 import com.otboo.domain.weather.exception.KakaoRegionNotFoundException;
 import java.util.List;
