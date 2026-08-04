@@ -133,7 +133,7 @@ public class NotificationService {
         );
         session.touch();
       } catch (IOException exception) {
-        sseEmitterRegistry.remove(receiverId);
+        sseEmitterRegistry.remove(receiverId, session);
       }
     });
   }

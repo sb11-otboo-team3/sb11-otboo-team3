@@ -37,24 +37,32 @@ public class SseEmitterRegistry {
 
   public ClientSession add(UUID userId, SseEmitter emitter) {
     ClientSession session = new ClientSession(userId, emitter);
-    clients.put(userId, session);
+    ClientSession oldSession = clients.put(userId, session);
+
+    if (oldSession != null) {
+      oldSession.getEmitter().complete();
+    }
 
     emitter.onCompletion(() -> {
       log.info("SSE 연결 완료: userId={}", userId);
-      clients.remove(userId);
+      remove(userId, session);
     });
 
     emitter.onTimeout(() -> {
       log.warn("SSE 타임아웃: userId={}", userId);
-      clients.remove(userId);
+      remove(userId, session);
     });
 
     emitter.onError(error -> {
       log.warn("SSE 오류: userId={}, error={}", userId, error.toString());
-      clients.remove(userId);
+      remove(userId, session);
     });
 
     return session;
+  }
+
+  public boolean remove(UUID userId, ClientSession session) {
+    return clients.remove(userId, session);
   }
 
   public void remove(UUID userId) {
