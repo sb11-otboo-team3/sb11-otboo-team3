@@ -21,6 +21,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Service
@@ -150,8 +152,24 @@ public class NotificationService {
 
     NotificationDto notificationDto = NotificationMapper.toDto(savedNotification);
 
-    sendToClient(receiverId, "notifications", notificationDto);
+    sendToClientAfterCommit(receiverId, notificationDto);
 
     return notificationDto;
+  }
+
+  private void sendToClientAfterCommit(UUID receiverId, NotificationDto notificationDto) {
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              sendToClient(receiverId, "notifications", notificationDto);
+            }
+          }
+      );
+      return;
+    }
+
+    sendToClient(receiverId, "notifications", notificationDto);
   }
 }
