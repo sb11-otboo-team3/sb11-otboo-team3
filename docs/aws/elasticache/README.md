@@ -132,7 +132,7 @@ Security Group의 아웃바운드 `0.0.0.0/0` 규칙은 인바운드 인터넷 �
 | AUTH Token | 활성화 |
 | Snapshot Retention | 0일 |
 | Auto Minor Version Upgrade | 활성화 |
-| Maintenance Window | `sun:18:00-sun:19:00` |
+| Maintenance Window | `sun:18:00-sun:19:00` (UTC, 월요일 03:00~04:00 KST) |
 | 상태 확인 결과 | `available` |
 
 현재 구성은 프로젝트 운영 비용을 줄이기 위한 단일 노드 구조입니다.
@@ -332,7 +332,8 @@ aws elasticache describe-cache-clusters \
     NodeType:CacheNodeType,
     NodeCount:NumCacheNodes,
     SubnetGroup:CacheSubnetGroupName,
-    SecurityGroups:SecurityGroups,
+    SecurityGroup:SecurityGroups[0].SecurityGroupId,
+    SecurityGroupStatus:SecurityGroups[0].Status,
     MaintenanceWindow:PreferredMaintenanceWindow,
     AutoMinorUpgrade:AutoMinorVersionUpgrade
   }' \
@@ -353,6 +354,7 @@ SecurityGroupStatus  active
 MaintenanceWindow    sun:18:00-sun:19:00
 AutoMinorUpgrade     true
 ```
+`MaintenanceWindow`의 `sun:18:00-sun:19:00`은 UTC 기준이며, 한국 시간으로는 월요일 03:00~04:00입니다.
 
 ### Cache Subnet Group
 
@@ -640,12 +642,15 @@ aws ssm get-parameter \
 ### 7단계: 최종 잔존 리소스 확인
 
 ```bash
-aws elasticache describe-replication-groups \
+aws ec2 describe-security-groups \
+  --filters \
+    Name=group-name,Values=otboo-prod-redis-sg \
+    Name=vpc-id,Values=vpc-00db8f2d24cb038f9 \
   --region ap-northeast-2 \
   --profile otboo \
-  --query 'ReplicationGroups[?ReplicationGroupId==`otboo-prod-redis`].{
-    Id:ReplicationGroupId,
-    Status:Status
+  --query 'SecurityGroups[].{
+    Name:GroupName,
+    GroupId:GroupId
   }' \
   --output table
 ```
@@ -697,4 +702,3 @@ sg-0721e7157c9051e76
 ```
 
 해당 리소스는 RDS 또는 ECS에서도 사용하므로 각 서비스의 종료 계획에 따라 별도로 관리합니다.
-EOF
