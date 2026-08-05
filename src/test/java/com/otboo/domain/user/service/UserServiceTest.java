@@ -27,6 +27,11 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 import com.otboo.domain.profile.repository.ProfileRepository;
+import com.otboo.domain.user.dto.UserDtoCursorResponse;
+import com.otboo.domain.user.exception.InvalidUserCursorException;
+import java.time.Instant;
+import java.util.List;
+import static org.mockito.ArgumentMatchers.eq;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
@@ -214,5 +219,108 @@ class UserServiceTest {
         .isInstanceOf(UserNotFoundException.class);
   }
 
+  @Test
+  @DisplayName("계정 목록을 조회하면 UserDtoCursorResponse를 반환한다")
+  void getUsersReturnsUserDtoCursorResponse() throws Exception {
+    // given
+    User user1 = User.create("user1@otboo.io", "유저1", "encoded-password");
+    User user2 = User.create("user2@otboo.io", "유저2", "encoded-password");
+    ReflectionTestUtils.setField(user1, "id", UUID.randomUUID());
+    ReflectionTestUtils.setField(user2, "id", UUID.randomUUID());
 
+    given(userRepository.findUsers(
+        eq(null), eq(null), eq(11), eq("createdAt"), eq("DESCENDING"),
+        eq(null), eq(null), eq(null)
+    )).willReturn(List.of(user1, user2));
+    given(userRepository.countUsers(null, null, null)).willReturn(2L);
+
+    // when
+    UserDtoCursorResponse result = userService.getUsers(
+        null, null, 10, "createdAt", "DESCENDING", null, null, null
+    );
+
+    // then
+    assertThat(result.data()).hasSize(2);
+    assertThat(result.hasNext()).isFalse();
+    assertThat(result.totalCount()).isEqualTo(2L);
+    assertThat(result.sortBy()).isEqualTo("createdAt");
+    assertThat(result.sortDirection()).isEqualTo("DESCENDING");
+  }
+
+  @Test
+  @DisplayName("다음 페이지가 있으면 hasNext가 true이고 nextCursor를 반환한다")
+  void getUsersWithNextPageReturnsHasNextTrue() throws Exception {
+    // given
+    User user1 = User.create("user1@otboo.io", "유저1", "encoded-password");
+    User user2 = User.create("user2@otboo.io", "유저2", "encoded-password");
+    UUID user2Id = UUID.randomUUID();
+    ReflectionTestUtils.setField(user1, "id", UUID.randomUUID());
+    ReflectionTestUtils.setField(user1, "createdAt", Instant.now());
+    ReflectionTestUtils.setField(user2, "id", user2Id);
+    ReflectionTestUtils.setField(user2, "createdAt", Instant.now());
+
+    // limit=1이면 조회는 limit+1=2건 요청, 결과가 2건이면 다음 페이지 있음
+    given(userRepository.findUsers(
+        eq(null), eq(null), eq(2), eq("createdAt"), eq("DESCENDING"),
+        eq(null), eq(null), eq(null)
+    )).willReturn(List.of(user1, user2));
+    given(userRepository.countUsers(null, null, null)).willReturn(5L);
+
+    // when
+    UserDtoCursorResponse result = userService.getUsers(
+        null, null, 1, "createdAt", "DESCENDING", null, null, null
+    );
+
+    // then
+    assertThat(result.data()).hasSize(1);
+    assertThat(result.hasNext()).isTrue();
+    assertThat(result.nextIdAfter()).isEqualTo(user1.getId());
+  }
+
+  @Test
+  @DisplayName("emailLike/roleEqual/locked 필터를 그대로 리포지토리에 전달한다")
+  void getUsersPassesFiltersToRepository() throws Exception {
+    // given
+    given(userRepository.findUsers(
+        eq(null), eq(null), eq(11), eq("createdAt"), eq("DESCENDING"),
+        eq("test"), eq("ADMIN"), eq(true)
+    )).willReturn(List.of());
+    given(userRepository.countUsers("test", "ADMIN", true)).willReturn(0L);
+
+    // when
+    UserDtoCursorResponse result = userService.getUsers(
+        null, null, 10, "createdAt", "DESCENDING", "test", "ADMIN", true
+    );
+
+    // then
+    assertThat(result.data()).isEmpty();
+    assertThat(result.totalCount()).isEqualTo(0L);
+  }
+
+  @Test
+  @DisplayName("cursor만 있고 idAfter가 없으면 예외가 발생한다")
+  void getUsersWithCursorOnlyThrowsException() throws Exception {
+    // when & then
+    assertThatThrownBy(() -> userService.getUsers(
+        Instant.now().toString(), null, 10, "createdAt", "DESCENDING", null, null, null
+    )).isInstanceOf(InvalidUserCursorException.class);
+  }
+
+  @Test
+  @DisplayName("idAfter만 있고 cursor가 없으면 예외가 발생한다")
+  void getUsersWithIdAfterOnlyThrowsException() throws Exception {
+    // when & then
+    assertThatThrownBy(() -> userService.getUsers(
+        null, UUID.randomUUID(), 10, "createdAt", "DESCENDING", null, null, null
+    )).isInstanceOf(InvalidUserCursorException.class);
+  }
+
+  @Test
+  @DisplayName("createdAt 정렬에서 파싱 불가능한 cursor면 예외가 발생한다")
+  void getUsersWithInvalidCreatedAtCursorThrowsException() throws Exception {
+    // when & then
+    assertThatThrownBy(() -> userService.getUsers(
+        "not-a-valid-instant", UUID.randomUUID(), 10, "createdAt", "DESCENDING", null, null, null
+    )).isInstanceOf(InvalidUserCursorException.class);
+  }
 }
