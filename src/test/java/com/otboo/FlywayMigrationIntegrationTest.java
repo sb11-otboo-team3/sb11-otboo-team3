@@ -8,6 +8,7 @@ import java.sql.Statement;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -20,8 +21,14 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  *  그 스키마가 JPA 엔티티와 정확히 일치하는지"는 검증되지 않는다.
  * 이 테스트는 실제 PostgreSQL 컨테이너 위에서 Flyway 마이그레이션을 그대로 실행하고,
  * Hibernate ddl-auto=validate로 엔티티-스키마 불일치를 잡아낸다.
+ *
+ * 기본 엔티티 스캔 범위(com.otboo 전체)를 그대로 두면 테스트 전용 엔티티
+ * (예: JpaAuditingTest의 TestAuditedEntity, com.otboo.global.common.entity 소속)까지
+ * 실제 엔티티로 잡혀서 "V1 스크립트엔 없는 테이블"로 validate가 실패한다.
+ * 그래서 실제 도메인 엔티티가 있는 패키지로만 스캔 범위를 좁힌다.
  */
 @Testcontainers
+@EntityScan(basePackages = "com.otboo.domain")
 @SpringBootTest(properties = {
 	"spring.flyway.enabled=true",
 	"spring.jpa.hibernate.ddl-auto=validate",
