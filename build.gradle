@@ -41,6 +41,9 @@ dependencies {
 	// Real-time communication
 	implementation 'org.springframework.boot:spring-boot-starter-websocket'
 
+	// Reactive HTTP client (WebClient) - 서블릿 웹서버는 그대로 두고 WebClient만 쓰기 위함
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
 	// Cache
 	implementation 'org.springframework.boot:spring-boot-starter-cache'
 	implementation 'com.github.ben-manes.caffeine:caffeine'
@@ -75,6 +78,9 @@ dependencies {
 
 	// Test database
 	testRuntimeOnly 'com.h2database:h2'
+
+	// WebClient 테스트용 목 HTTP 서버
+	testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
 
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
