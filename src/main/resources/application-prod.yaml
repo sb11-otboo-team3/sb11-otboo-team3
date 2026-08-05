@@ -36,3 +36,12 @@ jwt:
 app:
   websocket:
     allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS}
+
+  storage:
+    s3:
+      region: ${AWS_REGION:ap-northeast-2}
+      bucket: ${S3_BUCKET}
+      presigned-url-expiration-seconds: ${S3_PRESIGNED_URL_EXPIRATION_SECONDS:600}
+
+    image:
+      max-file-size-bytes: ${IMAGE_MAX_FILE_SIZE_BYTES:10485760}
