@@ -13,12 +13,16 @@ import com.otboo.domain.follow.exception.InvalidFollowCursorException;
 import com.otboo.domain.follow.exception.SelfFollowNotAllowedException;
 import com.otboo.domain.follow.mapper.FollowMapper;
 import com.otboo.domain.follow.repository.FollowRepository;
+import com.otboo.domain.notification.entity.Notification;
+import com.otboo.domain.notification.entity.NotificationLevel;
+import com.otboo.domain.notification.event.NotificationEvent;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +33,7 @@ public class FollowService {
 
   private final FollowRepository followRepository;
   private final UserRepository userRepository;
+  private final ApplicationEventPublisher eventPublisher;
 
   @Transactional
   public FollowDto createFollow(FollowCreateRequest request, UUID currentUserId) {
@@ -56,6 +61,15 @@ public class FollowService {
 
     Follow follow = Follow.create(follower, followee);
     Follow savedFollow = followRepository.save(follow);
+
+    eventPublisher.publishEvent(
+        new NotificationEvent(
+            followee.getId(),
+            "새로운 팔로워",
+            follower.getName() + "님이 회원님을 팔로우했습니다.",
+            NotificationLevel.INFO
+        )
+    );
 
     return FollowMapper.toDto(savedFollow);
   }

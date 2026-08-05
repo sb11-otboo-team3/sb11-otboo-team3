@@ -1,0 +1,164 @@
+package com.otboo.domain.notification.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+
+import com.otboo.domain.notification.dto.response.NotificationDto;
+import com.otboo.domain.notification.dto.response.NotificationDtoCursorResponse;
+import com.otboo.domain.notification.entity.Notification;
+import com.otboo.domain.notification.entity.NotificationLevel;
+import com.otboo.domain.notification.exception.InvalidNotificationCursorException;
+import com.otboo.domain.notification.exception.NotificationForbiddenException;
+import com.otboo.domain.notification.repository.NotificationRepository;
+import com.otboo.domain.user.entity.User;
+import com.otboo.domain.user.repository.UserRepository;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
+
+@ExtendWith(MockitoExtension.class)
+class NotificationServiceTest {
+
+  @Mock
+  private NotificationRepository notificationRepository;
+
+  @Mock
+  private SseEmitterRegistry sseEmitterRegistry;
+
+  @Mock
+  private UserRepository userRepository;
+
+  @InjectMocks
+  private NotificationService notificationService;
+
+  @Test
+  @DisplayName("알림 목록 조회 성공 테스트")
+  void getNotifications_success() {
+    UUID receiverId = UUID.randomUUID();
+    User receiver = createUser(receiverId);
+
+    Notification notification = createNotification(UUID.randomUUID(), receiver);
+
+    given(notificationRepository.findNotifications(receiverId, null, null, 21))
+        .willReturn(List.of(notification));
+    given(notificationRepository.countNotifications(receiverId)).willReturn(1L);
+
+    NotificationDtoCursorResponse result =
+        notificationService.getNotifications(null, null, 20, receiverId);
+
+    assertThat(result.data()).hasSize(1);
+    assertThat(result.totalCount()).isEqualTo(1L);
+    assertThat(result.hasNext()).isFalse();
+  }
+
+  @Test
+  @DisplayName("cursor와 idAfter 둘 중 하나만 있는 경우 예외 테스트")
+  void getNotifications_invalidCursor_throwsException() {
+    UUID receiverId = UUID.randomUUID();
+
+    assertThatThrownBy(() ->
+        notificationService.getNotifications("2026-08-03T10:00:00Z", null, 20, receiverId)
+    ).isInstanceOf(InvalidNotificationCursorException.class);
+
+    verify(notificationRepository, never()).findNotifications(any(), any(), any(), any(Integer.class));
+  }
+
+  @Test
+  @DisplayName("알림 삭제 성공 테스트")
+  void deleteNotification_success() {
+    UUID receiverId = UUID.randomUUID();
+    UUID notificationId = UUID.randomUUID();
+
+    User receiver = createUser(receiverId);
+    Notification notification = createNotification(notificationId, receiver);
+
+    given(notificationRepository.findById(notificationId))
+        .willReturn(Optional.of(notification));
+
+    notificationService.deleteNotification(notificationId, receiverId);
+
+    verify(notificationRepository).delete(notification);
+  }
+
+  @Test
+  @DisplayName("다른 사용자의 알림을 삭제하는 경우 예외 테스트")
+  void deleteNotification_forbidden_throwsException() {
+    UUID receiverId = UUID.randomUUID();
+    UUID currentUserId = UUID.randomUUID();
+    UUID notificationId = UUID.randomUUID();
+
+    User receiver = createUser(receiverId);
+    Notification notification = createNotification(notificationId, receiver);
+
+    given(notificationRepository.findById(notificationId))
+        .willReturn(Optional.of(notification));
+
+    assertThatThrownBy(() ->
+        notificationService.deleteNotification(notificationId, currentUserId)
+    ).isInstanceOf(NotificationForbiddenException.class);
+
+    verify(notificationRepository, never()).delete(any());
+  }
+
+  @Test
+  @DisplayName("알림 생성 성공 테스트")
+  void createNotification_success() {
+    UUID receiverId = UUID.randomUUID();
+    UUID notificationId = UUID.randomUUID();
+
+    User receiver = createUser(receiverId);
+
+    given(userRepository.findById(receiverId)).willReturn(Optional.of(receiver));
+    given(notificationRepository.save(any(Notification.class)))
+        .willAnswer(invocation -> {
+          Notification notification = invocation.getArgument(0);
+          ReflectionTestUtils.setField(notification, "id", notificationId);
+          ReflectionTestUtils.setField(notification, "createdAt", Instant.now());
+          return notification;
+        });
+    given(sseEmitterRegistry.get(receiverId)).willReturn(Optional.empty());
+
+    NotificationDto result = notificationService.createNotification(
+        receiverId,
+        "새 알림",
+        "알림 내용",
+        NotificationLevel.INFO
+    );
+
+    assertThat(result.id()).isEqualTo(notificationId);
+    assertThat(result.receiverId()).isEqualTo(receiverId);
+    assertThat(result.title()).isEqualTo("새 알림");
+
+    verify(notificationRepository).save(any(Notification.class));
+  }
+
+  private User createUser(UUID userId) {
+    User user = User.create("user@test.com", "user", "password");
+    ReflectionTestUtils.setField(user, "id", userId);
+    return user;
+  }
+
+  private Notification createNotification(UUID notificationId, User receiver) {
+    Notification notification = Notification.create(
+        receiver,
+        "알림 제목",
+        "알림 내용",
+        NotificationLevel.INFO
+    );
+    ReflectionTestUtils.setField(notification, "id", notificationId);
+    ReflectionTestUtils.setField(notification, "createdAt", Instant.now());
+    return notification;
+  }
+}
