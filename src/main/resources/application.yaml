@@ -5,6 +5,10 @@ spring:
   profiles:
     default: local
 
+  mvc:
+    async:
+      request-timeout: 3600000
+
   jpa:
     open-in-view: false
 

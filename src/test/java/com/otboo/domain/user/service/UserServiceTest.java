@@ -26,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
+import com.otboo.domain.profile.repository.ProfileRepository;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
@@ -38,6 +39,9 @@ class UserServiceTest {
 
   @InjectMocks
   private UserService userService;
+
+  @Mock
+  private ProfileRepository profileRepository;
 
   @Test
   @DisplayName("회원가입에 성공하면 UserDto를 반환한다")
