@@ -1,7 +1,7 @@
 package com.otboo.domain.follow.mapper;
 
 import com.otboo.domain.follow.dto.response.FollowDto;
-import com.otboo.domain.follow.dto.response.UserSummary;
+import com.otboo.domain.user.dto.UserSummary;
 import com.otboo.domain.follow.entity.Follow;
 import com.otboo.domain.user.entity.User;
 

@@ -1,6 +1,6 @@
 package com.otboo.domain.directmessage.dto.response;
 
-import com.otboo.domain.follow.dto.response.UserSummary;
+import com.otboo.domain.user.dto.UserSummary;
 import java.time.Instant;
 import java.util.UUID;
 
