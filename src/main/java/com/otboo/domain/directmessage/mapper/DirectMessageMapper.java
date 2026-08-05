@@ -2,33 +2,23 @@ package com.otboo.domain.directmessage.mapper;
 
 import com.otboo.domain.directmessage.dto.response.DirectMessageDto;
 import com.otboo.domain.directmessage.entity.DirectMessage;
-import com.otboo.domain.user.dto.UserSummary;
-import com.otboo.domain.user.entity.User;
+import com.otboo.domain.user.mapper.UserSummaryMapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
 
-public final class DirectMessageMapper {
+@Component
+@RequiredArgsConstructor
+public class DirectMessageMapper {
 
-  private DirectMessageMapper() {
-  }
+  private final UserSummaryMapper userSummaryMapper;
 
-  public static DirectMessageDto toDto(DirectMessage directMessage) {
+  public DirectMessageDto toDto(DirectMessage directMessage) {
     return new DirectMessageDto(
         directMessage.getId(),
         directMessage.getCreatedAt(),
-        toUserSummary(directMessage.getSender()),
-        toUserSummary(directMessage.getReceiver()),
+        userSummaryMapper.toUserSummary(directMessage.getSender()),
+        userSummaryMapper.toUserSummary(directMessage.getReceiver()),
         directMessage.getContent()
-    );
-  }
-
-  private static UserSummary toUserSummary(User user) {
-    if (user == null) {
-      return null;
-    }
-
-    return new UserSummary(
-        user.getId(),
-        user.getName(),
-        null
     );
   }
 }

@@ -1,6 +1,6 @@
 package com.otboo.domain.feed.dto.response;
 
-import com.otboo.domain.feed.entity.Feed;
+import com.otboo.domain.user.dto.UserSummary;
 import com.otboo.domain.weather.dto.WeatherSummaryDto;
 import java.time.Instant;
 import java.util.List;
@@ -10,7 +10,7 @@ public record FeedDto(
     UUID id,
     Instant createdAt,
     Instant updatedAt,
-    FeedAuthorDto author,
+    UserSummary author,
     WeatherSummaryDto weather,
     List<FeedOotdDto> ootds,
     String content,
@@ -18,23 +18,4 @@ public record FeedDto(
     int commentCount,
     boolean likedByMe
 ) {
-  public static FeedDto of(
-      Feed feed,
-      WeatherSummaryDto weather,
-      List<FeedOotdDto> ootds,
-      boolean likedByMe
-  ) {
-    return new FeedDto(
-        feed.getId(),
-        feed.getCreatedAt(),
-        feed.getUpdatedAt(),
-        FeedAuthorDto.from(feed.getAuthor()),
-        weather,
-        ootds,
-        feed.getContent(),
-        feed.getLikeCount(),
-        feed.getCommentCount(),
-        likedByMe
-    );
-  }
 }

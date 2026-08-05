@@ -15,7 +15,7 @@ public record FeedCreateRequest(
     UUID weatherId,
 
     @NotEmpty(message = "의상 ID 목록은 필수입니다.")
-    List<UUID> clothesIds,
+    List<@NotNull UUID> clothesIds,
 
     @NotBlank(message = "피드 내용은 필수입니다.")
     String content

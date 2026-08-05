@@ -18,8 +18,10 @@ import com.otboo.domain.follow.exception.FollowForbiddenException;
 import com.otboo.domain.follow.exception.FollowNotFoundException;
 import com.otboo.domain.follow.exception.FollowUserNotFoundException;
 import com.otboo.domain.follow.exception.SelfFollowNotAllowedException;
+import com.otboo.domain.follow.mapper.FollowMapper;
 import com.otboo.domain.follow.repository.FollowRepository;
 import com.otboo.domain.notification.event.NotificationEvent;
+import com.otboo.domain.user.dto.UserSummary;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import java.util.List;
@@ -46,6 +48,9 @@ class FollowServiceTest {
   @Mock
   private ApplicationEventPublisher eventPublisher;
 
+  @Mock
+  private FollowMapper followMapper;
+
   @InjectMocks
   private FollowService followService;
 
@@ -67,6 +72,13 @@ class FollowServiceTest {
     given(followRepository.save(any(Follow.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
 
+    FollowDto followDto = new FollowDto(
+        UUID.randomUUID(),
+        new UserSummary(followeeId, "followee", null),
+        new UserSummary(followerId, "follower", null)
+    );
+
+    given(followMapper.toDto(any(Follow.class))).willReturn(followDto);
     FollowDto result = followService.createFollow(request, followerId);
 
     assertThat(result.follower().name()).isEqualTo("follower");
