@@ -2,11 +2,20 @@ package com.otboo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Base64;
+import java.util.UUID;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
+import org.springframework.batch.core.JobExecution;
+import org.springframework.batch.core.JobParameters;
+import org.springframework.batch.core.JobParametersBuilder;
+import org.springframework.batch.core.StepExecution;
+import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -43,6 +52,9 @@ class FlywayMigrationIntegrationTest {
 	@Autowired
 	private DataSource dataSource;
 
+	@Autowired
+	private JobRepository jobRepository;
+
 	@Test
 	void contextLoads_whenFlywayMigratesRealPostgresAndHibernateValidates() {
 		// 컨텍스트가 정상 기동되는 것 자체가 "Flyway 마이그레이션 성공 + Hibernate 엔티티-스키마 일치"를 의미한다.
@@ -61,6 +73,74 @@ class FlywayMigrationIntegrationTest {
 			assertThat(resultSet.getBoolean("success"))
 				.as("V1 마이그레이션이 성공으로 기록돼야 한다")
 				.isTrue();
+		}
+	}
+
+	/**
+	 * spring.batch.jdbc.initialize-schema=never 상태에서는 V1 마이그레이션이 만든
+	 * BATCH_* 테이블/시퀀스가 "존재하기만" 하면 컨텍스트는 문제없이 뜬다. 하지만 그 테이블·시퀀스의
+	 * 컬럼/이름이 실제 Spring Batch 5.2.6 런타임이 기대하는 계약과 다르면 잡아내지 못한다.
+	 * 그래서 JobRepository로 실제 채번·저장 경로(createJobExecution → add(StepExecution))를
+	 * 직접 실행해서, BATCH_JOB_SEQ/BATCH_JOB_EXECUTION_SEQ/BATCH_STEP_EXECUTION_SEQ와
+	 * execution context 저장(BATCH_STEP_EXECUTION_CONTEXT)까지 검증한다.
+	 */
+	@Test
+	void jobRepositoryExercisesBatchMetadataSchema() throws Exception {
+		// given: 재실행/재시도 시 JobInstance 유일성 제약(JOB_NAME, JOB_KEY)에 걸리지 않도록 매번 고유한 파라미터 사용
+		JobParameters jobParameters = new JobParametersBuilder()
+			.addString("runId", UUID.randomUUID().toString())
+			.toJobParameters();
+
+		// when: BATCH_JOB_SEQ로 JobInstance를, BATCH_JOB_EXECUTION_SEQ로 JobExecution을 채번하며 저장
+		JobExecution jobExecution = jobRepository.createJobExecution(
+			"flywayMigrationVerificationJob", jobParameters);
+
+		StepExecution stepExecution = new StepExecution("flywayMigrationVerificationStep", jobExecution);
+		stepExecution.getExecutionContext().putString("checkKey", "checkValue");
+		// BATCH_STEP_EXECUTION_SEQ로 채번하며 저장 + execution context를 BATCH_STEP_EXECUTION_CONTEXT에 저장
+		jobRepository.add(stepExecution);
+
+		// then: 채번 자체가 성공했는지 (시퀀스 계약 확인)
+		assertThat(jobExecution.getJobId())
+			.as("BATCH_JOB_SEQ로 JobInstance PK가 채번돼야 한다")
+			.isNotNull();
+		assertThat(jobExecution.getId())
+			.as("BATCH_JOB_EXECUTION_SEQ로 JobExecution PK가 채번돼야 한다")
+			.isNotNull();
+		assertThat(stepExecution.getId())
+			.as("BATCH_STEP_EXECUTION_SEQ로 StepExecution PK가 채번돼야 한다")
+			.isNotNull();
+
+		try (Connection connection = dataSource.getConnection()) {
+			// BATCH_JOB_EXECUTION_PARAMS 컬럼 계약 확인 (JOB_EXECUTION_ID, PARAMETER_NAME, PARAMETER_VALUE)
+			try (PreparedStatement ps = connection.prepareStatement(
+				"SELECT PARAMETER_VALUE FROM BATCH_JOB_EXECUTION_PARAMS "
+					+ "WHERE JOB_EXECUTION_ID = ? AND PARAMETER_NAME = 'runId'")) {
+				ps.setLong(1, jobExecution.getId());
+				try (ResultSet rs = ps.executeQuery()) {
+					assertThat(rs.next())
+						.as("BATCH_JOB_EXECUTION_PARAMS에 job parameter가 저장돼야 한다")
+						.isTrue();
+					assertThat(rs.getString("PARAMETER_VALUE"))
+						.isEqualTo(jobParameters.getString("runId"));
+				}
+			}
+
+			// BATCH_STEP_EXECUTION_CONTEXT에 execution context가 실제로 직렬화 저장됐는지 확인
+			// (SHORT_CONTEXT는 Java 직렬화 후 Base64로 저장되므로, 원문 그대로가 아니라 디코딩해서 확인한다)
+			try (PreparedStatement ps = connection.prepareStatement(
+				"SELECT SHORT_CONTEXT FROM BATCH_STEP_EXECUTION_CONTEXT WHERE STEP_EXECUTION_ID = ?")) {
+				ps.setLong(1, stepExecution.getId());
+				try (ResultSet rs = ps.executeQuery()) {
+					assertThat(rs.next())
+						.as("BATCH_STEP_EXECUTION_CONTEXT에 execution context가 저장돼야 한다")
+						.isTrue();
+					String shortContext = rs.getString("SHORT_CONTEXT");
+					String decoded = new String(
+						Base64.getDecoder().decode(shortContext), StandardCharsets.ISO_8859_1);
+					assertThat(decoded).contains("checkKey", "checkValue");
+				}
+			}
 		}
 	}
 }
