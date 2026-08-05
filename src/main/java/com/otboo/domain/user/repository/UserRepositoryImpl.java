@@ -100,10 +100,12 @@ public class UserRepositoryImpl implements UserRepositoryCustom {
       return isDesc
           ? new OrderSpecifier<?>[]{user.createdAt.desc(), user.id.desc()}
           : new OrderSpecifier<?>[]{user.createdAt.asc(), user.id.asc()};
-    } else {
+    } else if ("email".equalsIgnoreCase(sortBy)) {
       return isDesc
           ? new OrderSpecifier<?>[]{user.email.desc(), user.id.desc()}
           : new OrderSpecifier<?>[]{user.email.asc(), user.id.asc()};
+    } else {
+      throw new InvalidUserCursorException();
     }
   }
 

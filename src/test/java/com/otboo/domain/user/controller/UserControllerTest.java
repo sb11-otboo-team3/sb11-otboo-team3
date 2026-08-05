@@ -18,6 +18,7 @@ import com.otboo.domain.user.dto.UserLockUpdateRequest;
 import com.otboo.domain.user.dto.UserRoleUpdateRequest;
 import com.otboo.domain.user.entity.UserRole;
 import com.otboo.domain.user.exception.DuplicateEmailException;
+import com.otboo.domain.user.exception.InvalidUserCursorException;
 import com.otboo.domain.user.exception.UserNotFoundException;
 import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.domain.user.service.UserService;
@@ -475,6 +476,21 @@ class UserControllerTest {
     // when & then
     mockMvc.perform(get("/api/users")
             .param("limit", "101"))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @WithMockUser(roles = "ADMIN")
+  @DisplayName("잘못된 sortBy 값으로 요청하면 400을 반환한다")
+  void getUsersWithInvalidSortByReturns400() throws Exception {
+    // given
+    given(userService.getUsers(any(), any(), any(Integer.class), any(), any(), any(), any(), any()))
+        .willThrow(new InvalidUserCursorException());
+
+    // when & then
+    mockMvc.perform(get("/api/users")
+            .param("limit", "10")
+            .param("sortBy", "invalidField"))
         .andExpect(status().isBadRequest());
   }
 }

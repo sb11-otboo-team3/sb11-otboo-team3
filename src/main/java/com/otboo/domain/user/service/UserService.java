@@ -22,6 +22,7 @@ import com.otboo.domain.user.exception.InvalidUserCursorException;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +30,8 @@ import java.util.List;
 public class UserService {
 
   private static final String EMAIL_UNIQUE_CONSTRAINT = "uk6dotkott2kjsp8vw4d0m25fb7";
+  private static final Set<String> VALID_SORT_BY = Set.of("createdAt", "email");
+  private static final Set<String> VALID_SORT_DIRECTION = Set.of("ASCENDING", "DESCENDING");
 
   private final UserRepository userRepository;
   private final ProfileRepository profileRepository;
@@ -95,6 +98,7 @@ public class UserService {
       String roleEqual,
       Boolean locked
   ) {
+    validateSort(sortBy, sortDirection);
     validateCursor(cursor, idAfter, sortBy);
 
     List<User> users = userRepository.findUsers(
@@ -149,6 +153,15 @@ public class UserService {
       } catch (DateTimeParseException e) {
         throw new InvalidUserCursorException();
       }
+    }
+  }
+
+  private void validateSort(String sortBy, String sortDirection) {
+    if (!VALID_SORT_BY.contains(sortBy)) {
+      throw new InvalidUserCursorException();
+    }
+    if (!VALID_SORT_DIRECTION.contains(sortDirection)) {
+      throw new InvalidUserCursorException();
     }
   }
 

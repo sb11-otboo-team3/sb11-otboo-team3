@@ -259,7 +259,6 @@ class UserServiceTest {
     ReflectionTestUtils.setField(user2, "id", user2Id);
     ReflectionTestUtils.setField(user2, "createdAt", Instant.now());
 
-    // limit=1이면 조회는 limit+1=2건 요청, 결과가 2건이면 다음 페이지 있음
     given(userRepository.findUsers(
         eq(null), eq(null), eq(2), eq("createdAt"), eq("DESCENDING"),
         eq(null), eq(null), eq(null)
@@ -274,6 +273,7 @@ class UserServiceTest {
     // then
     assertThat(result.data()).hasSize(1);
     assertThat(result.hasNext()).isTrue();
+    assertThat(result.nextCursor()).isEqualTo(user1.getCreatedAt().toString());
     assertThat(result.nextIdAfter()).isEqualTo(user1.getId());
   }
 
@@ -321,6 +321,24 @@ class UserServiceTest {
     // when & then
     assertThatThrownBy(() -> userService.getUsers(
         "not-a-valid-instant", UUID.randomUUID(), 10, "createdAt", "DESCENDING", null, null, null
+    )).isInstanceOf(InvalidUserCursorException.class);
+  }
+
+  @Test
+  @DisplayName("잘못된 sortBy 값이면 예외가 발생한다")
+  void getUsersWithInvalidSortByThrowsException() throws Exception {
+    // when & then
+    assertThatThrownBy(() -> userService.getUsers(
+        null, null, 10, "invalidField", "DESCENDING", null, null, null
+    )).isInstanceOf(InvalidUserCursorException.class);
+  }
+
+  @Test
+  @DisplayName("잘못된 sortDirection 값이면 예외가 발생한다")
+  void getUsersWithInvalidSortDirectionThrowsException() throws Exception {
+    // when & then
+    assertThatThrownBy(() -> userService.getUsers(
+        null, null, 10, "createdAt", "invalidDirection", null, null, null
     )).isInstanceOf(InvalidUserCursorException.class);
   }
 }
