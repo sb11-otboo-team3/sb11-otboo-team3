@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.mock;
 
 import com.otboo.global.infrastructure.storage.StorageDirectory;
 import com.otboo.global.infrastructure.storage.StoredFile;
@@ -21,6 +22,7 @@ import java.net.URI;
 import java.net.URL;
 import java.time.Duration;
 import java.util.UUID;
+import java.io.IOException;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -30,6 +32,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -402,6 +405,42 @@ class S3FileStorageTest {
         assertThatThrownBy(() ->
                 s3FileStorage.delete(objectKey)
         ).isInstanceOf(InvalidStorageObjectKeyException.class);
+
+        verifyNoInteractions(s3Client);
+    }
+
+    @Test
+    @DisplayName("업로드 파일 데이터를 읽지 못하면 StorageUploadException을 발생시키고 S3를 호출하지 않는다")
+    void uploadImageThrowsStorageUploadExceptionWhenReadingFileFails()
+            throws Exception {
+        // given
+        MultipartFile unreadableFile = mock(MultipartFile.class);
+
+        IOException ioException =
+                new IOException("file read failed");
+
+        given(unreadableFile.isEmpty())
+                .willReturn(false);
+
+        given(unreadableFile.getSize())
+                .willReturn(3L);
+
+        given(unreadableFile.getContentType())
+                .willReturn("image/jpeg");
+
+        given(unreadableFile.getBytes())
+                .willThrow(ioException);
+
+        // when & then
+        assertThatThrownBy(() ->
+                s3FileStorage.upload(
+                        StorageDirectory.PROFILES,
+                        OWNER_ID,
+                        unreadableFile
+                )
+        )
+                .isInstanceOf(StorageUploadException.class)
+                .hasCause(ioException);
 
         verifyNoInteractions(s3Client);
     }
