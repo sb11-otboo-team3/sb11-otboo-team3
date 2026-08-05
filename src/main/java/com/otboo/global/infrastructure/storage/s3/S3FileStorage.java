@@ -11,7 +11,7 @@ import com.otboo.global.infrastructure.storage.exception.StorageUploadException;
 import com.otboo.global.infrastructure.storage.exception.InvalidStorageObjectKeyException;
 import com.otboo.global.infrastructure.storage.validation.ImageFileValidator;
 
-import java.io.IOException;
+import com.otboo.global.infrastructure.storage.validation.ValidatedImageFile;
 import java.time.Duration;
 import java.util.UUID;
 
@@ -55,10 +55,11 @@ public class S3FileStorage implements FileStorage {
             UUID ownerId,
             MultipartFile file
     ) {
-        imageFileValidator.validate(file);
+        ValidatedImageFile validatedImage =
+                imageFileValidator.validate(file);
 
         ImageContentType imageContentType =
-                ImageContentType.from(file.getContentType());
+                validatedImage.contentType();
 
         String objectKey = objectKeyGenerator.generate(
                 directory,
@@ -71,10 +72,13 @@ public class S3FileStorage implements FileStorage {
                         .bucket(s3Properties.bucket())
                         .key(objectKey)
                         .contentType(imageContentType.getContentType())
-                        .contentLength(file.getSize())
+                        .contentLength(validatedImage.size())
                         .build();
 
-        RequestBody requestBody = createRequestBody(file);
+        RequestBody requestBody =
+                RequestBody.fromBytes(
+                        validatedImage.bytes()
+                );
 
         try {
             s3Client.putObject(putObjectRequest, requestBody);
@@ -85,7 +89,7 @@ public class S3FileStorage implements FileStorage {
         return new StoredFile(
                 objectKey,
                 imageContentType.getContentType(),
-                file.getSize()
+                validatedImage.size()
         );
     }
 
@@ -133,14 +137,6 @@ public class S3FileStorage implements FileStorage {
             s3Client.deleteObject(deleteObjectRequest);
         } catch (SdkException exception) {
             throw new StorageDeleteException(exception);
-        }
-    }
-
-    private RequestBody createRequestBody(MultipartFile file) {
-        try {
-            return RequestBody.fromBytes(file.getBytes());
-        } catch (IOException exception) {
-            throw new StorageUploadException(exception);
         }
     }
 

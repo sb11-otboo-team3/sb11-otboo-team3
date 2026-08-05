@@ -17,6 +17,7 @@ import com.otboo.global.infrastructure.storage.exception.StorageDeleteException;
 import com.otboo.global.infrastructure.storage.exception.StorageReadUrlException;
 import com.otboo.global.infrastructure.storage.exception.StorageUploadException;
 import com.otboo.global.infrastructure.storage.exception.InvalidStorageObjectKeyException;
+import com.otboo.global.infrastructure.storage.exception.InvalidImageFileException;
 
 import java.net.URI;
 import java.net.URL;
@@ -52,6 +53,11 @@ class S3FileStorageTest {
     private static final String BUCKET = "test-storage-bucket";
     private static final long PRESIGNED_URL_EXPIRATION_SECONDS = 600L;
     private static final long MAX_FILE_SIZE_BYTES = 10L * 1024 * 1024;
+    private static final byte[] JPEG_BYTES = {
+            (byte) 0xFF,
+            (byte) 0xD8,
+            (byte) 0xFF
+    };
 
     private static final UUID OWNER_ID =
             UUID.fromString("11111111-1111-1111-1111-111111111111");
@@ -104,7 +110,7 @@ class S3FileStorageTest {
                 "image",
                 "profile.jpg",
                 "image/jpeg",
-                new byte[]{1, 2, 3}
+                JPEG_BYTES
         );
 
         given(
@@ -154,7 +160,7 @@ class S3FileStorageTest {
                 "image",
                 "profile.gif",
                 "image/gif",
-                new byte[]{1, 2, 3}
+                JPEG_BYTES
         );
 
         // when & then
@@ -256,7 +262,7 @@ class S3FileStorageTest {
                 "image",
                 "profile.jpg",
                 "image/jpeg",
-                new byte[] {1, 2, 3}
+                JPEG_BYTES
         );
 
         SdkClientException sdkException =
@@ -441,6 +447,33 @@ class S3FileStorageTest {
         )
                 .isInstanceOf(StorageUploadException.class)
                 .hasCause(ioException);
+
+        verifyNoInteractions(s3Client);
+    }
+
+    @Test
+    @DisplayName("HTML 바이트를 JPEG로 선언하면 예외를 발생시키고 S3를 호출하지 않는다")
+    void uploadImageRejectsFakeJpegWithoutCallingS3()
+            throws Exception {
+        // given
+        MockMultipartFile fakeImage =
+                new MockMultipartFile(
+                        "image",
+                        "fake.jpg",
+                        "image/jpeg",
+                        "<html>not an image</html>".getBytes()
+                );
+
+        // when & then
+        assertThatThrownBy(() ->
+                s3FileStorage.upload(
+                        StorageDirectory.PROFILES,
+                        OWNER_ID,
+                        fakeImage
+                )
+        ).isInstanceOf(
+                InvalidImageFileException.class
+        );
 
         verifyNoInteractions(s3Client);
     }

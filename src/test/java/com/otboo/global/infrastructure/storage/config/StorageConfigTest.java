@@ -112,4 +112,52 @@ class StorageConfigTest {
                 assertThat(context).hasFailed()
         );
     }
+
+    @Test
+    @DisplayName("Presigned URL 만료 시간이 최대값인 604800초이면 컨텍스트 생성에 성공한다")
+    void bindContextWhenPresignedUrlExpirationIsMaximum()
+            throws Exception {
+        // given
+        ApplicationContextRunner maximumContextRunner =
+                new ApplicationContextRunner()
+                        .withUserConfiguration(StorageConfig.class)
+                        .withPropertyValues(
+                                "app.storage.s3.region=ap-northeast-2",
+                                "app.storage.s3.bucket=test-storage-bucket",
+                                "app.storage.s3.presigned-url-expiration-seconds=604800",
+                                "app.storage.image.max-file-size-bytes=10485760"
+                        );
+
+        // when & then
+        maximumContextRunner.run(context -> {
+            assertThat(context).hasNotFailed();
+
+            S3Properties properties =
+                    context.getBean(S3Properties.class);
+
+            assertThat(properties.presignedUrlExpirationSeconds())
+                    .isEqualTo(604800L);
+        });
+    }
+
+    @Test
+    @DisplayName("Presigned URL 만료 시간이 604800초를 초과하면 컨텍스트 생성에 실패한다")
+    void failContextWhenPresignedUrlExpirationExceedsMaximum()
+            throws Exception {
+        // given
+        ApplicationContextRunner invalidContextRunner =
+                new ApplicationContextRunner()
+                        .withUserConfiguration(StorageConfig.class)
+                        .withPropertyValues(
+                                "app.storage.s3.region=ap-northeast-2",
+                                "app.storage.s3.bucket=test-storage-bucket",
+                                "app.storage.s3.presigned-url-expiration-seconds=604801",
+                                "app.storage.image.max-file-size-bytes=10485760"
+                        );
+
+        // when & then
+        invalidContextRunner.run(context ->
+                assertThat(context).hasFailed()
+        );
+    }
 }

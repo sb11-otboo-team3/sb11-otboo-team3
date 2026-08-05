@@ -2,6 +2,7 @@ package com.otboo.global.infrastructure.storage.config;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Max;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -16,6 +17,10 @@ public record S3Properties(
         String bucket,
 
         @Positive(message = "Presigned URL 만료 시간은 양수여야 합니다.")
+        @Max(
+                value = 604800,
+                message = "Presigned URL 만료 시간은 604800초를 초과할 수 없습니다."
+        )
         long presignedUrlExpirationSeconds
 
 ) {
