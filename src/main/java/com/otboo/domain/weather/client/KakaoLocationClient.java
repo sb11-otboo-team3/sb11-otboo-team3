@@ -7,7 +7,6 @@ import com.otboo.domain.weather.exception.KakaoRegionNotFoundException;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientException;
 import reactor.core.publisher.Mono;
 
 @Slf4j
@@ -39,7 +38,9 @@ public class KakaoLocationClient {
         .header("Authorization", "KakaoAK " + apiKey)
         .retrieve()
         .bodyToMono(KakaoRegionResponse.class)
-        .onErrorMap(WebClientException.class, e -> {
+        // WebClientException(통신 실패)뿐 아니라 JSON 파싱 실패(DecodingException, WebClientException과 무관한 별도 계층)도
+        // 여기서 잡아야 한다 - 안 그러면 파싱 에러가 그대로 흘러가서 GlobalExceptionHandler의 500 catch-all로 떨어진다.
+        .onErrorMap(Exception.class, e -> {
           log.error("Kakao 좌표->행정구역 조회 실패: latitude={}, longitude={}", latitude, longitude, e);
           return new KakaoApiException(latitude, longitude, e);
         })

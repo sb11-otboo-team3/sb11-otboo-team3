@@ -90,6 +90,20 @@ class KakaoLocationClientTest {
   }
 
   @Test
+  @DisplayName("응답은 200이지만 바디가 JSON으로 파싱할 수 없으면 KakaoApiException을 던진다")
+  void throwsKakaoApiExceptionWhenBodyIsMalformedJson() {
+    // given - HTTP 통신은 성공(200)이지만 바디 자체가 깨진 JSON인 경우.
+    // WebClient의 디코딩 실패(DecodingException)는 WebClientException 계층이 아니라서 별도로 잡아야 한다.
+    mockWebServer.enqueue(new MockResponse()
+        .setBody("{ 이건 유효한 JSON이 아님")
+        .addHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE));
+
+    // when & then
+    assertThatThrownBy(() -> kakaoLocationClient.getRegion(37.5665, 126.9780).block())
+        .isInstanceOf(KakaoApiException.class);
+  }
+
+  @Test
   @DisplayName("응답에 documents가 없으면 KakaoRegionNotFoundException을 던진다")
   void throwsKakaoRegionNotFoundExceptionWhenDocumentsMissing() {
     // given

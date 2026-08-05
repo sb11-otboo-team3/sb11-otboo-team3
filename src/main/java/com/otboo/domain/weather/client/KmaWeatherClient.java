@@ -16,7 +16,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientException;
 import reactor.core.publisher.Mono;
 
 @Slf4j
@@ -51,12 +50,17 @@ public class KmaWeatherClient {
             .build())
         .retrieve()
         .bodyToMono(KmaApiResponse.class)
-        .onErrorMap(WebClientException.class, e -> {
+        // WebClientException(통신 실패)뿐 아니라 JSON 파싱 실패(DecodingException, WebClientException과 무관한 별도 계층)도
+        // 여기서 잡아야 한다 - 안 그러면 파싱 에러가 그대로 흘러가서 GlobalExceptionHandler의 500 catch-all로 떨어진다.
+        .onErrorMap(Exception.class, e -> {
           log.error("기상청 예보 조회 실패: nx={}, ny={}, baseDate={}, baseTime={}", nx, ny, baseDate, baseTimeValue, e);
           return new KmaApiException(nx, ny, baseTime, e);
         })
         // 응답이 아예 안 온(빈 바디) 경우도 있어서 null 체크 대신 switchIfEmpty로 처리
-        .switchIfEmpty(Mono.error(new KmaApiException(nx, ny, baseTime, null)))
+        .switchIfEmpty(Mono.defer(() -> {
+          log.error("기상청 예보 응답 본문이 비어있음: nx={}, ny={}, baseDate={}, baseTime={}", nx, ny, baseDate, baseTimeValue);
+          return Mono.error(new KmaApiException(nx, ny, baseTime, null));
+        }))
         .flatMap(response -> {
           if (response.response() == null || response.response().body() == null
               || response.response().body().items() == null || response.response().body().items().item() == null) {

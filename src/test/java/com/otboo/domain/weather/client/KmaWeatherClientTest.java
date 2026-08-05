@@ -231,6 +231,21 @@ class KmaWeatherClientTest {
   }
 
   @Test
+  @DisplayName("응답은 200이지만 바디가 JSON으로 파싱할 수 없으면 KmaApiException을 던진다")
+  void throwsKmaApiExceptionWhenBodyIsMalformedJson() {
+    // given - HTTP 통신은 성공(200)이지만 바디 자체가 깨진 JSON인 경우.
+    // WebClient의 디코딩 실패(DecodingException)는 WebClientException 계층이 아니라서 별도로 잡아야 한다.
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    mockWebServer.enqueue(new MockResponse()
+        .setBody("{ 이건 유효한 JSON이 아님")
+        .addHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE));
+
+    // when & then
+    assertThatThrownBy(() -> kmaWeatherClient.getForecast(60, 127, baseTime).block())
+        .isInstanceOf(KmaApiException.class);
+  }
+
+  @Test
   @DisplayName("기상청 API 호출이 실패하면 KmaApiException을 던진다")
   void throwsKmaApiExceptionWhenCallFails() {
     // given
