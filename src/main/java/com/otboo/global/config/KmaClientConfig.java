@@ -1,14 +1,14 @@
 package com.otboo.global.config;
 
 import com.otboo.domain.weather.client.KmaWeatherClient;
+import io.netty.channel.ChannelOption;
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
-import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.client.ClientHttpRequestFactory;
-import org.springframework.web.client.RestClient;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
 
 @Configuration
 public class KmaClientConfig {
@@ -21,15 +21,15 @@ public class KmaClientConfig {
       @Value("${kma.vilage-fcst.base-url}") String baseUrl,
       @Value("${kma.vilage-fcst.api-key}") String apiKey
   ) {
-    ClientHttpRequestFactorySettings settings = ClientHttpRequestFactorySettings.defaults()
-        .withConnectTimeout(CONNECT_TIMEOUT)
-        .withReadTimeout(READ_TIMEOUT);
-    ClientHttpRequestFactory requestFactory = ClientHttpRequestFactoryBuilder.detect()
-        .build(settings);
+    HttpClient httpClient = HttpClient.create()
+        .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) CONNECT_TIMEOUT.toMillis())
+        .responseTimeout(READ_TIMEOUT);
 
-    return new KmaWeatherClient(
-        RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory).build(),
-        apiKey
-    );
+    WebClient webClient = WebClient.builder()
+        .baseUrl(baseUrl)
+        .clientConnector(new ReactorClientHttpConnector(httpClient))
+        .build();
+
+    return new KmaWeatherClient(webClient, apiKey);
   }
 }

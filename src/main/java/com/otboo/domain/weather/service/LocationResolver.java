@@ -13,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 @Slf4j
 @Component
@@ -25,15 +27,27 @@ public class LocationResolver {
   private final GridRecencyCache gridRecencyCache;
   private final GridSaver gridSaver;
 
-  public WeatherAPILocation resolve(double latitude, double longitude) {
+  public Mono<WeatherAPILocation> resolve(double latitude, double longitude) {
     WeatherGrid grid = gridConverter.convert(latitude, longitude);
 
-    // 카카오에서 조회
-    KakaoRegion region = kakaoLocationClient.getRegion(latitude, longitude);
+    // 카카오 호출과 격자 레지스트리 갱신(DB/캐시)은 서로 결과를 필요로 하지 않는 독립적인 작업이라 동시에 실행한다.
+    Mono<KakaoRegion> regionMono = kakaoLocationClient.getRegion(latitude, longitude);
 
-    //최근 접근 한적 있는 격자인지 캐시에서 체크.(너무 많은 최근 접근한 지역인지 DB 접근을 줄이기 위해)
+    // 격자 레지스트리 갱신은 JPA(블로킹) 호출이라, 이벤트 루프 스레드가 아니라 별도 스레드풀(boundedElastic)에서 실행한다.
+    Mono<Boolean> gridRegistryMono = Mono.fromCallable(() -> {
+          updateGridRegistry(grid);
+          return true;
+        })
+        .subscribeOn(Schedulers.boundedElastic());
+
+    return Mono.zip(regionMono, gridRegistryMono)
+        .map(tuple -> toDto(latitude, longitude, grid, tuple.getT1()));
+  }
+
+  //최근 접근 한적 있는 격자인지 캐시에서 체크.(너무 많은 최근 접근한 지역인지 DB 접근을 줄이기 위해)
+  private void updateGridRegistry(WeatherGrid grid) {
     if (gridRecencyCache.isRecentlyConfirmed(grid)) {
-      return toDto(latitude, longitude, grid, region);
+      return;
     }
 
     // 격자 레지스트리 갱신 (날씨 프리페치 배치가 실제로 쓰이는 격자만 골라낼 때 참고할 용도)
@@ -53,8 +67,6 @@ public class LocationResolver {
     }
 
     gridRecencyCache.markConfirmed(grid);
-
-    return toDto(latitude, longitude, grid, region);
   }
 
   private WeatherAPILocation toDto(

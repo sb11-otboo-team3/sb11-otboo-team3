@@ -24,6 +24,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import reactor.core.publisher.Mono;
 
 @ExtendWith(MockitoExtension.class)
 class ProfileServiceTest {
@@ -92,7 +93,7 @@ class ProfileServiceTest {
     WeatherAPILocation weatherLocation = new WeatherAPILocation(
         37.5, 127.0, 60, 127, new String[]{"서울특별시", "강남구", "역삼동"}
     );
-    given(locationResolver.resolve(37.5, 127.0)).willReturn(weatherLocation);
+    given(locationResolver.resolve(37.5, 127.0)).willReturn(Mono.just(weatherLocation));
 
     // when
     ProfileDto result = profileService.updateProfile(userId, request);

@@ -47,6 +47,7 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import reactor.core.publisher.Mono;
 
 @ExtendWith(MockitoExtension.class)
 class WeatherServiceImplTest {
@@ -110,10 +111,10 @@ class WeatherServiceImplTest {
     double latitude = 37.5665;
     double longitude = 126.9780;
     WeatherAPILocation location = location(latitude, longitude);
-    given(locationResolver.resolve(latitude, longitude)).willReturn(location);
+    given(locationResolver.resolve(latitude, longitude)).willReturn(Mono.just(location));
 
     // when
-    WeatherAPILocation result = weatherService.getLocation(latitude, longitude);
+    WeatherAPILocation result = weatherService.getLocation(latitude, longitude).block();
 
     // then
     assertThat(result).isEqualTo(location);
@@ -129,7 +130,7 @@ class WeatherServiceImplTest {
     WeatherAPILocation location = location(latitude, longitude);
     Grid existingGrid = Grid.builder().x(60).y(127).build();
 
-    given(locationResolver.resolve(latitude, longitude)).willReturn(location);
+    given(locationResolver.resolve(latitude, longitude)).willReturn(Mono.just(location));
     given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
 
     VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
@@ -149,10 +150,10 @@ class WeatherServiceImplTest {
         2.3,
         WindStrength.WEAK
     );
-    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(List.of(item));
+    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(Mono.just(List.of(item)));
 
     // when
-    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude).block();
 
     // then
     assertThat(result).hasSize(1);
@@ -178,7 +179,7 @@ class WeatherServiceImplTest {
     WeatherAPILocation location = location(latitude, longitude);
     Grid registeredGrid = Grid.builder().x(60).y(127).build();
 
-    given(locationResolver.resolve(latitude, longitude)).willReturn(location);
+    given(locationResolver.resolve(latitude, longitude)).willReturn(Mono.just(location));
     // DB가 초기화됐지만 recency 캐시는 아직 살아있어 getLocation()이 재등록을 건너뛴 상황을 흉내낸다.
     given(gridRepository.findByXAndY(60, 127))
         .willReturn(Optional.empty(), Optional.of(registeredGrid));
@@ -186,10 +187,10 @@ class WeatherServiceImplTest {
     VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
     given(baseTimeResolver.resolve(any())).willReturn(baseTime);
     given(kmaWeatherClient.getForecast(60, 127, baseTime))
-        .willReturn(List.of(vilageFcstItem(LocalDateTime.of(2026, 7, 30, 9, 0))));
+        .willReturn(Mono.just(List.of(vilageFcstItem(LocalDateTime.of(2026, 7, 30, 9, 0)))));
 
     // when
-    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude).block();
 
     // then
     assertThat(result).hasSize(1);
@@ -205,7 +206,7 @@ class WeatherServiceImplTest {
     WeatherAPILocation location = location(latitude, longitude);
     Grid existingGrid = Grid.builder().x(60).y(127).build();
 
-    given(locationResolver.resolve(latitude, longitude)).willReturn(location);
+    given(locationResolver.resolve(latitude, longitude)).willReturn(Mono.just(location));
     given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
 
     VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
@@ -229,7 +230,7 @@ class WeatherServiceImplTest {
         .willReturn(List.of(existingWeather));
 
     // when
-    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude).block();
 
     // then
     assertThat(result).hasSize(1);
@@ -246,7 +247,7 @@ class WeatherServiceImplTest {
     WeatherAPILocation location = location(latitude, longitude);
     Grid existingGrid = Grid.builder().x(60).y(127).build();
 
-    given(locationResolver.resolve(latitude, longitude)).willReturn(location);
+    given(locationResolver.resolve(latitude, longitude)).willReturn(Mono.just(location));
     given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
 
     VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
@@ -266,7 +267,7 @@ class WeatherServiceImplTest {
         2.3,
         WindStrength.WEAK
     );
-    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(List.of(item));
+    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(Mono.just(List.of(item)));
 
     Instant forecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
     Instant dayBeforeForecastAt = forecastAt.minus(1, ChronoUnit.DAYS);
@@ -283,7 +284,7 @@ class WeatherServiceImplTest {
         .willReturn(Optional.of(yesterday));
 
     // when
-    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude).block();
 
     // then
     ArgumentCaptor<Weather> captor = ArgumentCaptor.forClass(Weather.class);
@@ -305,7 +306,7 @@ class WeatherServiceImplTest {
     WeatherAPILocation location = location(latitude, longitude);
     Grid existingGrid = Grid.builder().x(60).y(127).build();
 
-    given(locationResolver.resolve(latitude, longitude)).willReturn(location);
+    given(locationResolver.resolve(latitude, longitude)).willReturn(Mono.just(location));
     given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
 
     VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
@@ -319,10 +320,10 @@ class WeatherServiceImplTest {
         vilageFcstItem(LocalDateTime.of(2026, 7, 31, 11, 0)),
         vilageFcstItem(LocalDateTime.of(2026, 8, 1, 9, 0)) // 대표시각과 정확히 일치
     );
-    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(items);
+    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(Mono.just(items));
 
     // when
-    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude).block();
 
     // then
     ZoneId kst = ZoneId.of("Asia/Seoul");
@@ -359,7 +360,7 @@ class WeatherServiceImplTest {
     WeatherAPILocation location = location(latitude, longitude);
     Grid existingGrid = Grid.builder().x(60).y(127).build();
 
-    given(locationResolver.resolve(latitude, longitude)).willReturn(location);
+    given(locationResolver.resolve(latitude, longitude)).willReturn(Mono.just(location));
     given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
 
     VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
@@ -379,12 +380,12 @@ class WeatherServiceImplTest {
         2.3,
         WindStrength.WEAK
     );
-    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(List.of(item));
+    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(Mono.just(List.of(item)));
     Mockito.doThrow(new DataIntegrityViolationException("duplicate key"))
         .when(weatherSaver).saveInNewTransaction(any(Weather.class));
 
     // when
-    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude).block();
 
     // then
     assertThat(result).hasSize(1);
@@ -399,7 +400,7 @@ class WeatherServiceImplTest {
     double longitude = 126.9780;
     WeatherAPILocation location = location(latitude, longitude);
 
-    given(locationResolver.resolve(latitude, longitude)).willReturn(location);
+    given(locationResolver.resolve(latitude, longitude)).willReturn(Mono.just(location));
 
     VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
     given(baseTimeResolver.resolve(any())).willReturn(baseTime);
@@ -421,7 +422,7 @@ class WeatherServiceImplTest {
         .willReturn(Optional.of(List.of(cachedDto)));
 
     // when
-    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude).block();
 
     // then
     assertThat(result).hasSize(1);
@@ -442,7 +443,7 @@ class WeatherServiceImplTest {
     WeatherAPILocation location = location(latitude, longitude);
     Grid existingGrid = Grid.builder().x(60).y(127).build();
 
-    given(locationResolver.resolve(latitude, longitude)).willReturn(location);
+    given(locationResolver.resolve(latitude, longitude)).willReturn(Mono.just(location));
     given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
 
     VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
@@ -452,12 +453,12 @@ class WeatherServiceImplTest {
         vilageFcstItem(LocalDateTime.of(2026, 7, 30, 9, 0)), // clock의 now와 정확히 일치
         vilageFcstItem(LocalDateTime.of(2026, 7, 30, 12, 0))
     );
-    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(items);
+    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(Mono.just(items));
 
     Instant forecastedAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
 
     // when
-    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude).block();
 
     // then
     assertThat(result).hasSize(1); // 응답은 대표 시각 하나로 좁혀짐
@@ -476,7 +477,7 @@ class WeatherServiceImplTest {
     WeatherAPILocation location = location(latitude, longitude);
     Grid existingGrid = Grid.builder().x(60).y(127).build();
 
-    given(locationResolver.resolve(latitude, longitude)).willReturn(location);
+    given(locationResolver.resolve(latitude, longitude)).willReturn(Mono.just(location));
     given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
 
     VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
@@ -500,7 +501,7 @@ class WeatherServiceImplTest {
         .willReturn(List.of(existingWeather));
 
     // when
-    weatherService.getWeathers(latitude, longitude);
+    weatherService.getWeathers(latitude, longitude).block();
 
     // then
     verify(weatherForecastCache).save(eq(new WeatherGrid(60, 127)), eq(forecastedAt), any());
@@ -516,7 +517,7 @@ class WeatherServiceImplTest {
     WeatherAPILocation location = location(latitude, longitude);
     Grid existingGrid = Grid.builder().x(60).y(127).build();
 
-    given(locationResolver.resolve(latitude, longitude)).willReturn(location);
+    given(locationResolver.resolve(latitude, longitude)).willReturn(Mono.just(location));
     given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
 
     VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
@@ -547,7 +548,7 @@ class WeatherServiceImplTest {
         .willReturn(Optional.of(List.of(cachedPrevious)));
 
     // when
-    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude).block();
 
     // then
     assertThat(result).hasSize(1);
@@ -564,7 +565,7 @@ class WeatherServiceImplTest {
     WeatherAPILocation location = location(latitude, longitude);
     Grid existingGrid = Grid.builder().x(60).y(127).build();
 
-    given(locationResolver.resolve(latitude, longitude)).willReturn(location);
+    given(locationResolver.resolve(latitude, longitude)).willReturn(Mono.just(location));
     given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
 
     VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
@@ -596,7 +597,7 @@ class WeatherServiceImplTest {
         .willReturn(List.of(previousWeather));
 
     // when
-    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude);
+    List<WeatherDto> result = weatherService.getWeathers(latitude, longitude).block();
 
     // then
     assertThat(result).hasSize(1);
@@ -613,7 +614,7 @@ class WeatherServiceImplTest {
     WeatherAPILocation location = location(latitude, longitude);
     Grid existingGrid = Grid.builder().x(60).y(127).build();
 
-    given(locationResolver.resolve(latitude, longitude)).willReturn(location);
+    given(locationResolver.resolve(latitude, longitude)).willReturn(Mono.just(location));
     given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existingGrid));
 
     VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
@@ -625,7 +626,7 @@ class WeatherServiceImplTest {
         .willThrow(new KmaApiException(60, 127, baseTime, new RuntimeException("기상청 장애")));
 
     // when & then
-    assertThatThrownBy(() -> weatherService.getWeathers(latitude, longitude))
+    assertThatThrownBy(() -> weatherService.getWeathers(latitude, longitude).block())
         .isInstanceOf(KmaApiException.class);
   }
 }

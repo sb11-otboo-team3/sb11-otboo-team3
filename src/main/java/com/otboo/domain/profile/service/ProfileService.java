@@ -47,9 +47,10 @@ public class ProfileService {
     if (request.location() != null
         && request.location().latitude() != null
         && request.location().longitude() != null) {
+      // ProfileService는 그냥 블로킹 트랜잭션 서비스라 여기선 바로 block()으로 값을 꺼내 쓴다.
       WeatherAPILocation location = locationResolver.resolve(
           request.location().latitude(), request.location().longitude()
-      );
+      ).block();
       latitude = location.latitude();
       longitude = location.longitude();
       x = location.x();

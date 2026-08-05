@@ -33,6 +33,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 @Slf4j
 @Service
@@ -53,16 +55,23 @@ public class WeatherServiceImpl implements WeatherService {
   private final WeatherForecastCache weatherForecastCache;
 
   @Override
-  public WeatherAPILocation getLocation(double latitude, double longitude) {
+  public Mono<WeatherAPILocation> getLocation(double latitude, double longitude) {
     return locationResolver.resolve(latitude, longitude);
   }
 
   @Override
-  public List<WeatherDto> getWeathers(double latitude, double longitude) {
-
-    // 위치 가져오기.
+  public Mono<List<WeatherDto>> getWeathers(double latitude, double longitude) {
+    // 위치 가져오기(카카오 호출 포함 - 논블로킹).
     //TODO: 프로필에 있으면 프로필 위치 정보 가져오기
-    WeatherAPILocation location = locationResolver.resolve(latitude, longitude);
+    return locationResolver.resolve(latitude, longitude)
+        // 캐시/DB/기상청 조회는 전부 블로킹 호출이라, 이벤트 루프가 아닌 별도 스레드풀(boundedElastic)에서 실행한다.
+        .flatMap(location -> Mono.fromCallable(() -> getWeathersForLocation(location))
+            .subscribeOn(Schedulers.boundedElastic()));
+  }
+
+  // 위치를 알고 난 다음의 캐시/DB/기상청 조회 로직 전체. boundedElastic 스레드 위에서 블로킹으로 실행되므로
+  // 여기서 kmaWeatherClient.getForecast(...).block()을 써도 이벤트 루프 스레드를 묶지 않는다.
+  private List<WeatherDto> getWeathersForLocation(WeatherAPILocation location) {
     WeatherGrid weatherGrid = new WeatherGrid(location.x(), location.y());
 
     //필요한 날씨 발표 시각 걔산
@@ -93,7 +102,7 @@ public class WeatherServiceImpl implements WeatherService {
       } else {
         // DB에도 날씨 정보 없으면 기상청 API 호출
         try {
-          List<VilageFcstItem> forecasts = kmaWeatherClient.getForecast(location.x(), location.y(), baseTime);
+          List<VilageFcstItem> forecasts = kmaWeatherClient.getForecast(location.x(), location.y(), baseTime).block();
           log.debug("날씨 조회 - 기상청 API 호출, x={}, y={}, forecastedAt={}", weatherGrid.x(), weatherGrid.y(), forecastedAt);
           allForecasts = forecasts.stream()
               .map(item -> saveAndConvert(item, grid, location))

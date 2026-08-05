@@ -24,6 +24,7 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import reactor.core.publisher.Mono;
 
 @ExtendWith(MockitoExtension.class)
 class LocationResolverTest {
@@ -61,11 +62,11 @@ class LocationResolverTest {
     double longitude = 126.9780;
     KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
 
-    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(Mono.just(region));
     given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.empty());
 
     // when
-    WeatherAPILocation result = locationResolver.resolve(latitude, longitude);
+    WeatherAPILocation result = locationResolver.resolve(latitude, longitude).block();
 
     // then
     assertThat(result.latitude()).isEqualTo(latitude);
@@ -84,11 +85,11 @@ class LocationResolverTest {
     double longitude = 126.9780;
     KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
 
-    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(Mono.just(region));
     given(gridRecencyCache.isRecentlyConfirmed(any())).willReturn(true);
 
     // when
-    WeatherAPILocation result = locationResolver.resolve(latitude, longitude);
+    WeatherAPILocation result = locationResolver.resolve(latitude, longitude).block();
 
     // then
     assertThat(result.locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
@@ -105,11 +106,11 @@ class LocationResolverTest {
     KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
     Grid existing = Mockito.spy(Grid.builder().x(60).y(127).build());
 
-    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(Mono.just(region));
     given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(existing));
 
     // when
-    WeatherAPILocation result = locationResolver.resolve(latitude, longitude);
+    WeatherAPILocation result = locationResolver.resolve(latitude, longitude).block();
 
     // then
     assertThat(result.locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
@@ -127,11 +128,11 @@ class LocationResolverTest {
     double longitude = 126.9780;
     KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
 
-    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(Mono.just(region));
     given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.empty());
 
     // when
-    locationResolver.resolve(latitude, longitude);
+    locationResolver.resolve(latitude, longitude).block();
 
     // then
     ArgumentCaptor<Grid> captor = ArgumentCaptor.forClass(Grid.class);
@@ -150,13 +151,13 @@ class LocationResolverTest {
     double longitude = 126.9780;
     KakaoRegion region = new KakaoRegion("서울특별시", "강서구", "마곡동");
 
-    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(region);
+    given(kakaoLocationClient.getRegion(latitude, longitude)).willReturn(Mono.just(region));
     given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.empty());
     Mockito.doThrow(new DataIntegrityViolationException("duplicate key"))
         .when(gridSaver).saveInNewTransaction(any(Grid.class));
 
     // when
-    WeatherAPILocation result = locationResolver.resolve(latitude, longitude);
+    WeatherAPILocation result = locationResolver.resolve(latitude, longitude).block();
 
     // then
     assertThat(result.locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
