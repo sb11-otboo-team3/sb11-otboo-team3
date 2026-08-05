@@ -2,7 +2,7 @@ package com.otboo.domain.directmessage.mapper;
 
 import com.otboo.domain.directmessage.dto.response.DirectMessageDto;
 import com.otboo.domain.directmessage.entity.DirectMessage;
-import com.otboo.domain.follow.dto.response.UserSummary;
+import com.otboo.domain.user.dto.UserSummary;
 import com.otboo.domain.user.entity.User;
 
 public final class DirectMessageMapper {
