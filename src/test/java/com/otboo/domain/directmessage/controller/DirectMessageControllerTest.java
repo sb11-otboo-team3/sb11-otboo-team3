@@ -12,7 +12,7 @@ import com.otboo.domain.auth.jwt.JwtProvider;
 import com.otboo.domain.directmessage.dto.response.DirectMessageDto;
 import com.otboo.domain.directmessage.dto.response.DirectMessageDtoCursorResponse;
 import com.otboo.domain.directmessage.service.DirectMessageService;
-import com.otboo.domain.follow.dto.response.UserSummary;
+import com.otboo.domain.user.dto.UserSummary;
 import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.global.security.SecurityConfig;
 import java.time.Instant;

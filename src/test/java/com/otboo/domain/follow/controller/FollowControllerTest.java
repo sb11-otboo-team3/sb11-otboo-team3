@@ -21,7 +21,7 @@ import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.follow.dto.response.FollowListResponse;
 import com.otboo.domain.follow.dto.response.FollowSummaryDto;
-import com.otboo.domain.follow.dto.response.UserSummary;
+import com.otboo.domain.user.dto.UserSummary;
 import com.otboo.domain.follow.exception.FollowNotFoundException;
 import com.otboo.domain.follow.service.FollowService;
 import java.util.List;
