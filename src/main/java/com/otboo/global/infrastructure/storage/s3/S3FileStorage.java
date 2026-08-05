@@ -8,6 +8,7 @@ import com.otboo.global.infrastructure.storage.config.S3Properties;
 import com.otboo.global.infrastructure.storage.exception.StorageDeleteException;
 import com.otboo.global.infrastructure.storage.exception.StorageReadUrlException;
 import com.otboo.global.infrastructure.storage.exception.StorageUploadException;
+import com.otboo.global.infrastructure.storage.exception.InvalidStorageObjectKeyException;
 import com.otboo.global.infrastructure.storage.validation.ImageFileValidator;
 
 import java.io.IOException;
@@ -90,6 +91,8 @@ public class S3FileStorage implements FileStorage {
 
     @Override
     public String generateReadUrl(String objectKey) {
+        validateObjectKey(objectKey);
+
         GetObjectRequest getObjectRequest =
                 GetObjectRequest.builder()
                         .bucket(s3Properties.bucket())
@@ -118,6 +121,8 @@ public class S3FileStorage implements FileStorage {
 
     @Override
     public void delete(String objectKey) {
+        validateObjectKey(objectKey);
+
         DeleteObjectRequest deleteObjectRequest =
                 DeleteObjectRequest.builder()
                         .bucket(s3Properties.bucket())
@@ -136,6 +141,12 @@ public class S3FileStorage implements FileStorage {
             return RequestBody.fromBytes(file.getBytes());
         } catch (IOException exception) {
             throw new StorageUploadException(exception);
+        }
+    }
+
+    private void validateObjectKey(String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) {
+            throw new InvalidStorageObjectKeyException();
         }
     }
 }

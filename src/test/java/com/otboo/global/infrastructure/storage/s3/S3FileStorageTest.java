@@ -15,6 +15,7 @@ import com.otboo.global.infrastructure.storage.validation.ImageFileValidator;
 import com.otboo.global.infrastructure.storage.exception.StorageDeleteException;
 import com.otboo.global.infrastructure.storage.exception.StorageReadUrlException;
 import com.otboo.global.infrastructure.storage.exception.StorageUploadException;
+import com.otboo.global.infrastructure.storage.exception.InvalidStorageObjectKeyException;
 
 import java.net.URI;
 import java.net.URL;
@@ -319,5 +320,89 @@ class S3FileStorageTest {
         )
                 .isInstanceOf(StorageDeleteException.class)
                 .hasCause(sdkException);
+    }
+
+    @Test
+    @DisplayName("Object Key가 null이면 조회 URL을 생성하지 않고 예외를 발생시킨다")
+    void generateReadUrlRejectsNullObjectKey() throws Exception {
+        // given
+        String objectKey = null;
+
+        // when & then
+        assertThatThrownBy(() ->
+                s3FileStorage.generateReadUrl(objectKey)
+        ).isInstanceOf(InvalidStorageObjectKeyException.class);
+
+        verifyNoInteractions(s3Presigner);
+    }
+
+    @Test
+    @DisplayName("Object Key가 빈 문자열이면 조회 URL을 생성하지 않고 예외를 발생시킨다")
+    void generateReadUrlRejectsEmptyObjectKey() throws Exception {
+        // given
+        String objectKey = "";
+
+        // when & then
+        assertThatThrownBy(() ->
+                s3FileStorage.generateReadUrl(objectKey)
+        ).isInstanceOf(InvalidStorageObjectKeyException.class);
+
+        verifyNoInteractions(s3Presigner);
+    }
+
+    @Test
+    @DisplayName("Object Key가 공백이면 조회 URL을 생성하지 않고 예외를 발생시킨다")
+    void generateReadUrlRejectsBlankObjectKey() throws Exception {
+        // given
+        String objectKey = "   ";
+
+        // when & then
+        assertThatThrownBy(() ->
+                s3FileStorage.generateReadUrl(objectKey)
+        ).isInstanceOf(InvalidStorageObjectKeyException.class);
+
+        verifyNoInteractions(s3Presigner);
+    }
+
+    @Test
+    @DisplayName("Object Key가 null이면 S3 객체를 삭제하지 않고 예외를 발생시킨다")
+    void deleteRejectsNullObjectKey() throws Exception {
+        // given
+        String objectKey = null;
+
+        // when & then
+        assertThatThrownBy(() ->
+                s3FileStorage.delete(objectKey)
+        ).isInstanceOf(InvalidStorageObjectKeyException.class);
+
+        verifyNoInteractions(s3Client);
+    }
+
+    @Test
+    @DisplayName("Object Key가 빈 문자열이면 S3 객체를 삭제하지 않고 예외를 발생시킨다")
+    void deleteRejectsEmptyObjectKey() throws Exception {
+        // given
+        String objectKey = "";
+
+        // when & then
+        assertThatThrownBy(() ->
+                s3FileStorage.delete(objectKey)
+        ).isInstanceOf(InvalidStorageObjectKeyException.class);
+
+        verifyNoInteractions(s3Client);
+    }
+
+    @Test
+    @DisplayName("Object Key가 공백이면 S3 객체를 삭제하지 않고 예외를 발생시킨다")
+    void deleteRejectsBlankObjectKey() throws Exception {
+        // given
+        String objectKey = "   ";
+
+        // when & then
+        assertThatThrownBy(() ->
+                s3FileStorage.delete(objectKey)
+        ).isInstanceOf(InvalidStorageObjectKeyException.class);
+
+        verifyNoInteractions(s3Client);
     }
 }
