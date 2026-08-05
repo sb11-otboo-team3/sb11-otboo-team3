@@ -43,9 +43,9 @@
 | 컬럼 | 타입 | 제약 | 의미 |
 |---|---|---|---|
 | `id` | UUID | PK | OAuth 계정 식별자 |
-| `user_id` | UUID | FK → `users.id` (ON DELETE RESTRICT), NOT NULL | 연동 사용자 |
-| `provider` | VARCHAR(20) | NOT NULL, CHECK IN (`GOOGLE`,`KAKAO`) | OAuth 공급자 |
-| `provider_user_id` | VARCHAR(255) | NOT NULL | 공급자 사용자 식별자 |
+| `user_id` | UUID | FK → `users.id` (ON DELETE RESTRICT), NOT NULL, UNIQUE(user_id, provider) | 연동 사용자 |
+| `provider` | VARCHAR(20) | NOT NULL, CHECK IN (`GOOGLE`,`KAKAO`), UNIQUE(provider, provider_user_id), UNIQUE(user_id, provider) | OAuth 공급자 |
+| `provider_user_id` | VARCHAR(255) | NOT NULL, UNIQUE(provider, provider_user_id) | 공급자 사용자 식별자 |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | 연동 시각 |
 
 ---
@@ -57,8 +57,8 @@
 | 컬럼 | 타입 | 제약 | 의미 |
 |---|---|---|---|
 | `id` | UUID | PK | 격자 식별자 |
-| `x` | INTEGER | NOT NULL | 기상청 격자 X |
-| `y` | INTEGER | NOT NULL | 기상청 격자 Y |
+| `x` | INTEGER | NOT NULL, UNIQUE(x, y) | 기상청 격자 X |
+| `y` | INTEGER | NOT NULL, UNIQUE(x, y) | 기상청 격자 Y |
 | `last_requested_at` | TIMESTAMPTZ | NOT NULL | 마지막 요청 시각 |
 | `created_at` | TIMESTAMPTZ | NOT NULL | 생성 시각 |
 
@@ -69,9 +69,9 @@
 | 컬럼 | 타입 | 제약 | 의미 |
 |---|---|---|---|
 | `id` | UUID | PK | 날씨 식별자 |
-| `grid_id` | UUID | FK → `weather_grid.id` (ON DELETE RESTRICT), NOT NULL | 예보 위치 |
-| `forecasted_at` | TIMESTAMPTZ | NOT NULL | 기상청 예보 발표 시각 |
-| `forecast_at` | TIMESTAMPTZ | NOT NULL | 예보 대상 시각 |
+| `grid_id` | UUID | FK → `weather_grid.id` (ON DELETE RESTRICT), NOT NULL, UNIQUE(grid_id, forecast_at, forecasted_at) | 예보 위치 |
+| `forecasted_at` | TIMESTAMPTZ | NOT NULL, UNIQUE(grid_id, forecast_at, forecasted_at) | 기상청 예보 발표 시각 |
+| `forecast_at` | TIMESTAMPTZ | NOT NULL, UNIQUE(grid_id, forecast_at, forecasted_at) | 예보 대상 시각 |
 | `sky_status` | VARCHAR(20) | NOT NULL | 하늘 상태 |
 | `precipitation_type` | VARCHAR(20) | NOT NULL | 강수 형태 |
 | `precipitation_amount` | DOUBLE PRECISION | NULL | 강수량 |
@@ -119,8 +119,8 @@
 | 컬럼 | 타입 | 제약 | 의미 |
 |---|---|---|---|
 | `id` | UUID | PK | 선택값 식별자 |
-| `definition_id` | UUID | FK → `clothes_attribute_definitions.id` (ON DELETE CASCADE), NOT NULL | 속성 정의 |
-| `value` | VARCHAR(100) | NOT NULL, CHECK 공백 아님 | 선택 가능한 문자열 |
+| `definition_id` | UUID | FK → `clothes_attribute_definitions.id` (ON DELETE CASCADE), NOT NULL, UNIQUE(definition_id, value) | 속성 정의 |
+| `value` | VARCHAR(100) | NOT NULL, CHECK 공백 아님, UNIQUE(definition_id, value) | 선택 가능한 문자열 |
 | `display_order` | INTEGER | NOT NULL, DEFAULT 0, CHECK >= 0 | 표시 순서 |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | 생성 시각 |
 | `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | 수정 시각 |
@@ -131,8 +131,8 @@
 | 컬럼 | 타입 | 제약 | 의미 |
 |---|---|---|---|
 | `id` | UUID | PK | 의상 속성 식별자 |
-| `clothes_id` | UUID | FK → `clothes.id` (ON DELETE CASCADE), NOT NULL | 대상 의상 |
-| `definition_id` | UUID | FK → `clothes_attribute_definitions.id` (ON DELETE RESTRICT), NOT NULL | 속성 정의 |
+| `clothes_id` | UUID | FK → `clothes.id` (ON DELETE CASCADE), NOT NULL, UNIQUE(clothes_id, definition_id) | 대상 의상 |
+| `definition_id` | UUID | FK → `clothes_attribute_definitions.id` (ON DELETE RESTRICT), NOT NULL, UNIQUE(clothes_id, definition_id) | 속성 정의 |
 | `value` | VARCHAR(100) | NOT NULL, CHECK 공백 아님 | 의상에 저장된 속성값 |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | 생성 시각 |
 | `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | 수정 시각 |
@@ -161,8 +161,8 @@
 | 컬럼 | 타입 | 제약 | 의미 |
 |---|---|---|---|
 | `id` | UUID | PK | 피드·의상 연결 식별자 |
-| `feed_id` | UUID | FK → `feeds.id` (ON DELETE CASCADE), NOT NULL | 피드 |
-| `clothes_id` | UUID | FK → `clothes.id` (ON DELETE CASCADE), NOT NULL | 의상 |
+| `feed_id` | UUID | FK → `feeds.id` (ON DELETE CASCADE), NOT NULL, UNIQUE(feed_id, clothes_id) | 피드 |
+| `clothes_id` | UUID | FK → `clothes.id` (ON DELETE CASCADE), NOT NULL, UNIQUE(feed_id, clothes_id) | 의상 |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | 연결 시각 |
 
 ### `feed_likes`
@@ -170,8 +170,8 @@
 | 컬럼 | 타입 | 제약 | 의미 |
 |---|---|---|---|
 | `id` | UUID | PK | 좋아요 식별자 |
-| `feed_id` | UUID | FK → `feeds.id` (ON DELETE CASCADE), NOT NULL | 대상 피드 |
-| `user_id` | UUID | FK → `users.id` (ON DELETE SET NULL), NULL | 좋아요 사용자 |
+| `feed_id` | UUID | FK → `feeds.id` (ON DELETE CASCADE), NOT NULL, UNIQUE(feed_id, user_id) | 대상 피드 |
+| `user_id` | UUID | FK → `users.id` (ON DELETE SET NULL), NULL, UNIQUE(feed_id, user_id) | 좋아요 사용자 |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | 좋아요 시각 |
 
 ### `comments`
@@ -189,8 +189,8 @@
 | 컬럼 | 타입 | 제약 | 의미 |
 |---|---|---|---|
 | `id` | UUID | PK | 팔로우 식별자 |
-| `follower_id` | UUID | FK → `users.id` (ON DELETE CASCADE), NOT NULL | 팔로우하는 사용자 |
-| `followee_id` | UUID | FK → `users.id` (ON DELETE CASCADE), NOT NULL | 팔로우받는 사용자 |
+| `follower_id` | UUID | FK → `users.id` (ON DELETE CASCADE), NOT NULL, UNIQUE(follower_id, followee_id), CHECK(follower_id <> followee_id) | 팔로우하는 사용자 |
+| `followee_id` | UUID | FK → `users.id` (ON DELETE CASCADE), NOT NULL, UNIQUE(follower_id, followee_id), CHECK(follower_id <> followee_id) | 팔로우받는 사용자 |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | 생성 시각 |
 
 ---
@@ -202,8 +202,8 @@
 | 컬럼 | 타입 | 제약 | 의미 |
 |---|---|---|---|
 | `id` | UUID | PK | DM 식별자 |
-| `sender_id` | UUID | FK → `users.id` (ON DELETE SET NULL), NULL | 발신자 |
-| `receiver_id` | UUID | FK → `users.id` (ON DELETE SET NULL), NULL | 수신자 |
+| `sender_id` | UUID | FK → `users.id` (ON DELETE SET NULL), NULL, CHECK(sender_id <> receiver_id) | 발신자 |
+| `receiver_id` | UUID | FK → `users.id` (ON DELETE SET NULL), NULL, CHECK(sender_id <> receiver_id) | 수신자 |
 | `dm_key` | VARCHAR(73) | NOT NULL, CHECK length = 73 | 두 사용자의 공통 대화 키 |
 | `content` | TEXT | NOT NULL, CHECK 공백 아님 | 메시지 내용 |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | 전송 시각 |
