@@ -48,7 +48,6 @@ public class User extends UpdatableEntity {
     return new User(email, name, passwordHash);
   }
 
-
   public void changeRole(UserRole newRole) {
     if (this.role != newRole) {
       this.role = newRole;
@@ -77,5 +76,9 @@ public class User extends UpdatableEntity {
 
   public void refreshSession() {
     this.tokenVersion++;
+  }
+
+  public void changeName(String newName) {
+    this.name = newName;
   }
 }
