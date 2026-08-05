@@ -1,6 +1,7 @@
 package com.otboo.domain.weather.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
@@ -12,6 +13,7 @@ import com.otboo.domain.weather.client.KakaoLocationClient;
 import com.otboo.domain.weather.dto.KakaoRegion;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
 import com.otboo.domain.weather.entity.Grid;
+import com.otboo.domain.weather.exception.KakaoApiException;
 import com.otboo.domain.weather.repository.GridRepository;
 import com.otboo.domain.weather.util.GridConverter;
 import java.util.Optional;
@@ -161,6 +163,29 @@ class LocationResolverTest {
 
     // then
     assertThat(result.locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
+    verify(gridRecencyCache).markConfirmed(any());
+  }
+
+  @Test
+  @DisplayName("카카오 호출이 즉시 실패해도 격자 레지스트리 갱신은 취소되지 않고 끝까지 실행된다")
+  void gridRegistryUpdateStillCompletesEvenWhenKakaoFailsImmediately() {
+    // given: Mono.zip이었다면 카카오가 즉시 실패할 때 아직 시작 안 한 격자 갱신 작업이
+    // 취소돼서 실행 자체가 안 될 수 있었다(재현 확인함). zipDelayError로 바꿔서
+    // 카카오 성공/실패와 무관하게 격자 갱신이 항상 끝까지 실행되도록 보장한다.
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+
+    given(kakaoLocationClient.getRegion(latitude, longitude))
+        .willReturn(Mono.error(new KakaoApiException(latitude, longitude, new RuntimeException("카카오 장애"))));
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.empty());
+
+    // when
+    // then
+    assertThatThrownBy(() -> locationResolver.resolve(latitude, longitude).block())
+        .isInstanceOf(KakaoApiException.class);
+
+    // block()이 리턴된 시점엔 이미 격자 갱신도 끝나 있어야 한다 (zipDelayError가 둘 다 기다리므로)
+    verify(gridSaver).saveInNewTransaction(any(Grid.class));
     verify(gridRecencyCache).markConfirmed(any());
   }
 }

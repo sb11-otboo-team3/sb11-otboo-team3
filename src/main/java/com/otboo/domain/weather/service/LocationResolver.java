@@ -40,7 +40,11 @@ public class LocationResolver {
         })
         .subscribeOn(Schedulers.boundedElastic());
 
-    return Mono.zip(regionMono, gridRegistryMono)
+    // Mono.zip은 한쪽이 실패하면 아직 시작도 안 한 다른 쪽을 즉시 취소해버린다 - 그러면 카카오가
+    // 빨리 실패할 때 격자 레지스트리 갱신 자체가 통째로 스킵될 수 있다(타이밍에 따라 달라지는 경쟁 상태).
+    // zipDelayError는 둘 다 끝날 때까지 기다렸다가 에러를 전파해서, 격자 갱신은 카카오 성공/실패와
+    // 무관하게 항상 끝까지 실행되는 걸 보장한다.
+    return Mono.zipDelayError(regionMono, gridRegistryMono)
         .map(tuple -> toDto(latitude, longitude, grid, tuple.getT1()));
   }
 
