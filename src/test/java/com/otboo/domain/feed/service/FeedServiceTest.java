@@ -2,24 +2,31 @@ package com.otboo.domain.feed.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.clothes.entity.Clothes;
+import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
+import com.otboo.domain.clothes.repository.ClothesAttributeRepository;
 import com.otboo.domain.clothes.repository.ClothesRepository;
 import com.otboo.domain.feed.dto.request.FeedCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedUpdateRequest;
 import com.otboo.domain.feed.dto.response.FeedDto;
 import com.otboo.domain.feed.entity.Feed;
-import com.otboo.domain.feed.entity.FeedClothes;
+import com.otboo.domain.feed.mapper.FeedMapper;
 import com.otboo.domain.feed.repository.FeedClothesRepository;
 import com.otboo.domain.feed.repository.FeedRepository;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
+import com.otboo.domain.weather.dto.WeatherSummaryDto;
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.repository.WeatherRepository;
+import com.otboo.domain.weather.service.WeatherService;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -28,6 +35,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -47,29 +55,56 @@ class FeedServiceTest {
   private ClothesRepository clothesRepository;
 
   @Mock
+  private WeatherService weatherService;
+
+  @Mock
   private WeatherRepository weatherRepository;
+
+  @Mock
+  private ClothesAttributeRepository clothesAttributeRepository;
+
+  @Mock
+  private AttributeSelectableValueRepository attributeSelectableValueRepository;
+
+  @Mock
+  private FeedMapper feedMapper;
+
+  @Spy
+  private ObjectMapper objectMapper = new ObjectMapper();
 
   @InjectMocks
   private FeedService feedService;
 
-  private final ObjectMapper objectMapper = new ObjectMapper();
-
   @Test
-  @DisplayName("피드 생성 성공 테스트")
+  @DisplayName("피드 생성 성공")
   void createFeed_success() {
     UUID authorId = UUID.randomUUID();
     UUID weatherId = UUID.randomUUID();
     UUID clothesId = UUID.randomUUID();
-    UUID feedId = UUID.randomUUID();
 
     User author = User.create("author@test.com", "author", "password");
     ReflectionTestUtils.setField(author, "id", authorId);
 
     Weather weather = mock(Weather.class);
-    given(weather.getId()).willReturn(weatherId);
-
     Clothes clothes = mock(Clothes.class);
-    given(clothes.getId()).willReturn(clothesId);
+    WeatherSummaryDto weatherSummary = mock(WeatherSummaryDto.class);
+    FeedDto feedDto = mock(FeedDto.class);
+
+    given(clothes.getOwner()).willReturn(author);
+    given(userRepository.findById(authorId)).willReturn(Optional.of(author));
+    given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+    given(clothesRepository.findByIdInAndDeletedAtIsNull(List.of(clothesId)))
+        .willReturn(List.of(clothes));
+    given(weatherService.getWeatherSummary(weatherId)).willReturn(weatherSummary);
+    given(feedRepository.save(any(Feed.class))).willAnswer(invocation -> invocation.getArgument(0));
+    given(feedClothesRepository.findByFeedAndClothesDeletedAtIsNull(any(Feed.class)))
+        .willReturn(List.of());
+    given(clothesAttributeRepository.findByClothesIn(anyList())).willReturn(List.of());
+    given(attributeSelectableValueRepository
+        .findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(anyList()))
+        .willReturn(List.of());
+    given(feedMapper.toDto(any(), any(), anyList(), anyMap(), anyMap(), anyBoolean()))
+        .willReturn(feedDto);
 
     FeedCreateRequest request = new FeedCreateRequest(
         authorId,
@@ -78,88 +113,65 @@ class FeedServiceTest {
         "오늘의 피드"
     );
 
-    given(userRepository.findById(authorId)).willReturn(Optional.of(author));
-    given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
-    given(clothesRepository.findAllById(List.of(clothesId))).willReturn(List.of(clothes));
-    given(feedRepository.save(any(Feed.class))).willAnswer(invocation -> {
-      Feed feed = invocation.getArgument(0);
-      ReflectionTestUtils.setField(feed, "id", feedId);
-      return feed;
-    });
-    given(feedClothesRepository.save(any(FeedClothes.class)))
-        .willAnswer(invocation -> invocation.getArgument(0));
-
     FeedDto result = feedService.createFeed(request, authorId);
 
-    assertThat(result).isNotNull();
-    assertThat(result.id()).isEqualTo(feedId);
-    assertThat(result.content()).isEqualTo("오늘의 피드");
-
+    assertThat(result).isEqualTo(feedDto);
     verify(feedRepository).save(any(Feed.class));
-    verify(feedClothesRepository).save(any(FeedClothes.class));
   }
 
   @Test
-  @DisplayName("피드 수정 성공 테스트")
+  @DisplayName("피드 수정 성공")
   void updateFeed_success() {
     UUID authorId = UUID.randomUUID();
-
     UUID feedId = UUID.randomUUID();
 
     User author = User.create("author@test.com", "author", "password");
     ReflectionTestUtils.setField(author, "id", authorId);
 
-    Weather weather = mock(Weather.class);
-    ReflectionTestUtils.setField(weather, "id", UUID.randomUUID());
-
     Feed feed = Feed.create(
         author,
-        weather,
+        mock(Weather.class),
         objectMapper.createObjectNode(),
-        "수정 전 내용"
+        "수정 전"
     );
 
-    ReflectionTestUtils.setField(feed, "id", feedId);
+    FeedDto feedDto = mock(FeedDto.class);
 
-    FeedUpdateRequest request = new FeedUpdateRequest("수정 후 내용");
+    given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
+    given(feedClothesRepository.findByFeedAndClothesDeletedAtIsNull(feed)).willReturn(List.of());
+    given(clothesAttributeRepository.findByClothesIn(anyList())).willReturn(List.of());
+    given(attributeSelectableValueRepository
+        .findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(anyList()))
+        .willReturn(List.of());
+    given(feedMapper.toDto(any(), any(), anyList(), anyMap(), anyMap(), anyBoolean()))
+        .willReturn(feedDto);
 
-    given(feedRepository.findById(feedId)).willReturn(Optional.of(feed));
+    FeedDto result = feedService.updateFeed(feedId, new FeedUpdateRequest("수정 후"), authorId);
 
-    FeedDto result = feedService.updateFeed(feedId, request, authorId);
-
-    assertThat(result).isNotNull();
-    assertThat(result.id()).isEqualTo(feedId);
-    assertThat(result.content()).isEqualTo("수정 후 내용");
-
-    verify(feedRepository).findById(feedId);
+    assertThat(result).isEqualTo(feedDto);
+    assertThat(feed.getContent()).isEqualTo("수정 후");
   }
 
   @Test
-  @DisplayName("피드 삭제 성공 테스트")
+  @DisplayName("피드 삭제 성공")
   void deleteFeed_success() {
     UUID authorId = UUID.randomUUID();
-
     UUID feedId = UUID.randomUUID();
 
     User author = User.create("author@test.com", "author", "password");
     ReflectionTestUtils.setField(author, "id", authorId);
 
-    Weather weather = mock(Weather.class);
-
     Feed feed = Feed.create(
         author,
-        weather,
+        mock(Weather.class),
         objectMapper.createObjectNode(),
         "삭제할 피드"
     );
-    ReflectionTestUtils.setField(feed, "id", feedId);
 
-    given(feedRepository.findById(feedId)).willReturn(Optional.of(feed));
+    given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
 
     feedService.deleteFeed(feedId, authorId);
 
     assertThat(feed.getDeletedAt()).isNotNull();
-
-    verify(feedRepository).findById(feedId);
   }
 }

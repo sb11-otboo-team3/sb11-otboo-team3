@@ -1,5 +1,9 @@
 package com.otboo.domain.feed.controller;
 
+import com.otboo.domain.feed.controller.docs.CreateFeedApi;
+import com.otboo.domain.feed.controller.docs.DeleteFeedApi;
+import com.otboo.domain.feed.controller.docs.FeedApi;
+import com.otboo.domain.feed.controller.docs.UpdateFeedApi;
 import com.otboo.domain.feed.dto.request.FeedCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedUpdateRequest;
 import com.otboo.domain.feed.dto.response.FeedDto;
@@ -18,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@FeedApi
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/feeds")
@@ -25,6 +30,7 @@ public class FeedController {
 
   private final FeedService feedService;
 
+  @CreateFeedApi
   @PostMapping
   public ResponseEntity<FeedDto> createFeed(
       @Valid @RequestBody FeedCreateRequest request,
@@ -35,6 +41,7 @@ public class FeedController {
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
+  @UpdateFeedApi
   @PatchMapping("/{feedId}")
   public ResponseEntity<FeedDto> updateFeed(
       @PathVariable UUID feedId,
@@ -46,6 +53,7 @@ public class FeedController {
     return ResponseEntity.ok(response);
   }
 
+  @DeleteFeedApi
   @DeleteMapping("/{feedId}")
   public ResponseEntity<Void> deleteFeed(
       @PathVariable UUID feedId,
