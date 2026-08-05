@@ -32,6 +32,8 @@ public class NotificationService {
 
   // 1시간
   private static final long SSE_TIMEOUT = 60L * 60L * 1000L;
+  // 알림 재전송 상한 100개
+  private static final int SSE_REPLAY_LIMIT = 100;
 
   private final NotificationRepository notificationRepository;
   private final SseEmitterRegistry sseEmitterRegistry;
@@ -125,7 +127,7 @@ public class NotificationService {
 
     if(lastEventId != null){
       List<Notification> missedNotifications =
-          notificationRepository.findNotificationsAfter(currentUserId, lastEventId);
+          notificationRepository.findNotificationsAfter(currentUserId, lastEventId, SSE_REPLAY_LIMIT);
 
       for (Notification notification : missedNotifications) {
         NotificationDto notificationDto = NotificationMapper.toDto(notification);

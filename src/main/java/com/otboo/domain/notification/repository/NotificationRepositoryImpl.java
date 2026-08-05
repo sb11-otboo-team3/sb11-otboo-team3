@@ -66,7 +66,7 @@ public class NotificationRepositoryImpl implements NotificationRepositoryCustom{
   }
 
   @Override
-  public List<Notification> findNotificationsAfter(UUID receiverId, UUID lastEventId){
+  public List<Notification> findNotificationsAfter(UUID receiverId, UUID lastEventId, int limit){
     Notification lastNotification = queryFactory
         .selectFrom(notification)
         .where(
@@ -96,6 +96,7 @@ public class NotificationRepositoryImpl implements NotificationRepositoryCustom{
             notification.createdAt.asc(),
             notification.id.asc()
         )
+        .limit(limit)
         .fetch();
   }
 }
