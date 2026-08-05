@@ -14,4 +14,6 @@ public interface NotificationRepositoryCustom {
   );
 
   long countNotifications(UUID receiverId);
+
+  List<Notification> findNotificationsAfter(UUID receiverId, UUID lastEventId);
 }

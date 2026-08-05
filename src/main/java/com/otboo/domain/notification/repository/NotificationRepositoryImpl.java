@@ -64,4 +64,38 @@ public class NotificationRepositoryImpl implements NotificationRepositoryCustom{
 
     return count == null ? 0 : count;
   }
+
+  @Override
+  public List<Notification> findNotificationsAfter(UUID receiverId, UUID lastEventId){
+    Notification lastNotification = queryFactory
+        .selectFrom(notification)
+        .where(
+            notification.id.eq(lastEventId),
+            notification.receiver.id.eq(receiverId)
+        )
+        .fetchOne();
+
+    if (lastNotification == null) {
+      return List.of();
+    }
+
+    return queryFactory
+        .selectFrom(notification)
+        .join(notification.receiver).fetchJoin()
+        .where(
+            notification.receiver.id.eq(receiverId),
+            // lastEventId 알림보다 뒤에 있는 알림만 가져오기
+            notification.createdAt.gt(lastNotification.getCreatedAt())
+                .or(
+                    // 생성시간이 lastNotification과 같을땐 id가 lastEventId보다 큰 알림만 가져오기
+                    notification.createdAt.eq(lastNotification.getCreatedAt())
+                        .and(notification.id.gt(lastEventId))
+                )
+        )
+        .orderBy(
+            notification.createdAt.asc(),
+            notification.id.asc()
+        )
+        .fetch();
+  }
 }

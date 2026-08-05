@@ -30,6 +30,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @Transactional(readOnly = true)
 public class NotificationService {
 
+  // 1시간
   private static final long SSE_TIMEOUT = 60L * 60L * 1000L;
 
   private final NotificationRepository notificationRepository;
@@ -122,6 +123,16 @@ public class NotificationService {
         "SSE 연결이 완료되었습니다."
     );
 
+    if(lastEventId != null){
+      List<Notification> missedNotifications =
+          notificationRepository.findNotificationsAfter(currentUserId, lastEventId);
+
+      for (Notification notification : missedNotifications) {
+        NotificationDto notificationDto = NotificationMapper.toDto(notification);
+        sendToClient(currentUserId, "notifications", notificationDto);
+      }
+    }
+
     return emitter;
   }
 
@@ -129,11 +140,15 @@ public class NotificationService {
     // receiverId로 SSE 연결 찾기, 접속중일때만 실행
     sseEmitterRegistry.get(receiverId).ifPresent(session -> {
       try {
-        session.getEmitter().send(
-            SseEmitter.event()
+        SseEmitter.SseEventBuilder event = SseEmitter.event()
                 .name(eventName)
-                .data(data)
-        );
+                .data(data);
+
+        if (data instanceof NotificationDto notificationDto) {
+          event.id(notificationDto.id().toString());
+        }
+
+        session.getEmitter().send(event);
         session.touch();
       } catch (IOException exception) {
         sseEmitterRegistry.remove(receiverId, session);
