@@ -6,6 +6,8 @@ import com.otboo.global.infrastructure.storage.validation.ImageFileValidator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 class StorageConfigTest {
 
@@ -29,6 +31,8 @@ class StorageConfigTest {
             assertThat(context).hasSingleBean(S3Properties.class);
             assertThat(context).hasSingleBean(ImageStorageProperties.class);
             assertThat(context).hasSingleBean(ImageFileValidator.class);
+            assertThat(context).hasSingleBean(S3Client.class);
+            assertThat(context).hasSingleBean(S3Presigner.class);
 
             S3Properties s3Properties =
                     context.getBean(S3Properties.class);
