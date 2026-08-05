@@ -12,10 +12,15 @@ import com.otboo.global.infrastructure.storage.StoredFile;
 import com.otboo.global.infrastructure.storage.config.S3Properties;
 import com.otboo.global.infrastructure.storage.exception.UnsupportedStorageFileTypeException;
 import com.otboo.global.infrastructure.storage.validation.ImageFileValidator;
+import com.otboo.global.infrastructure.storage.exception.StorageDeleteException;
+import com.otboo.global.infrastructure.storage.exception.StorageReadUrlException;
+import com.otboo.global.infrastructure.storage.exception.StorageUploadException;
+
 import java.net.URI;
 import java.net.URL;
 import java.time.Duration;
 import java.util.UUID;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,6 +30,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectResponse;
@@ -33,6 +39,7 @@ import software.amazon.awssdk.services.s3.model.PutObjectResponse;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
+
 
 @ExtendWith(MockitoExtension.class)
 class S3FileStorageTest {
@@ -93,7 +100,7 @@ class S3FileStorageTest {
                 "image",
                 "profile.jpg",
                 "image/jpeg",
-                new byte[] {1, 2, 3}
+                new byte[]{1, 2, 3}
         );
 
         given(
@@ -143,7 +150,7 @@ class S3FileStorageTest {
                 "image",
                 "profile.gif",
                 "image/gif",
-                new byte[] {1, 2, 3}
+                new byte[]{1, 2, 3}
         );
 
         // when & then
@@ -235,5 +242,82 @@ class S3FileStorageTest {
 
         assertThat(request.bucket()).isEqualTo(BUCKET);
         assertThat(request.key()).isEqualTo(OBJECT_KEY);
+    }
+
+    @Test
+    @DisplayName("S3 업로드 호출이 실패하면 StorageUploadException을 발생시킨다")
+    void uploadImageThrowsStorageUploadExceptionWhenS3Fails() throws Exception {
+        // given
+        MockMultipartFile image = new MockMultipartFile(
+                "image",
+                "profile.jpg",
+                "image/jpeg",
+                new byte[] {1, 2, 3}
+        );
+
+        SdkClientException sdkException =
+                SdkClientException.create("S3 upload failed");
+
+        given(
+                s3Client.putObject(
+                        any(PutObjectRequest.class),
+                        any(RequestBody.class)
+                )
+        ).willThrow(sdkException);
+
+        // when & then
+        assertThatThrownBy(() ->
+                s3FileStorage.upload(
+                        StorageDirectory.PROFILES,
+                        OWNER_ID,
+                        image
+                )
+        )
+                .isInstanceOf(StorageUploadException.class)
+                .hasCause(sdkException);
+    }
+
+    @Test
+    @DisplayName("Presigned URL 생성이 실패하면 StorageReadUrlException을 발생시킨다")
+    void generateReadUrlThrowsStorageReadUrlExceptionWhenPresigningFails()
+            throws Exception {
+        // given
+        SdkClientException sdkException =
+                SdkClientException.create("S3 presigning failed");
+
+        given(
+                s3Presigner.presignGetObject(
+                        any(GetObjectPresignRequest.class)
+                )
+        ).willThrow(sdkException);
+
+        // when & then
+        assertThatThrownBy(() ->
+                s3FileStorage.generateReadUrl(OBJECT_KEY)
+        )
+                .isInstanceOf(StorageReadUrlException.class)
+                .hasCause(sdkException);
+    }
+
+    @Test
+    @DisplayName("S3 객체 삭제가 실패하면 StorageDeleteException을 발생시킨다")
+    void deleteObjectThrowsStorageDeleteExceptionWhenS3Fails()
+            throws Exception {
+        // given
+        SdkClientException sdkException =
+                SdkClientException.create("S3 delete failed");
+
+        given(
+                s3Client.deleteObject(
+                        any(DeleteObjectRequest.class)
+                )
+        ).willThrow(sdkException);
+
+        // when & then
+        assertThatThrownBy(() ->
+                s3FileStorage.delete(OBJECT_KEY)
+        )
+                .isInstanceOf(StorageDeleteException.class)
+                .hasCause(sdkException);
     }
 }

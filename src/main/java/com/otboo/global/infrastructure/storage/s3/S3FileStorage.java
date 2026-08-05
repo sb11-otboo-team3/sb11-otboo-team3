@@ -5,6 +5,8 @@ import com.otboo.global.infrastructure.storage.ImageContentType;
 import com.otboo.global.infrastructure.storage.StorageDirectory;
 import com.otboo.global.infrastructure.storage.StoredFile;
 import com.otboo.global.infrastructure.storage.config.S3Properties;
+import com.otboo.global.infrastructure.storage.exception.StorageDeleteException;
+import com.otboo.global.infrastructure.storage.exception.StorageReadUrlException;
 import com.otboo.global.infrastructure.storage.exception.StorageUploadException;
 import com.otboo.global.infrastructure.storage.validation.ImageFileValidator;
 
@@ -14,6 +16,7 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
@@ -70,10 +73,13 @@ public class S3FileStorage implements FileStorage {
                         .contentLength(file.getSize())
                         .build();
 
-        s3Client.putObject(
-                putObjectRequest,
-                createRequestBody(file)
-        );
+        RequestBody requestBody = createRequestBody(file);
+
+        try {
+            s3Client.putObject(putObjectRequest, requestBody);
+        } catch (SdkException exception) {
+            throw new StorageUploadException(exception);
+        }
 
         return new StoredFile(
                 objectKey,
@@ -100,10 +106,14 @@ public class S3FileStorage implements FileStorage {
                         .getObjectRequest(getObjectRequest)
                         .build();
 
-        return s3Presigner
-                .presignGetObject(presignRequest)
-                .url()
-                .toString();
+        try {
+            return s3Presigner
+                    .presignGetObject(presignRequest)
+                    .url()
+                    .toString();
+        } catch (SdkException exception) {
+            throw new StorageReadUrlException(exception);
+        }
     }
 
     @Override
@@ -113,7 +123,12 @@ public class S3FileStorage implements FileStorage {
                         .bucket(s3Properties.bucket())
                         .key(objectKey)
                         .build();
-        s3Client.deleteObject(deleteObjectRequest);
+
+        try {
+            s3Client.deleteObject(deleteObjectRequest);
+        } catch (SdkException exception) {
+            throw new StorageDeleteException(exception);
+        }
     }
 
     private RequestBody createRequestBody(MultipartFile file) {
