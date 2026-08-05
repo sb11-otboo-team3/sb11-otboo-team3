@@ -212,7 +212,7 @@ AWS 인증정보가 포함되지 않도록 관리합니다.
 
 * Issue #46: ECR Repository 구성 및 Docker 이미지 Push·Pull 검증
 * Issue #21: RDS PostgreSQL 및 S3 운영 환경 구성
-* 별도 이슈: 운영 Redis 또는 ElastiCache 구성
+* Issue #73: ElastiCache Redis OSS 운영 환경 구성
 * Issue #22: ECS Cluster, Task Definition, Service 및 ALB 구성
 * 후속 CD 이슈: GitHub Actions OIDC, ECR Push 및 ECS 자동 배포
 
@@ -227,6 +227,7 @@ AWS 서비스별 상세 설정과 검증 절차는 하위 문서에서 관리합
 
 * [Amazon ECR 구성 및 이미지 검증](./ecr/README.md)
 * [RDS PostgreSQL 및 S3 구성](./rds-s3/README.md)
+* [Amazon ElastiCache for Redis OSS 구성](./elasticache/README.md)
 * RDS PostgreSQL 및 S3 운영 환경: Issue #21에서 작성
 * ECS 및 ALB 운영 환경: Issue #22에서 작성
 * GitHub Actions OIDC 및 자동 배포: 후속 CD 이슈에서 작성
