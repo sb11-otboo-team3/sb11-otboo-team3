@@ -30,6 +30,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import com.otboo.domain.profile.entity.Gender;
 import org.springframework.mock.web.MockPart;
+import java.nio.charset.StandardCharsets;
 
 @WebMvcTest(ProfileController.class)
 @Import(SecurityConfig.class)
@@ -94,7 +95,7 @@ class ProfileControllerTest {
 
     MockPart requestPart = new MockPart(
         "request",
-        "{\"name\":\"새이름\",\"gender\":\"MALE\",\"birthDate\":\"1995-05-05\",\"location\":{\"latitude\":37.5,\"longitude\":127.0},\"temperatureSensitivity\":3}".getBytes()
+        "{\"name\":\"새이름\",\"gender\":\"MALE\",\"birthDate\":\"1995-05-05\",\"location\":{\"latitude\":37.5,\"longitude\":127.0},\"temperatureSensitivity\":3}".getBytes(StandardCharsets.UTF_8)
     );
     requestPart.getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
@@ -121,7 +122,7 @@ class ProfileControllerTest {
 
     MockPart requestPart = new MockPart(
         "request",
-        "{\"name\":\"새이름\"}".getBytes()
+        "{\"name\":\"새이름\"}".getBytes(StandardCharsets.UTF_8)
     );
     requestPart.getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
@@ -145,7 +146,7 @@ class ProfileControllerTest {
 
     MockPart requestPart = new MockPart(
         "request",
-        "{\"name\":\"새이름\",\"gender\":\"MALE\",\"birthDate\":\"1995-05-05\",\"location\":{\"latitude\":37.5},\"temperatureSensitivity\":3}".getBytes()
+        "{\"name\":\"새이름\",\"gender\":\"MALE\",\"birthDate\":\"1995-05-05\",\"location\":{\"latitude\":37.5},\"temperatureSensitivity\":3}".getBytes(StandardCharsets.UTF_8)
     );
     requestPart.getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
@@ -169,7 +170,7 @@ class ProfileControllerTest {
 
     MockPart requestPart = new MockPart(
         "request",
-        "{\"name\":\"새이름\",\"gender\":\"MALE\",\"birthDate\":\"1995-05-05\",\"location\":{\"longitude\":127.0},\"temperatureSensitivity\":3}".getBytes()
+        "{\"name\":\"새이름\",\"gender\":\"MALE\",\"birthDate\":\"1995-05-05\",\"location\":{\"longitude\":127.0},\"temperatureSensitivity\":3}".getBytes(StandardCharsets.UTF_8)
     );
     requestPart.getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
