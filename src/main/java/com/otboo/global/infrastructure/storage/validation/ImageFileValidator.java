@@ -1,20 +1,11 @@
 package com.otboo.global.infrastructure.storage.validation;
 
+import com.otboo.global.infrastructure.storage.ImageContentType;
 import com.otboo.global.infrastructure.storage.exception.EmptyStorageFileException;
 import com.otboo.global.infrastructure.storage.exception.StorageFileSizeExceededException;
-import com.otboo.global.infrastructure.storage.exception.UnsupportedStorageFileTypeException;
-
-import java.util.Set;
-
 import org.springframework.web.multipart.MultipartFile;
 
 public class ImageFileValidator {
-
-    private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
-            "image/jpeg",
-            "image/png",
-            "image/webp"
-    );
 
     private final long maxFileSizeBytes;
 
@@ -44,10 +35,6 @@ public class ImageFileValidator {
     }
 
     private void validateContentType(MultipartFile file) {
-        String contentType = file.getContentType();
-
-        if (contentType == null || !ALLOWED_CONTENT_TYPES.contains(contentType)) {
-            throw new UnsupportedStorageFileTypeException(contentType);
-        }
+        ImageContentType.from(file.getContentType());
     }
 }
