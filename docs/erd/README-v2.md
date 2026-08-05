@@ -26,8 +26,8 @@
 | `image_url` | TEXT | NULL | 프로필 이미지 URL |
 | `gender` | VARCHAR(20) | NULL, CHECK IN (`MALE`,`FEMALE`,`OTHER`) | 성별 |
 | `birth_date` | DATE | NULL | 생년월일 |
-| `latitude` | NUMERIC(9,6) | NULL | 위도 |
-| `longitude` | NUMERIC(9,6) | NULL | 경도 |
+| `latitude` | DOUBLE PRECISION | NULL | 위도 |
+| `longitude` | DOUBLE PRECISION | NULL | 경도 |
 | `x` | INTEGER | NULL | 기상청 격자 X |
 | `y` | INTEGER | NULL | 기상청 격자 Y |
 | `province` | VARCHAR(50) | NULL | 행정구역 시/도 |
@@ -251,7 +251,7 @@
 ### `profiles`
 - `location_id`(FK → locations) 제거 → `x`, `y`, `province`, `city`, `district` 인라인 컬럼으로 대체
 - `profile_image_url` → `image_url`로 리네임, `VARCHAR(500)` → `TEXT`
-- `latitude`/`longitude`: `DOUBLE PRECISION` → `NUMERIC(9,6)`
+- `latitude`/`longitude`: `DOUBLE PRECISION` 유지 (실제 `Profile` 엔티티가 `Double`로 구현되어 있어, 애초 검토했던 `NUMERIC(9,6)` 변경은 적용하지 않음)
 - `temperature_sensitivity` → `temp_sensitivity`로 리네임, `NOT NULL` → nullable, `CHECK BETWEEN 1 AND 5` 추가
 - `gender`에 `CHECK IN ('MALE','FEMALE','OTHER')` 추가
 
