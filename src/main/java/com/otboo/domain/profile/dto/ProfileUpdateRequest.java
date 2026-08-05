@@ -2,6 +2,7 @@ package com.otboo.domain.profile.dto;
 
 import com.otboo.domain.profile.entity.Gender;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.time.LocalDate;
@@ -21,5 +22,9 @@ public record ProfileUpdateRequest(
       Double latitude,
       Double longitude
   ) {
+    @AssertTrue(message = "latitude와 longitude는 함께 제공되어야 합니다.")
+    public boolean isLatLngConsistent() {
+      return (latitude == null) == (longitude == null);
+    }
   }
 }

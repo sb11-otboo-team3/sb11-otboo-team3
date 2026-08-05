@@ -135,4 +135,52 @@ class ProfileControllerTest {
             .with(csrf()))
         .andExpect(status().isBadRequest());
   }
+
+  @Test
+  @WithMockUser
+  @DisplayName("위치 정보 중 latitude만 전달하면 400을 반환한다")
+  void updateProfileWithOnlyLatitudeReturns400() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+
+    MockPart requestPart = new MockPart(
+        "request",
+        "{\"name\":\"새이름\",\"gender\":\"MALE\",\"birthDate\":\"1995-05-05\",\"location\":{\"latitude\":37.5},\"temperatureSensitivity\":3}".getBytes()
+    );
+    requestPart.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+
+    // when & then
+    mockMvc.perform(multipart("/api/users/{userId}/profiles", userId)
+            .part(requestPart)
+            .with(request -> {
+              request.setMethod("PATCH");
+              return request;
+            })
+            .with(csrf()))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @WithMockUser
+  @DisplayName("위치 정보 중 longitude만 전달하면 400을 반환한다")
+  void updateProfileWithOnlyLongitudeReturns400() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+
+    MockPart requestPart = new MockPart(
+        "request",
+        "{\"name\":\"새이름\",\"gender\":\"MALE\",\"birthDate\":\"1995-05-05\",\"location\":{\"longitude\":127.0},\"temperatureSensitivity\":3}".getBytes()
+    );
+    requestPart.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+
+    // when & then
+    mockMvc.perform(multipart("/api/users/{userId}/profiles", userId)
+            .part(requestPart)
+            .with(request -> {
+              request.setMethod("PATCH");
+              return request;
+            })
+            .with(csrf()))
+        .andExpect(status().isBadRequest());
+  }
 }
