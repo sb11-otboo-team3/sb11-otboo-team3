@@ -58,6 +58,10 @@ dependencies {
 	// Redis
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
+	// AWS SDK
+	implementation platform('software.amazon.awssdk:bom:2.48.0')
+	implementation 'software.amazon.awssdk:s3'
+
 	// Spring Batch
 	implementation 'org.springframework.boot:spring-boot-starter-batch'
 
