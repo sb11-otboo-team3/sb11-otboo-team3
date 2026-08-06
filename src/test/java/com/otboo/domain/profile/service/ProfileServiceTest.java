@@ -24,6 +24,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import com.otboo.global.infrastructure.storage.FileStorage;
 
 @ExtendWith(MockitoExtension.class)
 class ProfileServiceTest {
@@ -36,6 +37,9 @@ class ProfileServiceTest {
 
   @Mock
   private LocationResolver locationResolver;
+
+  @Mock
+  private FileStorage fileStorage;
 
   @Test
   @DisplayName("프로필을 조회하면 ProfileDto를 반환한다")
@@ -95,7 +99,7 @@ class ProfileServiceTest {
     given(locationResolver.resolve(37.5, 127.0)).willReturn(weatherLocation);
 
     // when
-    ProfileDto result = profileService.updateProfile(userId, request);
+    ProfileDto result = profileService.updateProfile(userId, request, null);
 
     // then
     assertThat(result.name()).isEqualTo("새이름");
@@ -128,7 +132,7 @@ class ProfileServiceTest {
     );
 
     // when
-    ProfileDto result = profileService.updateProfile(userId, request);
+    ProfileDto result = profileService.updateProfile(userId, request, null);
 
     // then
     assertThat(result.temperatureSensitivity()).isEqualTo(4);
@@ -148,7 +152,7 @@ class ProfileServiceTest {
     );
 
     // when & then
-    assertThatThrownBy(() -> profileService.updateProfile(userId, request))
+    assertThatThrownBy(() -> profileService.updateProfile(userId, request, null))
         .isInstanceOf(ProfileNotFoundException.class);
   }
 }

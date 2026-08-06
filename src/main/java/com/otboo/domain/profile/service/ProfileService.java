@@ -7,10 +7,14 @@ import com.otboo.domain.profile.exception.ProfileNotFoundException;
 import com.otboo.domain.profile.repository.ProfileRepository;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
 import com.otboo.domain.weather.service.LocationResolver;
+import com.otboo.global.infrastructure.storage.FileStorage;
+import com.otboo.global.infrastructure.storage.StorageDirectory;
+import com.otboo.global.infrastructure.storage.StoredFile;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @RequiredArgsConstructor
@@ -19,16 +23,16 @@ public class ProfileService {
 
   private final ProfileRepository profileRepository;
   private final LocationResolver locationResolver;
+  private final FileStorage fileStorage;
 
   public ProfileDto getProfile(UUID userId) {
     Profile profile = profileRepository.findById(userId)
         .orElseThrow(() -> new ProfileNotFoundException(userId));
-
-    return ProfileDto.from(profile);
+    return ProfileDto.from(profile, resolveImageUrl(profile.getImageKey()));
   }
 
   @Transactional
-  public ProfileDto updateProfile(UUID userId, ProfileUpdateRequest request) {
+  public ProfileDto updateProfile(UUID userId, ProfileUpdateRequest request, MultipartFile image) {
     Profile profile = profileRepository.findById(userId)
         .orElseThrow(() -> new ProfileNotFoundException(userId));
 
@@ -67,6 +71,29 @@ public class ProfileService {
         request.temperatureSensitivity()
     );
 
-    return ProfileDto.from(profile);
+    if (image != null) {
+      updateProfileImage(profile, userId, image);
+    }
+
+    return ProfileDto.from(profile, resolveImageUrl(profile.getImageKey()));
+  }
+
+  private void updateProfileImage(Profile profile, UUID userId, MultipartFile image) {
+    String oldImageKey = profile.getImageKey();
+
+    StoredFile storedFile = fileStorage.upload(StorageDirectory.PROFILES, userId, image);
+
+    profile.updateImageKey(storedFile.objectKey());
+
+    if (oldImageKey != null && !oldImageKey.isBlank()) {
+      fileStorage.delete(oldImageKey);
+    }
+  }
+
+  private String resolveImageUrl(String imageKey) {
+    if (imageKey == null || imageKey.isBlank()) {
+      return null;
+    }
+    return fileStorage.generateReadUrl(imageKey);
   }
 }

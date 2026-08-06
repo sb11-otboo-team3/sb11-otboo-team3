@@ -18,6 +18,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import com.otboo.global.infrastructure.storage.FileStorage;
 
 @ExtendWith(MockitoExtension.class)
 class UserSummaryMapperTest {
@@ -30,6 +31,9 @@ class UserSummaryMapperTest {
 
   @InjectMocks
   private UserSummaryMapper userSummaryMapper;
+
+  @Mock
+  private FileStorage fileStorage;
 
   @Test
   @DisplayName("user가 null이면 null을 반환한다")
@@ -51,9 +55,11 @@ class UserSummaryMapperTest {
 
     Profile profile = Profile.createDefault(user);
     ReflectionTestUtils.setField(profile, "userId", userId);
-    ReflectionTestUtils.setField(profile, "imageUrl", "https://example.com/image.jpg");
+    ReflectionTestUtils.setField(profile, "imageKey", "profiles/" + userId + "/abc.jpg");
 
     given(profileRepository.findByUserId(userId)).willReturn(Optional.of(profile));
+    given(fileStorage.generateReadUrl("profiles/" + userId + "/abc.jpg"))
+        .willReturn("https://example.com/presigned-url");
 
     // when
     UserSummary result = userSummaryMapper.toUserSummary(user);
@@ -61,7 +67,7 @@ class UserSummaryMapperTest {
     // then
     assertThat(result.userId()).isEqualTo(userId);
     assertThat(result.name()).isEqualTo("요약테스트");
-    assertThat(result.profileImageUrl()).isEqualTo("https://example.com/image.jpg");
+    assertThat(result.profileImageUrl()).isEqualTo("https://example.com/presigned-url");
   }
 
   @Test
@@ -97,12 +103,14 @@ class UserSummaryMapperTest {
 
     Profile profile1 = Profile.createDefault(user1);
     ReflectionTestUtils.setField(profile1, "userId", userId1);
-    ReflectionTestUtils.setField(profile1, "imageUrl", "https://example.com/user1.jpg");
+    ReflectionTestUtils.setField(profile1, "imageKey", "profiles/" + userId1 + "/abc.jpg");
 
     List<UUID> userIds = List.of(userId1, userId2);
 
     given(userRepository.findAllById(userIds)).willReturn(List.of(user1, user2));
     given(profileRepository.findAllById(userIds)).willReturn(List.of(profile1));
+    given(fileStorage.generateReadUrl("profiles/" + userId1 + "/abc.jpg"))
+        .willReturn("https://example.com/user1.jpg");
 
     // when
     List<UserSummary> result = userSummaryMapper.toUserSummaries(userIds);

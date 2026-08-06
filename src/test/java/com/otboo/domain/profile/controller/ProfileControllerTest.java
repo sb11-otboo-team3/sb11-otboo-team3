@@ -90,7 +90,7 @@ class ProfileControllerTest {
         userId, "새이름", Gender.MALE, LocalDate.of(1995, 5, 5),
         location, 3, null
     );
-    given(profileService.updateProfile(any(UUID.class), any(ProfileUpdateRequest.class)))
+    given(profileService.updateProfile(any(UUID.class), any(ProfileUpdateRequest.class), any()))
         .willReturn(response);
 
     MockPart requestPart = new MockPart(
@@ -117,7 +117,7 @@ class ProfileControllerTest {
   void updateProfileWithNonExistentProfileReturns400() throws Exception {
     // given
     UUID userId = UUID.randomUUID();
-    given(profileService.updateProfile(any(UUID.class), any(ProfileUpdateRequest.class)))
+    given(profileService.updateProfile(any(UUID.class), any(ProfileUpdateRequest.class), any()))
         .willThrow(new ProfileNotFoundException(userId));
 
     MockPart requestPart = new MockPart(

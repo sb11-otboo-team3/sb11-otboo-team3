@@ -16,8 +16,7 @@ public record ProfileDto(
     Integer temperatureSensitivity,
     String profileImageUrl
 ) {
-
-  public static ProfileDto from(Profile profile) {
+  public static ProfileDto from(Profile profile, String profileImageUrl) {
     List<String> locationNames = new ArrayList<>();
     if (profile.getProvince() != null) {
       locationNames.add(profile.getProvince());
@@ -28,7 +27,6 @@ public record ProfileDto(
     if (profile.getDistrict() != null) {
       locationNames.add(profile.getDistrict());
     }
-
     LocationDto location = new LocationDto(
         profile.getLatitude(),
         profile.getLongitude(),
@@ -36,7 +34,6 @@ public record ProfileDto(
         profile.getY(),
         locationNames
     );
-
     return new ProfileDto(
         profile.getUser().getId(),
         profile.getUser().getName(),
@@ -44,7 +41,7 @@ public record ProfileDto(
         profile.getBirthDate(),
         location,
         profile.getTemperatureSensitivity(),
-        profile.getImageUrl()
+        profileImageUrl
     );
   }
 }
