@@ -1,0 +1,128 @@
+{
+  "family": "otboo-prod-backend",
+  "taskRoleArn": "arn:aws:iam::310567229825:role/otboo-prod-ecs-task-role",
+  "executionRoleArn": "arn:aws:iam::310567229825:role/otboo-prod-ecs-task-execution-role",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "1024",
+  "memory": "2048",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "containerDefinitions": [
+    {
+      "name": "otboo-backend",
+      "image": "310567229825.dkr.ecr.ap-northeast-2.amazonaws.com/otboo/backend:3b37cda",
+      "essential": true,
+      "portMappings": [
+        {
+          "name": "http-8080",
+          "containerPort": 8080,
+          "hostPort": 8080,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        }
+      ],
+      "environment": [
+        {
+          "name": "SPRING_PROFILES_ACTIVE",
+          "value": "prod"
+        },
+        {
+          "name": "SERVER_PORT",
+          "value": "8080"
+        },
+        {
+          "name": "DB_HOST",
+          "value": "otboo-prod-postgres.cxaoiguocgna.ap-northeast-2.rds.amazonaws.com"
+        },
+        {
+          "name": "DB_PORT",
+          "value": "5432"
+        },
+        {
+          "name": "DB_NAME",
+          "value": "otboo"
+        },
+        {
+          "name": "REDIS_HOST",
+          "value": "master.otboo-prod-redis.14nsa2.apn2.cache.amazonaws.com"
+        },
+        {
+          "name": "REDIS_PORT",
+          "value": "6379"
+        },
+        {
+          "name": "REDIS_SSL_ENABLED",
+          "value": "true"
+        },
+        {
+          "name": "AWS_REGION",
+          "value": "ap-northeast-2"
+        },
+        {
+          "name": "S3_BUCKET",
+          "value": "otboo-prod-assets-310567229825-ap-northeast-2"
+        },
+        {
+          "name": "S3_PRESIGNED_URL_EXPIRATION_SECONDS",
+          "value": "600"
+        },
+        {
+          "name": "IMAGE_MAX_FILE_SIZE_BYTES",
+          "value": "10485760"
+        },
+        {
+          "name": "JWT_ACCESS_EXPIRATION",
+          "value": "900000"
+        },
+        {
+          "name": "JWT_REFRESH_EXPIRATION",
+          "value": "604800000"
+        },
+        {
+          "name": "WEBSOCKET_ALLOWED_ORIGIN_PATTERNS",
+          "value": "http://otboo-prod-alb-25524387.ap-northeast-2.elb.amazonaws.com"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "DB_USERNAME",
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:310567229825:secret:rds!db-41e6f612-c2b0-4714-bb3d-5c9e621944df-NRkcDK:username::"
+        },
+        {
+          "name": "DB_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:ap-northeast-2:310567229825:secret:rds!db-41e6f612-c2b0-4714-bb3d-5c9e621944df-NRkcDK:password::"
+        },
+        {
+          "name": "REDIS_PASSWORD",
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:310567229825:parameter/otboo/prod/redis/auth-token"
+        },
+        {
+          "name": "JWT_SECRET",
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:310567229825:parameter/otboo/prod/jwt/secret"
+        },
+        {
+          "name": "KAKAO_REST_API_KEY",
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:310567229825:parameter/otboo/prod/kakao/rest-api-key"
+        },
+        {
+          "name": "KMA_API_KEY",
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:310567229825:parameter/otboo/prod/kma/api-key"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/otboo-prod",
+          "awslogs-region": "ap-northeast-2",
+          "awslogs-stream-prefix": "backend"
+        }
+      },
+      "stopTimeout": 35
+    }
+  ]
+}
