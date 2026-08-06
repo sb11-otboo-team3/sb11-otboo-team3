@@ -112,9 +112,7 @@ public class DirectMessageService {
       messages = messages.subList(0, limit);
     }
 
-    List<DirectMessageDto> data = messages.stream()
-        .map(directMessageMapper::toDto)
-        .toList();
+    List<DirectMessageDto> data = directMessageMapper.toDtos(messages);
 
     // 기본은 다음 페이지 없음
     String nextCursor = null;

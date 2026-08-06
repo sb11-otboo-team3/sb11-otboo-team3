@@ -114,10 +114,7 @@ public class FollowService {
       follows = follows.subList(0, limit);
     }
 
-    List<FollowDto> data = follows.stream()
-        .map(followMapper::toDto)
-        .toList();
-
+    List<FollowDto> data = followMapper.toDtos(follows);
     // 기본은 다음 페이지 없음
     String nextCursor = null;
     UUID nextIdAfter = null;
@@ -168,9 +165,7 @@ public class FollowService {
       follows = follows.subList(0, limit);
     }
 
-    List<FollowDto> data = follows.stream()
-        .map(followMapper::toDto)
-        .toList();
+    List<FollowDto> data = followMapper.toDtos(follows);
 
     // 기본은 다음 페이지 없음
     String nextCursor = null;
