@@ -1,4 +1,4 @@
-package com.otboo.domain.follow.dto.response;
+package com.otboo.domain.user.dto;
 
 import java.util.UUID;
 

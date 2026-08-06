@@ -17,16 +17,21 @@ import com.otboo.domain.directmessage.exception.SelfDirectMessageNotAllowedExcep
 import com.otboo.domain.directmessage.dto.request.DirectMessageCreateRequest;
 import com.otboo.domain.directmessage.dto.response.DirectMessageDto;
 import com.otboo.domain.directmessage.entity.DirectMessage;
+import com.otboo.domain.directmessage.mapper.DirectMessageMapper;
 import com.otboo.domain.directmessage.repository.DirectMessageRepository;
 import com.otboo.domain.directmessage.support.DirectMessageKeyGenerator;
+import com.otboo.domain.notification.event.NotificationEvent;
+import com.otboo.domain.user.dto.UserSummary;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -41,8 +46,15 @@ public class DirectMessageServiceTest {
   @Mock
   private UserRepository userRepository;
 
+  @Mock
+  private ApplicationEventPublisher eventPublisher;
+
+  @Mock
+  private DirectMessageMapper directMessageMapper;
+
   @InjectMocks
   private DirectMessageService directMessageService;
+
 
   @Test
   @DisplayName("DM 생성 성공")
@@ -61,6 +73,16 @@ public class DirectMessageServiceTest {
         senderId,
         "안녕하세요"
     );
+
+    DirectMessageDto directMessageDto = new DirectMessageDto(
+        UUID.randomUUID(),
+        Instant.now(),
+        new UserSummary(senderId, "sender", null),
+        new UserSummary(receiverId, "receiver", null),
+        "안녕하세요"
+    );
+
+    given(directMessageMapper.toDto(any(DirectMessage.class))).willReturn(directMessageDto);
 
     given(userRepository.findById(senderId)).willReturn(Optional.of(sender));
     given(userRepository.findById(receiverId)).willReturn(Optional.of(receiver));
@@ -82,6 +104,7 @@ public class DirectMessageServiceTest {
     assertThat(result.content()).isEqualTo("안녕하세요");
 
     verify(directMessageRepository).save(any(DirectMessage.class));
+    verify(eventPublisher).publishEvent(any(NotificationEvent.class));
   }
 
   @Test
@@ -186,6 +209,15 @@ public class DirectMessageServiceTest {
     );
     ReflectionTestUtils.setField(message, "id", UUID.randomUUID());
 
+    DirectMessageDto directMessageDto = new DirectMessageDto(
+        UUID.randomUUID(),
+        Instant.now(),
+        new UserSummary(currentUserId, "current", null),
+        new UserSummary(targetUserId, "target", null),
+        "안녕하세요"
+    );
+
+    given(directMessageMapper.toDtos(List.of(message))).willReturn(List.of(directMessageDto));
     given(userRepository.existsById(targetUserId)).willReturn(true);
     given(directMessageRepository.findDirectMessages(
         dmKey,

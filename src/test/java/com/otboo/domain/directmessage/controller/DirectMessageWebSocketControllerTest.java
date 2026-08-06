@@ -7,7 +7,7 @@ import com.otboo.domain.directmessage.dto.request.DirectMessageCreateRequest;
 import com.otboo.domain.directmessage.dto.response.DirectMessageDto;
 import com.otboo.domain.directmessage.service.DirectMessageService;
 import com.otboo.domain.directmessage.support.DirectMessageKeyGenerator;
-import com.otboo.domain.follow.dto.response.UserSummary;
+import com.otboo.domain.user.dto.UserSummary;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;

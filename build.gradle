@@ -52,6 +52,10 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	runtimeOnly 'org.postgresql:postgresql'
 
+	// Flyway
+	implementation 'org.flywaydb:flyway-core'
+	implementation 'org.flywaydb:flyway-database-postgresql'
+
 	// Querydsl
 	implementation 'com.querydsl:querydsl-jpa:5.1.0:jakarta'
 	annotationProcessor 'com.querydsl:querydsl-apt:5.1.0:jakarta'
@@ -60,6 +64,10 @@ dependencies {
 
 	// Redis
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+	// AWS SDK
+	implementation platform('software.amazon.awssdk:bom:2.48.0')
+	implementation 'software.amazon.awssdk:s3'
 
 	// Spring Batch
 	implementation 'org.springframework.boot:spring-boot-starter-batch'
@@ -81,6 +89,11 @@ dependencies {
 
 	// WebClient 테스트용 목 HTTP 서버
 	testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+
+	// Testcontainers (Flyway 마이그레이션을 실제 PostgreSQL에서 검증하는 통합 테스트용)
+	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+	testImplementation 'org.testcontainers:junit-jupiter'
+	testImplementation 'org.testcontainers:postgresql'
 
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'

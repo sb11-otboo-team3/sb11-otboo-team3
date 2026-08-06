@@ -12,6 +12,8 @@ import com.otboo.domain.directmessage.exception.SelfDirectMessageNotAllowedExcep
 import com.otboo.domain.directmessage.mapper.DirectMessageMapper;
 import com.otboo.domain.directmessage.repository.DirectMessageRepository;
 import com.otboo.domain.directmessage.support.DirectMessageKeyGenerator;
+import com.otboo.domain.notification.entity.NotificationLevel;
+import com.otboo.domain.notification.event.NotificationEvent;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import java.time.Instant;
@@ -19,6 +21,7 @@ import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +32,8 @@ public class DirectMessageService {
 
   private final DirectMessageRepository directMessageRepository;
   private final UserRepository userRepository;
+  private final ApplicationEventPublisher eventPublisher;
+  private final DirectMessageMapper directMessageMapper;
 
   @Transactional
   public DirectMessageDto createDirectMessage(DirectMessageCreateRequest request,
@@ -63,7 +68,17 @@ public class DirectMessageService {
     );
 
     DirectMessage savedMessage = directMessageRepository.save(directMessage);
-    return DirectMessageMapper.toDto(savedMessage);
+
+    eventPublisher.publishEvent(
+        new NotificationEvent(
+            receiver.getId(),
+            "새로운 DM이 도착했습니다.",
+            sender.getName() + "님이 메시지를 보냈습니다.",
+            NotificationLevel.INFO
+        )
+    );
+
+    return directMessageMapper.toDto(savedMessage);
   }
 
   public DirectMessageDtoCursorResponse getDirectMessages(
@@ -97,9 +112,7 @@ public class DirectMessageService {
       messages = messages.subList(0, limit);
     }
 
-    List<DirectMessageDto> data = messages.stream()
-        .map(DirectMessageMapper::toDto)
-        .toList();
+    List<DirectMessageDto> data = directMessageMapper.toDtos(messages);
 
     // 기본은 다음 페이지 없음
     String nextCursor = null;

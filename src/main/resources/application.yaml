@@ -5,6 +5,10 @@ spring:
   profiles:
     default: local
 
+  mvc:
+    async:
+      request-timeout: 3600000
+
   jpa:
     open-in-view: false
 
@@ -36,3 +40,12 @@ kma:
 app:
   websocket:
     allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://localhost:3000,http://localhost:8080}
+
+  storage:
+    s3:
+      region: ${AWS_REGION:ap-northeast-2}
+      bucket: ${S3_BUCKET:local-storage-bucket}
+      presigned-url-expiration-seconds: ${S3_PRESIGNED_URL_EXPIRATION_SECONDS:600}
+
+    image:
+      max-file-size-bytes: ${IMAGE_MAX_FILE_SIZE_BYTES:10485760}

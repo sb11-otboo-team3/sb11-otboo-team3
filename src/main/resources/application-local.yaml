@@ -10,7 +10,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: true
     properties:
       hibernate:
@@ -23,7 +23,7 @@ spring:
 
   batch:
     jdbc:
-      initialize-schema: always
+      initialize-schema: never
 
 jwt:
   secret: ${JWT_SECRET:3WayDafV59YynmTwCpaDtnpeur8sokrAkQ+wFlXO4QY=}

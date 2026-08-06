@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.auth.jwt.JwtProvider;
@@ -17,6 +18,7 @@ import com.otboo.domain.user.dto.UserLockUpdateRequest;
 import com.otboo.domain.user.dto.UserRoleUpdateRequest;
 import com.otboo.domain.user.entity.UserRole;
 import com.otboo.domain.user.exception.DuplicateEmailException;
+import com.otboo.domain.user.exception.InvalidUserCursorException;
 import com.otboo.domain.user.exception.UserNotFoundException;
 import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.domain.user.service.UserService;
@@ -36,6 +38,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import com.otboo.domain.auth.service.AuthService;
+import com.otboo.domain.user.dto.UserDtoCursorResponse;
 
 @WebMvcTest(UserController.class)
 @Import(SecurityConfig.class)
@@ -422,5 +425,90 @@ class UserControllerTest {
                             """)
             .with(csrf()))
         .andExpect(status().isNoContent());
+  }
+
+  @Test
+  @WithMockUser(roles = "ADMIN")
+  @DisplayName("ADMIN 권한으로 계정 목록을 조회하면 200을 반환한다")
+  void getUsersReturns200() throws Exception {
+    // given
+    UserDto userDto = new UserDto(
+        UUID.randomUUID(), Instant.now(), "test@otboo.io", "테스트유저", UserRole.USER, false
+    );
+    UserDtoCursorResponse response = new UserDtoCursorResponse(
+        List.of(userDto), null, null, false, 1L, "createdAt", "DESCENDING"
+    );
+    given(userService.getUsers(any(), any(), any(Integer.class), any(), any(), any(), any(), any()))
+        .willReturn(response);
+
+    // when & then
+    mockMvc.perform(get("/api/users")
+            .param("limit", "10"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data[0].email").value("test@otboo.io"))
+        .andExpect(jsonPath("$.totalCount").value(1));
+  }
+
+  @Test
+  @WithMockUser(roles = "USER")
+  @DisplayName("USER 권한으로 계정 목록을 조회하면 403을 반환한다")
+  void getUsersWithUserRoleReturns403() throws Exception {
+    // when & then
+    mockMvc.perform(get("/api/users")
+            .param("limit", "10"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  @WithMockUser(roles = "ADMIN")
+  @DisplayName("limit이 1 미만이면 400을 반환한다")
+  void getUsersWithLimitBelowMinimumReturns400() throws Exception {
+    // when & then
+    mockMvc.perform(get("/api/users")
+            .param("limit", "0"))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @WithMockUser(roles = "ADMIN")
+  @DisplayName("limit이 100을 초과하면 400을 반환한다")
+  void getUsersWithLimitAboveMaximumReturns400() throws Exception {
+    // when & then
+    mockMvc.perform(get("/api/users")
+            .param("limit", "101"))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @WithMockUser(roles = "ADMIN")
+  @DisplayName("잘못된 sortBy 값으로 요청하면 400을 반환한다")
+  void getUsersWithInvalidSortByReturns400() throws Exception {
+    // given
+    given(userService.getUsers(any(), any(), any(Integer.class), any(), any(), any(), any(), any()))
+        .willThrow(new InvalidUserCursorException());
+
+    // when & then
+    mockMvc.perform(get("/api/users")
+            .param("limit", "10")
+            .param("sortBy", "invalidField"))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @WithMockUser(roles = "ADMIN")
+  @DisplayName("sortBy를 대문자로 보내도 200을 반환한다")
+  void getUsersWithUpperCaseSortByReturns200() throws Exception {
+    // given
+    UserDtoCursorResponse response = new UserDtoCursorResponse(
+        List.of(), null, null, false, 0L, "CREATEDAT", "DESCENDING"
+    );
+    given(userService.getUsers(any(), any(), any(Integer.class), any(), any(), any(), any(), any()))
+        .willReturn(response);
+
+    // when & then
+    mockMvc.perform(get("/api/users")
+            .param("limit", "10")
+            .param("sortBy", "CREATEDAT"))
+        .andExpect(status().isOk());
   }
 }

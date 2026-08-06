@@ -1,5 +1,6 @@
 server:
   port: ${SERVER_PORT:8080}
+
 spring:
   config:
     activate:
@@ -22,12 +23,16 @@ spring:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:true}
   batch:
     jdbc:
       initialize-schema: never
+
 logging:
   level:
     root: INFO
+
 jwt:
   secret: ${JWT_SECRET}
   access-expiration: ${JWT_ACCESS_EXPIRATION:900000}
@@ -36,3 +41,12 @@ jwt:
 app:
   websocket:
     allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS}
+
+  storage:
+    s3:
+      region: ${AWS_REGION:ap-northeast-2}
+      bucket: ${S3_BUCKET}
+      presigned-url-expiration-seconds: ${S3_PRESIGNED_URL_EXPIRATION_SECONDS:600}
+
+    image:
+      max-file-size-bytes: ${IMAGE_MAX_FILE_SIZE_BYTES:10485760}
