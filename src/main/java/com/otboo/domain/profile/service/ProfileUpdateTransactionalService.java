@@ -6,13 +6,14 @@ import com.otboo.domain.profile.entity.Profile;
 import com.otboo.domain.profile.exception.ProfileNotFoundException;
 import com.otboo.domain.profile.repository.ProfileRepository;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 
-// DB 저장 전용 트랜잭션 빈. ProfileService 안의 메서드로 두지 않고 별도 빈으로 분리한 이유:
+// DB 저장 전용 트랜잭션 빈.
 
 @Service
 @RequiredArgsConstructor
@@ -42,9 +43,11 @@ public class ProfileUpdateTransactionalService {
       longitude = location.longitude();
       x = location.x();
       y = location.y();
-      province = location.locationNames().get(0);
-      city = location.locationNames().get(1);
-      district = location.locationNames().get(2);
+      // 세종시처럼 "구/군" 단계가 아예 없는 행정구역도 있어서 locationNames가 항상 3개라고
+      // 보장할 수 없다 - 없는 단계는 예외 던지지 말고 그냥 null로 둔다.
+      province = nameAt(location.locationNames(), 0);
+      city = nameAt(location.locationNames(), 1);
+      district = nameAt(location.locationNames(), 2);
     }
 
     profile.update(
@@ -56,5 +59,9 @@ public class ProfileUpdateTransactionalService {
     );
 
     return ProfileDto.from(profile);
+  }
+
+  private String nameAt(List<String> locationNames, int index) {
+    return locationNames != null && locationNames.size() > index ? locationNames.get(index) : null;
   }
 }
