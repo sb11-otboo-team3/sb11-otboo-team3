@@ -3,11 +3,11 @@ package com.otboo.domain.profile.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 
 import com.otboo.domain.profile.dto.ProfileDto;
 import com.otboo.domain.profile.dto.ProfileUpdateRequest;
 import com.otboo.domain.profile.entity.Gender;
-import com.otboo.domain.profile.service.ProfileService;
 import com.otboo.domain.profile.entity.Profile;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.profile.exception.ProfileNotFoundException;
@@ -25,6 +25,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import com.otboo.global.infrastructure.storage.FileStorage;
+import com.otboo.global.infrastructure.storage.StorageDirectory;
+import com.otboo.global.infrastructure.storage.StoredFile;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
+import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.any;
 
 @ExtendWith(MockitoExtension.class)
 class ProfileServiceTest {
@@ -154,5 +160,81 @@ class ProfileServiceTest {
     // when & then
     assertThatThrownBy(() -> profileService.updateProfile(userId, request, null))
         .isInstanceOf(ProfileNotFoundException.class);
+  }
+
+  @Test
+  @DisplayName("이미지와 함께 프로필을 수정하면 새 Object Key로 갱신되고 기존 이미지는 삭제된다")
+  void updateProfileWithImageUploadsAndDeletesOldImage() throws Exception {
+    // given
+    User user = User.create("imagetest@otboo.io", "이미지테스트", "encoded-password");
+    UUID userId = UUID.randomUUID();
+    ReflectionTestUtils.setField(user, "id", userId);
+
+    Profile profile = Profile.createDefault(user);
+    ReflectionTestUtils.setField(profile, "userId", userId);
+    ReflectionTestUtils.setField(profile, "imageKey", "profiles/" + userId + "/old-key.png");
+
+    given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
+
+    ProfileUpdateRequest request = new ProfileUpdateRequest(
+        null, null, null, null, null
+    );
+
+    MultipartFile image = new MockMultipartFile(
+        "image", "test.png", "image/png", "dummy-content".getBytes()
+    );
+
+    StoredFile storedFile = new StoredFile(
+        "profiles/" + userId + "/new-key.png", "image/png", 13L
+    );
+    given(fileStorage.upload(StorageDirectory.PROFILES, userId, image)).willReturn(storedFile);
+    given(fileStorage.generateReadUrl("profiles/" + userId + "/new-key.png"))
+        .willReturn("https://example.com/new-key.png");
+
+    // when
+    ProfileDto result = profileService.updateProfile(userId, request, image);
+
+    // then
+    assertThat(result.profileImageUrl()).isEqualTo("https://example.com/new-key.png");
+    verify(fileStorage).upload(StorageDirectory.PROFILES, userId, image);
+    verify(fileStorage).delete("profiles/" + userId + "/old-key.png");
+  }
+
+  @Test
+  @DisplayName("기존 이미지가 없는 상태에서 이미지를 업로드하면 삭제를 호출하지 않는다")
+  void updateProfileWithImageAndNoExistingImageDoesNotCallDelete() throws Exception {
+    // given
+    User user = User.create("firstimage@otboo.io", "첫이미지", "encoded-password");
+    UUID userId = UUID.randomUUID();
+    ReflectionTestUtils.setField(user, "id", userId);
+
+    Profile profile = Profile.createDefault(user);
+    ReflectionTestUtils.setField(profile, "userId", userId);
+    // imageKey는 세팅 안 함 (null)
+
+    given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
+
+    ProfileUpdateRequest request = new ProfileUpdateRequest(
+        null, null, null, null, null
+    );
+
+    MultipartFile image = new MockMultipartFile(
+        "image", "test.png", "image/png", "dummy-content".getBytes()
+    );
+
+    StoredFile storedFile = new StoredFile(
+        "profiles/" + userId + "/first-key.png", "image/png", 13L
+    );
+    given(fileStorage.upload(StorageDirectory.PROFILES, userId, image)).willReturn(storedFile);
+    given(fileStorage.generateReadUrl("profiles/" + userId + "/first-key.png"))
+        .willReturn("https://example.com/first-key.png");
+
+    // when
+    ProfileDto result = profileService.updateProfile(userId, request, image);
+
+    // then
+    assertThat(result.profileImageUrl()).isEqualTo("https://example.com/first-key.png");
+    verify(fileStorage).upload(StorageDirectory.PROFILES, userId, image);
+    verify(fileStorage, never()).delete(any());
   }
 }
