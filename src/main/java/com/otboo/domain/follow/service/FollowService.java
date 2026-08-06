@@ -34,6 +34,7 @@ public class FollowService {
   private final FollowRepository followRepository;
   private final UserRepository userRepository;
   private final ApplicationEventPublisher eventPublisher;
+  private final FollowMapper followMapper;
 
   @Transactional
   public FollowDto createFollow(FollowCreateRequest request, UUID currentUserId) {
@@ -71,7 +72,7 @@ public class FollowService {
         )
     );
 
-    return FollowMapper.toDto(savedFollow);
+    return followMapper.toDto(savedFollow);
   }
 
   @Transactional
@@ -113,10 +114,7 @@ public class FollowService {
       follows = follows.subList(0, limit);
     }
 
-    List<FollowDto> data = follows.stream()
-        .map(FollowMapper::toDto)
-        .toList();
-
+    List<FollowDto> data = followMapper.toDtos(follows);
     // 기본은 다음 페이지 없음
     String nextCursor = null;
     UUID nextIdAfter = null;
@@ -167,9 +165,7 @@ public class FollowService {
       follows = follows.subList(0, limit);
     }
 
-    List<FollowDto> data = follows.stream()
-        .map(FollowMapper::toDto)
-        .toList();
+    List<FollowDto> data = followMapper.toDtos(follows);
 
     // 기본은 다음 페이지 없음
     String nextCursor = null;

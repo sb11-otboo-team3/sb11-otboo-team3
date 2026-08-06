@@ -9,4 +9,6 @@ import java.util.UUID;
 public interface ClothesRepository extends JpaRepository<Clothes, UUID>, ClothesRepositoryCustom {
 
     List<Clothes> findByOwner_IdAndDeletedAtIsNull(UUID ownerId);
+
+    List<Clothes> findByIdInAndDeletedAtIsNull(List<UUID> clothesIds);
 }
