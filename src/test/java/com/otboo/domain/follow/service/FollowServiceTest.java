@@ -233,9 +233,23 @@ class FollowServiceTest {
     Follow follow2 = Follow.create(follower, followee2);
     Follow follow3 = Follow.create(follower, followee3);
 
+    FollowDto followDto1 = new FollowDto(
+        follow1.getId(),
+        new UserSummary(followeeId1, "Alice", null),
+        new UserSummary(followerId, "follower", null)
+    );
+
+    FollowDto followDto2 = new FollowDto(
+        follow2.getId(),
+        new UserSummary(followeeId2, "Bob", null),
+        new UserSummary(followerId, "follower", null)
+    );
+
     given(userRepository.existsById(followerId)).willReturn(true);
     given(followRepository.findFollowings(followerId, null, null, 3, null))
         .willReturn(List.of(follow1, follow2, follow3));
+    given(followMapper.toDtos(List.of(follow1, follow2)))
+        .willReturn(List.of(followDto1, followDto2));
     given(followRepository.countFollowings(followerId, null))
         .willReturn(3L);
 
@@ -263,15 +277,24 @@ class FollowServiceTest {
   @DisplayName("팔로잉 목록 조회 성공 테스트(다음 페이지 없음)")
   void getFollowings_success_hasNoNext() {
     UUID followerId = UUID.randomUUID();
+    UUID followeeId = UUID.randomUUID();
 
     User follower = User.create("follower@test.com", "follower", "password");
     User followee = User.create("a@test.com", "Alice", "password");
 
     Follow follow = Follow.create(follower, followee);
 
+    FollowDto followDto = new FollowDto(
+        follow.getId(),
+        new UserSummary(followeeId, "Alice", null),
+        new UserSummary(followerId, "follower", null)
+    );
+
     given(userRepository.existsById(followerId)).willReturn(true);
     given(followRepository.findFollowings(followerId, null, null, 3, null))
         .willReturn(List.of(follow));
+    given(followMapper.toDtos(List.of(follow)))
+        .willReturn(List.of(followDto));
     given(followRepository.countFollowings(followerId, null))
         .willReturn(1L);
 
@@ -314,6 +337,8 @@ class FollowServiceTest {
   @DisplayName("팔로워 목록 조회 성공 테스트(다음 페이지 존재)")
   void getFollowers_success_hasNext() {
     UUID followeeId = UUID.randomUUID();
+    UUID followerId1 = UUID.randomUUID();
+    UUID followerId2 = UUID.randomUUID();
 
     User followee = User.create("followee@test.com", "followee", "password");
     User follower1 = User.create("a@test.com", "Alice", "password");
@@ -324,9 +349,23 @@ class FollowServiceTest {
     Follow follow2 = Follow.create(follower2, followee);
     Follow follow3 = Follow.create(follower3, followee);
 
+    FollowDto followDto1 = new FollowDto(
+        follow1.getId(),
+        new UserSummary(followeeId, "followee", null),
+        new UserSummary(followerId1, "Alice", null)
+    );
+
+    FollowDto followDto2 = new FollowDto(
+        follow2.getId(),
+        new UserSummary(followeeId, "followee", null),
+        new UserSummary(followerId2, "Bob", null)
+    );
+
     given(userRepository.existsById(followeeId)).willReturn(true);
     given(followRepository.findFollowers(followeeId, null, null, 3, null))
         .willReturn(List.of(follow1, follow2, follow3));
+    given(followMapper.toDtos(List.of(follow1, follow2)))
+        .willReturn(List.of(followDto1, followDto2));
     given(followRepository.countFollowers(followeeId, null))
         .willReturn(3L);
 
@@ -352,15 +391,24 @@ class FollowServiceTest {
   @DisplayName("팔로워 목록 조회 성공 테스트(다음 페이지 없음)")
   void getFollowers_success_hasNoNext() {
     UUID followeeId = UUID.randomUUID();
+    UUID followerId = UUID.randomUUID();
 
     User followee = User.create("followee@test.com", "followee", "password");
     User follower = User.create("a@test.com", "Alice", "password");
 
     Follow follow = Follow.create(follower, followee);
 
+    FollowDto followDto = new FollowDto(
+        follow.getId(),
+        new UserSummary(followeeId, "followee", null),
+        new UserSummary(followerId, "Alice", null)
+    );
+
     given(userRepository.existsById(followeeId)).willReturn(true);
     given(followRepository.findFollowers(followeeId, null, null, 3, null))
         .willReturn(List.of(follow));
+    given(followMapper.toDtos(List.of(follow)))
+        .willReturn(List.of(followDto));
     given(followRepository.countFollowers(followeeId, null))
         .willReturn(1L);
 

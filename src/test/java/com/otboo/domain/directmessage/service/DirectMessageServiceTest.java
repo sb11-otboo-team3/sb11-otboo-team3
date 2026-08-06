@@ -217,7 +217,7 @@ public class DirectMessageServiceTest {
         "안녕하세요"
     );
 
-    given(directMessageMapper.toDto(any(DirectMessage.class))).willReturn(directMessageDto);
+    given(directMessageMapper.toDtos(List.of(message))).willReturn(List.of(directMessageDto));
     given(userRepository.existsById(targetUserId)).willReturn(true);
     given(directMessageRepository.findDirectMessages(
         dmKey,
