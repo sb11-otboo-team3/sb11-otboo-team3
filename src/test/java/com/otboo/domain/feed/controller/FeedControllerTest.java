@@ -3,6 +3,7 @@ package com.otboo.domain.feed.controller;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -12,8 +13,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.otboo.domain.feed.dto.request.FeedCommentCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedUpdateRequest;
+import com.otboo.domain.feed.dto.response.FeedCommentDto;
 import com.otboo.domain.feed.dto.response.FeedDto;
 import com.otboo.domain.feed.service.FeedService;
 import java.util.List;
@@ -150,5 +153,39 @@ class FeedControllerTest {
         .andExpect(status().isNoContent());
 
     verify(feedService).deleteFeedLike(feedId, currentUserId);
+  }
+
+  @Test
+  @DisplayName("피드 댓글 생성 API 성공 테스트")
+  void createFeedComment_success() throws Exception {
+    UUID currentUserId = UUID.randomUUID();
+    UUID feedId = UUID.randomUUID();
+
+    FeedCommentCreateRequest request = new FeedCommentCreateRequest(
+        feedId,
+        currentUserId,
+        "댓글 내용"
+    );
+
+    FeedCommentDto response = mock(FeedCommentDto.class);
+
+    given(feedService.createFeedComment(
+        eq(feedId),
+        any(FeedCommentCreateRequest.class),
+        eq(currentUserId)
+    )).willReturn(response);
+
+    mockMvc.perform(post("/api/feeds/{feedId}/comments", feedId)
+            .with(authentication(mockAuthentication(currentUserId)))
+            .with(csrf())
+            .contentType("application/json")
+            .content(objectMapper.writeValueAsString(request)))
+        .andExpect(status().isOk());
+
+    verify(feedService).createFeedComment(
+        eq(feedId),
+        any(FeedCommentCreateRequest.class),
+        eq(currentUserId)
+    );
   }
 }

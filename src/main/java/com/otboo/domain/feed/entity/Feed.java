@@ -69,4 +69,8 @@ public class Feed extends SoftDeletableEntity {
       this.likeCount--;
     }
   }
+
+  public void increaseCommentCount() {
+    this.commentCount++;
+  }
 }

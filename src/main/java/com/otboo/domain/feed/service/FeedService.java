@@ -7,25 +7,33 @@ import com.otboo.domain.clothes.entity.Clothes;
 import com.otboo.domain.clothes.entity.ClothesAttribute;
 import com.otboo.domain.clothes.entity.ClothesAttributeDefinition;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
+import com.otboo.domain.clothes.repository.ClothesAttributeDefinitionRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeRepository;
 import com.otboo.domain.clothes.repository.ClothesRepository;
+import com.otboo.domain.feed.dto.request.FeedCommentCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedUpdateRequest;
+import com.otboo.domain.feed.dto.response.FeedCommentDto;
 import com.otboo.domain.feed.dto.response.FeedDto;
+import com.otboo.domain.feed.entity.Comment;
 import com.otboo.domain.feed.entity.Feed;
 import com.otboo.domain.feed.entity.FeedClothes;
 import com.otboo.domain.feed.entity.FeedLike;
 import com.otboo.domain.feed.exception.FeedClothesNotFoundException;
+import com.otboo.domain.feed.exception.FeedCommentForbiddenException;
 import com.otboo.domain.feed.exception.FeedForbiddenException;
 import com.otboo.domain.feed.exception.DuplicateFeedLikeException;
 import com.otboo.domain.feed.exception.FeedLikeNotFoundException;
 import com.otboo.domain.feed.exception.FeedNotFoundException;
 import com.otboo.domain.feed.exception.FeedUserNotFoundException;
 import com.otboo.domain.feed.exception.FeedWeatherNotFoundException;
+import com.otboo.domain.feed.mapper.FeedCommentMapper;
 import com.otboo.domain.feed.mapper.FeedMapper;
 import com.otboo.domain.feed.repository.FeedClothesRepository;
+import com.otboo.domain.feed.repository.FeedCommentRepository;
 import com.otboo.domain.feed.repository.FeedLikeRepository;
 import com.otboo.domain.feed.repository.FeedRepository;
+import com.otboo.domain.follow.entity.Follow;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.domain.weather.dto.WeatherSummaryDto;
@@ -53,9 +61,12 @@ public class FeedService {
   private final WeatherRepository weatherRepository;
   private final ClothesAttributeRepository clothesAttributeRepository;
   private final AttributeSelectableValueRepository attributeSelectableValueRepository;
+  private final FeedLikeRepository feedLikeRepository;
+  private final FeedCommentRepository feedCommentRepository;
   private final FeedMapper feedMapper;
   private final ObjectMapper objectMapper;
-  private final FeedLikeRepository feedLikeRepository;
+  private final FeedCommentMapper feedCommentMapper;
+
 
   @Transactional
   public FeedDto createFeed(FeedCreateRequest request, UUID currentUserId) {
@@ -199,6 +210,26 @@ public class FeedService {
 
     feedLikeRepository.delete(feedLike);
     feed.decreaseLikeCount();
+  }
+
+  @Transactional
+  public FeedCommentDto createFeedComment(UUID feedId, FeedCommentCreateRequest request, UUID currentUserId) {
+    if(!request.authorId().equals(currentUserId)){
+      throw new FeedCommentForbiddenException();
+    }
+
+    User user = userRepository.findById(currentUserId)
+        .orElseThrow(() -> new FeedUserNotFoundException(currentUserId));
+
+    Feed feed = feedRepository.findByIdAndDeletedAtIsNull(feedId)
+        .orElseThrow(() -> new FeedNotFoundException(feedId));
+
+    Comment comment = Comment.create(feed, user, request.content());
+    Comment savedComment = feedCommentRepository.save(comment);
+
+    feed.increaseCommentCount();
+
+    return feedCommentMapper.toDto(savedComment);
   }
 
 }

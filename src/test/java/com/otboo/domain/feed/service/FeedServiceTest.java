@@ -14,13 +14,18 @@ import com.otboo.domain.clothes.entity.Clothes;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeRepository;
 import com.otboo.domain.clothes.repository.ClothesRepository;
+import com.otboo.domain.feed.dto.request.FeedCommentCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedUpdateRequest;
+import com.otboo.domain.feed.dto.response.FeedCommentDto;
 import com.otboo.domain.feed.dto.response.FeedDto;
+import com.otboo.domain.feed.entity.Comment;
 import com.otboo.domain.feed.entity.Feed;
 import com.otboo.domain.feed.entity.FeedLike;
+import com.otboo.domain.feed.mapper.FeedCommentMapper;
 import com.otboo.domain.feed.mapper.FeedMapper;
 import com.otboo.domain.feed.repository.FeedClothesRepository;
+import com.otboo.domain.feed.repository.FeedCommentRepository;
 import com.otboo.domain.feed.repository.FeedLikeRepository;
 import com.otboo.domain.feed.repository.FeedRepository;
 import com.otboo.domain.user.entity.User;
@@ -70,6 +75,12 @@ class FeedServiceTest {
 
   @Mock
   private FeedLikeRepository feedLikeRepository;
+
+  @Mock
+  private FeedCommentRepository feedCommentRepository;
+
+  @Mock
+  private FeedCommentMapper feedCommentMapper;
 
   @Mock
   private FeedMapper feedMapper;
@@ -235,4 +246,42 @@ class FeedServiceTest {
     verify(feedLikeRepository).delete(feedLike);
     assertThat(feed.getLikeCount()).isEqualTo(0L);
   }
+
+  @Test
+  @DisplayName("피드 댓글 생성 성공 테스트")
+  void createFeedComment_success() {
+    UUID feedId = UUID.randomUUID();
+    UUID authorId = UUID.randomUUID();
+
+    User author = User.create("author@test.com", "author", "password");
+    ReflectionTestUtils.setField(author, "id", authorId);
+
+    Feed feed = Feed.create(
+        author,
+        mock(Weather.class),
+        objectMapper.createObjectNode(),
+        "댓글 대상 피드"
+    );
+
+    FeedCommentDto feedCommentDto = mock(FeedCommentDto.class);
+
+    FeedCommentCreateRequest request = new FeedCommentCreateRequest(
+        feedId,
+        authorId,
+        "댓글 내용"
+    );
+
+    given(userRepository.findById(authorId)).willReturn(Optional.of(author));
+    given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
+    given(feedCommentRepository.save(any(Comment.class)))
+        .willAnswer(invocation -> invocation.getArgument(0));
+    given(feedCommentMapper.toDto(any(Comment.class))).willReturn(feedCommentDto);
+
+    FeedCommentDto result = feedService.createFeedComment(feedId, request, authorId);
+
+    assertThat(result).isEqualTo(feedCommentDto);
+    assertThat(feed.getCommentCount()).isEqualTo(1);
+    verify(feedCommentRepository).save(any(Comment.class));
+  }
+
 }
