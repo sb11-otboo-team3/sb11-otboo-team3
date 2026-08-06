@@ -28,6 +28,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   private final JwtProvider jwtProvider;
   private final UserRepository userRepository;
 
+  // OncePerRequestFilter는 기본적으로 ASYNC 디스패치(Mono/DeferredResult 응답 완료 시점)엔 다시 안 돈다.
+  // 이 필터가 REQUEST 디스패치에서만 인증을 세팅하면, 이 앱은 STATELESS라 세션 등 다른 곳에
+  // SecurityContext를 복구할 수단이 없어서 ASYNC 디스패치 시점엔 인증 정보가 사라진다.
+  // 그 상태로 AuthorizationFilter가 다시 평가되면 미인증으로 401이 나버리므로, ASYNC에서도 이 필터가
+  // 다시 돌게 해서 매번 토큰으로 인증을 재구성해야 한다.
+  @Override
+  protected boolean shouldNotFilterAsyncDispatch() {
+    return false;
+  }
+
   @Override
   protected void doFilterInternal(
       HttpServletRequest request,

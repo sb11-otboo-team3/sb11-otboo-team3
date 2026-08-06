@@ -58,6 +58,8 @@ class ProfileServiceTest {
     // then
     assertThat(result.userId()).isEqualTo(userId);
     assertThat(result.name()).isEqualTo("프로필테스트");
+    // 위치를 한 번도 설정한 적 없는 프로필은 location 자체가 null이어야 한다(필드만 null인 빈 객체 X).
+    assertThat(result.location()).isNull();
   }
 
   @Test
