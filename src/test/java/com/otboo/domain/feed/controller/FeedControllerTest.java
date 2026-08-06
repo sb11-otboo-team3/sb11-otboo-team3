@@ -123,4 +123,32 @@ class FeedControllerTest {
         false
     );
   }
+
+  @Test
+  @DisplayName("피드 좋아요 생성 API 성공 테스트")
+  void createFeedLike_success() throws Exception {
+    UUID currentUserId = UUID.randomUUID();
+    UUID feedId = UUID.randomUUID();
+
+    mockMvc.perform(post("/api/feeds/{feedId}/like", feedId)
+            .with(authentication(mockAuthentication(currentUserId)))
+            .with(csrf()))
+        .andExpect(status().isNoContent());
+
+    verify(feedService).createFeedLike(feedId, currentUserId);
+  }
+
+  @Test
+  @DisplayName("피드 좋아요 취소 API 성공 테스트")
+  void deleteFeedLike_success() throws Exception {
+    UUID currentUserId = UUID.randomUUID();
+    UUID feedId = UUID.randomUUID();
+
+    mockMvc.perform(delete("/api/feeds/{feedId}/like", feedId)
+            .with(authentication(mockAuthentication(currentUserId)))
+            .with(csrf()))
+        .andExpect(status().isNoContent());
+
+    verify(feedService).deleteFeedLike(feedId, currentUserId);
+  }
 }

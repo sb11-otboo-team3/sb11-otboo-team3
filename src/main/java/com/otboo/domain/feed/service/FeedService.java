@@ -14,13 +14,17 @@ import com.otboo.domain.feed.dto.request.FeedUpdateRequest;
 import com.otboo.domain.feed.dto.response.FeedDto;
 import com.otboo.domain.feed.entity.Feed;
 import com.otboo.domain.feed.entity.FeedClothes;
+import com.otboo.domain.feed.entity.FeedLike;
 import com.otboo.domain.feed.exception.FeedClothesNotFoundException;
 import com.otboo.domain.feed.exception.FeedForbiddenException;
+import com.otboo.domain.feed.exception.DuplicateFeedLikeException;
+import com.otboo.domain.feed.exception.FeedLikeNotFoundException;
 import com.otboo.domain.feed.exception.FeedNotFoundException;
 import com.otboo.domain.feed.exception.FeedUserNotFoundException;
 import com.otboo.domain.feed.exception.FeedWeatherNotFoundException;
 import com.otboo.domain.feed.mapper.FeedMapper;
 import com.otboo.domain.feed.repository.FeedClothesRepository;
+import com.otboo.domain.feed.repository.FeedLikeRepository;
 import com.otboo.domain.feed.repository.FeedRepository;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
@@ -51,6 +55,7 @@ public class FeedService {
   private final AttributeSelectableValueRepository attributeSelectableValueRepository;
   private final FeedMapper feedMapper;
   private final ObjectMapper objectMapper;
+  private final FeedLikeRepository feedLikeRepository;
 
   @Transactional
   public FeedDto createFeed(FeedCreateRequest request, UUID currentUserId) {
@@ -89,7 +94,7 @@ public class FeedService {
 
     feedClothesRepository.saveAll(feedClothes);
 
-    // TODO: 피드 좋아요 기능 구현 후 현재 사용자의 좋아요 여부를 조회해 likedByMe에 반영
+    // 최초 생성시엔 좋아요를 누를 수가 없음
     boolean likedByMe = false;
 
     return toFeedDto(savedFeed, likedByMe);
@@ -106,8 +111,7 @@ public class FeedService {
 
     feed.updateContent(request.content());
 
-    // TODO: 피드 좋아요 기능 구현 후 현재 사용자의 좋아요 여부를 조회해 likedByMe에 반영
-    boolean likedByMe = false;
+    boolean likedByMe = feedLikeRepository.existsByFeedIdAndUserId(feedId, currentUserId);
 
     return toFeedDto(feed, likedByMe);
   }
@@ -164,4 +168,37 @@ public class FeedService {
         likedByMe
     );
   }
+
+  @Transactional
+  public void createFeedLike(UUID feedId, UUID currentUserId) {
+    User user = userRepository.findById(currentUserId)
+        .orElseThrow(() -> new FeedUserNotFoundException(currentUserId));
+
+    Feed feed = feedRepository.findByIdAndDeletedAtIsNull(feedId)
+        .orElseThrow(() -> new FeedNotFoundException(feedId));
+
+    if (!feedLikeRepository.existsByFeedIdAndUserId(feedId, currentUserId)) {
+      FeedLike feedLike = FeedLike.create(feed, user);
+      feedLikeRepository.save(feedLike);
+      feed.increaseLikeCount();
+    } else {
+      throw new DuplicateFeedLikeException();
+    }
+  }
+
+  @Transactional
+  public void deleteFeedLike(UUID feedId, UUID currentUserId) {
+    userRepository.findById(currentUserId)
+        .orElseThrow(() -> new FeedUserNotFoundException(currentUserId));
+
+    Feed feed = feedRepository.findByIdAndDeletedAtIsNull(feedId)
+        .orElseThrow(() -> new FeedNotFoundException(feedId));
+
+    FeedLike feedLike = feedLikeRepository.findByFeedIdAndUserId(feedId, currentUserId)
+        .orElseThrow(() -> new FeedLikeNotFoundException(feedId));
+
+    feedLikeRepository.delete(feedLike);
+    feed.decreaseLikeCount();
+  }
+
 }

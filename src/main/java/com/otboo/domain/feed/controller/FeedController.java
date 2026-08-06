@@ -1,7 +1,9 @@
 package com.otboo.domain.feed.controller;
 
 import com.otboo.domain.feed.controller.docs.CreateFeedApi;
+import com.otboo.domain.feed.controller.docs.CreateFeedLikeApi;
 import com.otboo.domain.feed.controller.docs.DeleteFeedApi;
+import com.otboo.domain.feed.controller.docs.DeleteFeedLikeApi;
 import com.otboo.domain.feed.controller.docs.FeedApi;
 import com.otboo.domain.feed.controller.docs.UpdateFeedApi;
 import com.otboo.domain.feed.dto.request.FeedCreateRequest;
@@ -61,6 +63,28 @@ public class FeedController {
   ){
     UUID currentUserId = (UUID) authentication.getPrincipal();
     feedService.deleteFeed(feedId, currentUserId);
+    return ResponseEntity.noContent().build();
+  }
+
+  @CreateFeedLikeApi
+  @PostMapping("/{feedId}/like")
+  public ResponseEntity<Void> createFeedLike(
+      @PathVariable UUID feedId,
+      Authentication authentication
+  ){
+    UUID currentUserId = (UUID) authentication.getPrincipal();
+    feedService.createFeedLike(feedId, currentUserId);
+    return ResponseEntity.noContent().build();
+  }
+
+  @DeleteFeedLikeApi
+  @DeleteMapping("/{feedId}/like")
+  public ResponseEntity<Void> deleteFeedLike(
+      @PathVariable UUID feedId,
+      Authentication authentication
+  ){
+    UUID currentUserId = (UUID) authentication.getPrincipal();
+    feedService.deleteFeedLike(feedId, currentUserId);
     return ResponseEntity.noContent().build();
   }
 }

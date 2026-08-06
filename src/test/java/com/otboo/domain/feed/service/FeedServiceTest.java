@@ -18,8 +18,10 @@ import com.otboo.domain.feed.dto.request.FeedCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedUpdateRequest;
 import com.otboo.domain.feed.dto.response.FeedDto;
 import com.otboo.domain.feed.entity.Feed;
+import com.otboo.domain.feed.entity.FeedLike;
 import com.otboo.domain.feed.mapper.FeedMapper;
 import com.otboo.domain.feed.repository.FeedClothesRepository;
+import com.otboo.domain.feed.repository.FeedLikeRepository;
 import com.otboo.domain.feed.repository.FeedRepository;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
@@ -65,6 +67,9 @@ class FeedServiceTest {
 
   @Mock
   private AttributeSelectableValueRepository attributeSelectableValueRepository;
+
+  @Mock
+  private FeedLikeRepository feedLikeRepository;
 
   @Mock
   private FeedMapper feedMapper;
@@ -173,5 +178,61 @@ class FeedServiceTest {
     feedService.deleteFeed(feedId, authorId);
 
     assertThat(feed.getDeletedAt()).isNotNull();
+  }
+
+  @Test
+  @DisplayName("피드 좋아요 생성 성공 테스트")
+  void createFeedLike_success() {
+    UUID feedId = UUID.randomUUID();
+    UUID userId = UUID.randomUUID();
+
+    User user = User.create("user@test.com", "user", "password");
+    ReflectionTestUtils.setField(user, "id", userId);
+
+    Feed feed = Feed.create(
+        user,
+        mock(Weather.class),
+        objectMapper.createObjectNode(),
+        "좋아요 대상 피드"
+    );
+
+    given(userRepository.findById(userId)).willReturn(Optional.of(user));
+    given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
+    given(feedLikeRepository.existsByFeedIdAndUserId(feedId, userId)).willReturn(false);
+
+    feedService.createFeedLike(feedId, userId);
+
+    verify(feedLikeRepository).save(any(FeedLike.class));
+    assertThat(feed.getLikeCount()).isEqualTo(1L);
+  }
+
+  @Test
+  @DisplayName("피드 좋아요 취소 성공 테스트")
+  void deleteFeedLike_success() {
+    UUID feedId = UUID.randomUUID();
+    UUID userId = UUID.randomUUID();
+
+    User user = User.create("user@test.com", "user", "password");
+    ReflectionTestUtils.setField(user, "id", userId);
+
+    Feed feed = Feed.create(
+        user,
+        mock(Weather.class),
+        objectMapper.createObjectNode(),
+        "좋아요 취소 대상 피드"
+    );
+    feed.increaseLikeCount();
+
+    FeedLike feedLike = FeedLike.create(feed, user);
+
+    given(userRepository.findById(userId)).willReturn(Optional.of(user));
+    given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
+    given(feedLikeRepository.findByFeedIdAndUserId(feedId, userId))
+        .willReturn(Optional.of(feedLike));
+
+    feedService.deleteFeedLike(feedId, userId);
+
+    verify(feedLikeRepository).delete(feedLike);
+    assertThat(feed.getLikeCount()).isEqualTo(0L);
   }
 }
