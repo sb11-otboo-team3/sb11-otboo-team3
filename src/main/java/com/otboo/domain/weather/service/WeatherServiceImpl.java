@@ -13,7 +13,10 @@ import com.otboo.domain.weather.dto.WindSpeedDto;
 import com.otboo.domain.weather.entity.Grid;
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.entity.WindStrength;
+import com.otboo.domain.weather.exception.DailyForecastNotFoundException;
+import com.otboo.domain.weather.exception.GridRegistrationFailedException;
 import com.otboo.domain.weather.exception.KmaApiException;
+import com.otboo.domain.weather.exception.WeatherNotFoundException;
 import com.otboo.domain.weather.repository.GridRepository;
 import com.otboo.domain.weather.repository.WeatherRepository;
 import com.otboo.domain.weather.util.DailyForecastSelector;
@@ -132,14 +135,13 @@ public class WeatherServiceImpl implements WeatherService {
       log.warn("격자 재등록 - 동시성 충돌 발생, x={}, y={}", weatherGrid.x(), weatherGrid.y(), e);
     }
     return gridRepository.findByXAndY(weatherGrid.x(), weatherGrid.y())
-        .orElseThrow(() -> new IllegalStateException(
-            "격자 등록에 실패했습니다: x=" + weatherGrid.x() + ", y=" + weatherGrid.y()));
+        .orElseThrow(() -> new GridRegistrationFailedException(weatherGrid.x(), weatherGrid.y()));
   }
 
   @Override
   public WeatherSummaryDto getWeatherSummary(UUID weatherId) {
     Weather weather = weatherRepository.findById(weatherId)
-        .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 날씨 정보입니다: id=" + weatherId));
+        .orElseThrow(() -> new WeatherNotFoundException(weatherId));
 
     LocalDate date = weather.getForecastAt().atZone(KST).toLocalDate();
     Instant dayStart = date.atStartOfDay(KST).toInstant();
@@ -189,8 +191,8 @@ public class WeatherServiceImpl implements WeatherService {
   }
 
   // grid+forecastedAt으로 찾은 배치 안에 그 날짜(dayStart 기준) 예보가 하나도 없는, 정상적으로는 있을 수 없는 상태
-  private IllegalStateException noDailyForecastsFound(Instant dayStart) {
-    return new IllegalStateException("해당 날짜의 예보를 찾을 수 없습니다: date=" + dayStart);
+  private DailyForecastNotFoundException noDailyForecastsFound(Instant dayStart) {
+    return new DailyForecastNotFoundException(dayStart);
   }
 
   //가장 최근 발표 시각의 데이터가 없을 경우에 그 전 데이터로 대체.

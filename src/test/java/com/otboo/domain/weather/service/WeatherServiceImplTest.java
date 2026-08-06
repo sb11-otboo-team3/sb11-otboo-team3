@@ -22,7 +22,10 @@ import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.entity.WindStrength;
+import com.otboo.domain.weather.exception.DailyForecastNotFoundException;
+import com.otboo.domain.weather.exception.GridRegistrationFailedException;
 import com.otboo.domain.weather.exception.KmaApiException;
+import com.otboo.domain.weather.exception.WeatherNotFoundException;
 import com.otboo.domain.weather.repository.GridRepository;
 import com.otboo.domain.weather.repository.WeatherRepository;
 import com.otboo.domain.weather.util.DailyForecastSelector;
@@ -38,6 +41,7 @@ import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -628,5 +632,67 @@ class WeatherServiceImplTest {
     // when & then
     assertThatThrownBy(() -> weatherService.getWeathers(latitude, longitude).block())
         .isInstanceOf(KmaApiException.class);
+  }
+
+  @Test
+  @DisplayName("격자를 재등록했는데도 여전히 못 찾으면 GridRegistrationFailedException을 던진다")
+  void throwsGridRegistrationFailedExceptionWhenGridStillMissingAfterReregistration() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    WeatherAPILocation location = location(latitude, longitude);
+
+    given(locationResolver.resolve(latitude, longitude)).willReturn(Mono.just(location));
+    // recency 캐시가 살아있어 getLocation()이 재등록을 건너뛰었고, gridSaver로도 끝내 등록에 실패한 상황을 흉내낸다.
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.empty());
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+
+    // when & then
+    assertThatThrownBy(() -> weatherService.getWeathers(latitude, longitude).block())
+        .isInstanceOf(GridRegistrationFailedException.class);
+    verify(gridSaver).saveInNewTransaction(any(Grid.class));
+  }
+
+  @Test
+  @DisplayName("존재하지 않는 날씨 id로 요약을 조회하면 WeatherNotFoundException을 던진다")
+  void throwsWeatherNotFoundExceptionWhenWeatherDoesNotExist() {
+    // given
+    UUID weatherId = UUID.randomUUID();
+    given(weatherRepository.findById(weatherId)).willReturn(Optional.empty());
+
+    // when & then
+    assertThatThrownBy(() -> weatherService.getWeatherSummary(weatherId))
+        .isInstanceOf(WeatherNotFoundException.class);
+  }
+
+  @Test
+  @DisplayName("캐시도 비어 있고 DB에도 해당 날짜 예보가 하나도 없으면 DailyForecastNotFoundException을 던진다")
+  void throwsDailyForecastNotFoundExceptionWhenNoForecastsForDate() {
+    // given
+    UUID weatherId = UUID.randomUUID();
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+    ZoneId kst = ZoneId.of("Asia/Seoul");
+    Instant forecastedAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(kst).toInstant();
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(kst).toInstant();
+    Weather weather = Weather.builder()
+        .grid(existingGrid)
+        .forecastedAt(forecastedAt)
+        .forecastAt(forecastAt)
+        .skyStatus(SkyStatus.CLEAR)
+        .precipitationType(PrecipitationType.NONE)
+        .build();
+    given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+
+    Instant dayStart = LocalDate.of(2026, 7, 30).atStartOfDay(kst).toInstant();
+    Instant dayEnd = LocalDate.of(2026, 7, 31).atStartOfDay(kst).toInstant();
+    given(weatherForecastCache.find(new WeatherGrid(60, 127), forecastedAt)).willReturn(Optional.empty());
+    given(weatherRepository.findByGridAndForecastedAtAndForecastAtGreaterThanEqualAndForecastAtLessThan(
+        existingGrid, forecastedAt, dayStart, dayEnd)).willReturn(List.of());
+
+    // when & then
+    assertThatThrownBy(() -> weatherService.getWeatherSummary(weatherId))
+        .isInstanceOf(DailyForecastNotFoundException.class);
   }
 }
