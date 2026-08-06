@@ -19,6 +19,7 @@ public record ProfileDto(
 
   public static ProfileDto from(Profile profile) {
     // 위치를 아직 한 번도 설정한 적 없는 프로필(가입 직후 등)은 latitude가 null이다.
+
     LocationDto location = profile.getLatitude() == null ? null : buildLocation(profile);
 
     return new ProfileDto(

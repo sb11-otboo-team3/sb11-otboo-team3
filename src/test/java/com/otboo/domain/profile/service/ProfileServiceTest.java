@@ -18,10 +18,10 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -33,11 +33,20 @@ class ProfileServiceTest {
   @Mock
   private ProfileRepository profileRepository;
 
-  @InjectMocks
-  private ProfileService profileService;
-
   @Mock
   private LocationResolver locationResolver;
+
+  private ProfileService profileService;
+
+  // ProfileUpdateTransactionalService는 목이 아니라 실제 인스턴스를 씀 - ProfileService는
+  // 위치 조회 오케스트레이션만 하고, 실제 DB 반영/DTO 변환은 이 클래스가 하므로 그래야
+  // updateProfile 관련 테스트들이 기존처럼 결과값(location, name 등)을 그대로 검증할 수 있다.
+  @BeforeEach
+  void setUp() {
+    ProfileUpdateTransactionalService profileUpdateTransactionalService =
+        new ProfileUpdateTransactionalService(profileRepository);
+    profileService = new ProfileService(profileRepository, locationResolver, profileUpdateTransactionalService);
+  }
 
   @Test
   @DisplayName("프로필을 조회하면 ProfileDto를 반환한다")

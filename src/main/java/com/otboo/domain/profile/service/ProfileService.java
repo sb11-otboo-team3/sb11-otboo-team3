@@ -10,6 +10,7 @@ import com.otboo.domain.weather.service.LocationResolver;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -19,6 +20,7 @@ public class ProfileService {
 
   private final ProfileRepository profileRepository;
   private final LocationResolver locationResolver;
+  private final ProfileUpdateTransactionalService profileUpdateTransactionalService;
 
   public ProfileDto getProfile(UUID userId) {
     Profile profile = profileRepository.findById(userId)
@@ -27,47 +29,22 @@ public class ProfileService {
     return ProfileDto.from(profile);
   }
 
-  @Transactional
+  // 위치 조회(카카오 API 호출 포함, block())를 트랜잭션 밖에서 먼저 끝내고, DB 저장은
+  // ProfileUpdateTransactionalService의 별도 트랜잭션에 맡긴다. 이렇게 안 하면 카카오 API
+  // 응답을 기다리는 동안 DB 커넥션과 트랜잭션이 계속 열려있게 된다 - Tomcat 스레드보다
+  // 훨씬 적은 DB 커넥션 풀을 그만큼 오래 붙잡아두는 셈이라 더 빨리 고갈될 수 있다.
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public ProfileDto updateProfile(UUID userId, ProfileUpdateRequest request) {
-    Profile profile = profileRepository.findById(userId)
-        .orElseThrow(() -> new ProfileNotFoundException(userId));
-
-    if (request.name() != null) {
-      profile.getUser().changeName(request.name());
-    }
-
-    String province = null;
-    String city = null;
-    String district = null;
-    Double latitude = null;
-    Double longitude = null;
-    Integer x = null;
-    Integer y = null;
+    WeatherAPILocation location = null;
 
     if (request.location() != null
         && request.location().latitude() != null
         && request.location().longitude() != null) {
-      // ProfileService는 그냥 블로킹 트랜잭션 서비스라 여기선 바로 block()으로 값을 꺼내 쓴다.
-      WeatherAPILocation location = locationResolver.resolve(
+      location = locationResolver.resolve(
           request.location().latitude(), request.location().longitude()
       ).block();
-      latitude = location.latitude();
-      longitude = location.longitude();
-      x = location.x();
-      y = location.y();
-      province = location.locationNames().get(0);
-      city = location.locationNames().get(1);
-      district = location.locationNames().get(2);
     }
 
-    profile.update(
-        request.gender(),
-        request.birthDate(),
-        latitude, longitude, x, y,
-        province, city, district,
-        request.temperatureSensitivity()
-    );
-
-    return ProfileDto.from(profile);
+    return profileUpdateTransactionalService.update(userId, request, location);
   }
 }
