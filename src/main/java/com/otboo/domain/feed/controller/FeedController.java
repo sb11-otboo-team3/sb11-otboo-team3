@@ -1,11 +1,16 @@
 package com.otboo.domain.feed.controller;
 
 import com.otboo.domain.feed.controller.docs.CreateFeedApi;
+import com.otboo.domain.feed.controller.docs.CreateFeedCommentApi;
+import com.otboo.domain.feed.controller.docs.CreateFeedLikeApi;
 import com.otboo.domain.feed.controller.docs.DeleteFeedApi;
+import com.otboo.domain.feed.controller.docs.DeleteFeedLikeApi;
 import com.otboo.domain.feed.controller.docs.FeedApi;
 import com.otboo.domain.feed.controller.docs.UpdateFeedApi;
+import com.otboo.domain.feed.dto.request.FeedCommentCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedUpdateRequest;
+import com.otboo.domain.feed.dto.response.FeedCommentDto;
 import com.otboo.domain.feed.dto.response.FeedDto;
 import com.otboo.domain.feed.service.FeedService;
 import jakarta.validation.Valid;
@@ -35,7 +40,7 @@ public class FeedController {
   public ResponseEntity<FeedDto> createFeed(
       @Valid @RequestBody FeedCreateRequest request,
       Authentication authentication
-  ){
+  ) {
     UUID currentUserId = (UUID) authentication.getPrincipal();
     FeedDto response = feedService.createFeed(request, currentUserId);
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -47,7 +52,7 @@ public class FeedController {
       @PathVariable UUID feedId,
       @Valid @RequestBody FeedUpdateRequest request,
       Authentication authentication
-  ){
+  ) {
     UUID currentUserId = (UUID) authentication.getPrincipal();
     FeedDto response = feedService.updateFeed(feedId, request, currentUserId);
     return ResponseEntity.ok(response);
@@ -58,9 +63,43 @@ public class FeedController {
   public ResponseEntity<Void> deleteFeed(
       @PathVariable UUID feedId,
       Authentication authentication
-  ){
+  ) {
     UUID currentUserId = (UUID) authentication.getPrincipal();
     feedService.deleteFeed(feedId, currentUserId);
     return ResponseEntity.noContent().build();
+  }
+
+  @CreateFeedLikeApi
+  @PostMapping("/{feedId}/like")
+  public ResponseEntity<Void> createFeedLike(
+      @PathVariable UUID feedId,
+      Authentication authentication
+  ) {
+    UUID currentUserId = (UUID) authentication.getPrincipal();
+    feedService.createFeedLike(feedId, currentUserId);
+    return ResponseEntity.noContent().build();
+  }
+
+  @DeleteFeedLikeApi
+  @DeleteMapping("/{feedId}/like")
+  public ResponseEntity<Void> deleteFeedLike(
+      @PathVariable UUID feedId,
+      Authentication authentication
+  ) {
+    UUID currentUserId = (UUID) authentication.getPrincipal();
+    feedService.deleteFeedLike(feedId, currentUserId);
+    return ResponseEntity.noContent().build();
+  }
+
+  @CreateFeedCommentApi
+  @PostMapping("/{feedId}/comments")
+  public ResponseEntity<FeedCommentDto> createComment(
+      @PathVariable UUID feedId,
+      @Valid @RequestBody FeedCommentCreateRequest request,
+      Authentication authentication
+  ) {
+    UUID currentUserId = (UUID) authentication.getPrincipal();
+    FeedCommentDto response = feedService.createFeedComment(feedId, request, currentUserId);
+    return ResponseEntity.ok(response);
   }
 }

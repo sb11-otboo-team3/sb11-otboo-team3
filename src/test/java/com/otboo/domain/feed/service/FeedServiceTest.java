@@ -14,12 +14,19 @@ import com.otboo.domain.clothes.entity.Clothes;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeRepository;
 import com.otboo.domain.clothes.repository.ClothesRepository;
+import com.otboo.domain.feed.dto.request.FeedCommentCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedUpdateRequest;
+import com.otboo.domain.feed.dto.response.FeedCommentDto;
 import com.otboo.domain.feed.dto.response.FeedDto;
+import com.otboo.domain.feed.entity.Comment;
 import com.otboo.domain.feed.entity.Feed;
+import com.otboo.domain.feed.entity.FeedLike;
+import com.otboo.domain.feed.mapper.FeedCommentMapper;
 import com.otboo.domain.feed.mapper.FeedMapper;
 import com.otboo.domain.feed.repository.FeedClothesRepository;
+import com.otboo.domain.feed.repository.FeedCommentRepository;
+import com.otboo.domain.feed.repository.FeedLikeRepository;
 import com.otboo.domain.feed.repository.FeedRepository;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
@@ -65,6 +72,15 @@ class FeedServiceTest {
 
   @Mock
   private AttributeSelectableValueRepository attributeSelectableValueRepository;
+
+  @Mock
+  private FeedLikeRepository feedLikeRepository;
+
+  @Mock
+  private FeedCommentRepository feedCommentRepository;
+
+  @Mock
+  private FeedCommentMapper feedCommentMapper;
 
   @Mock
   private FeedMapper feedMapper;
@@ -174,4 +190,96 @@ class FeedServiceTest {
 
     assertThat(feed.getDeletedAt()).isNotNull();
   }
+
+  @Test
+  @DisplayName("피드 좋아요 생성 성공 테스트")
+  void createFeedLike_success() {
+    UUID feedId = UUID.randomUUID();
+    UUID userId = UUID.randomUUID();
+
+    User user = User.create("user@test.com", "user", "password");
+    ReflectionTestUtils.setField(user, "id", userId);
+
+    Feed feed = Feed.create(
+        user,
+        mock(Weather.class),
+        objectMapper.createObjectNode(),
+        "좋아요 대상 피드"
+    );
+
+    given(userRepository.findById(userId)).willReturn(Optional.of(user));
+    given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
+    given(feedLikeRepository.existsByFeedIdAndUserId(feedId, userId)).willReturn(false);
+
+    feedService.createFeedLike(feedId, userId);
+
+    verify(feedLikeRepository).save(any(FeedLike.class));
+    verify(feedRepository).increaseLikeCount(feedId);
+  }
+
+  @Test
+  @DisplayName("피드 좋아요 취소 성공 테스트")
+  void deleteFeedLike_success() {
+    UUID feedId = UUID.randomUUID();
+    UUID userId = UUID.randomUUID();
+
+    User user = User.create("user@test.com", "user", "password");
+    ReflectionTestUtils.setField(user, "id", userId);
+
+    Feed feed = Feed.create(
+        user,
+        mock(Weather.class),
+        objectMapper.createObjectNode(),
+        "좋아요 취소 대상 피드"
+    );
+    FeedLike feedLike = FeedLike.create(feed, user);
+
+    given(userRepository.findById(userId)).willReturn(Optional.of(user));
+    given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
+    given(feedLikeRepository.findByFeedIdAndUserId(feedId, userId))
+        .willReturn(Optional.of(feedLike));
+
+    feedService.deleteFeedLike(feedId, userId);
+
+    verify(feedLikeRepository).delete(feedLike);
+    verify(feedRepository).decreaseLikeCount(feedId);
+  }
+
+  @Test
+  @DisplayName("피드 댓글 생성 성공 테스트")
+  void createFeedComment_success() {
+    UUID feedId = UUID.randomUUID();
+    UUID authorId = UUID.randomUUID();
+
+    User author = User.create("author@test.com", "author", "password");
+    ReflectionTestUtils.setField(author, "id", authorId);
+
+    Feed feed = Feed.create(
+        author,
+        mock(Weather.class),
+        objectMapper.createObjectNode(),
+        "댓글 대상 피드"
+    );
+
+    FeedCommentDto feedCommentDto = mock(FeedCommentDto.class);
+
+    FeedCommentCreateRequest request = new FeedCommentCreateRequest(
+        feedId,
+        authorId,
+        "댓글 내용"
+    );
+
+    given(userRepository.findById(authorId)).willReturn(Optional.of(author));
+    given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
+    given(feedCommentRepository.save(any(Comment.class)))
+        .willAnswer(invocation -> invocation.getArgument(0));
+    given(feedCommentMapper.toDto(any(Comment.class))).willReturn(feedCommentDto);
+
+    FeedCommentDto result = feedService.createFeedComment(feedId, request, authorId);
+
+    assertThat(result).isEqualTo(feedCommentDto);
+    verify(feedCommentRepository).save(any(Comment.class));
+    verify(feedRepository).increaseCommentCount(feedId);
+  }
+
 }
