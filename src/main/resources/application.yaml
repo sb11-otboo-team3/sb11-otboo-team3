@@ -1,51 +1,43 @@
 spring:
   application:
     name: otboo
-
   profiles:
     default: local
-
   mvc:
     async:
       request-timeout: 3600000
-
   jpa:
     open-in-view: false
-
   batch:
     job:
       enabled: false
-
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
 management:
   endpoints:
     web:
       exposure:
         include: health
-
   endpoint:
     health:
       show-details: never
       show-components: never
-
 kakao:
   local:
     api-key: ${KAKAO_REST_API_KEY}
     base-url: https://dapi.kakao.com
-
 kma:
   vilage-fcst:
     api-key: ${KMA_API_KEY}
     base-url: https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0
-
 app:
   websocket:
     allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://localhost:3000,http://localhost:8080}
-
   storage:
     s3:
       region: ${AWS_REGION:ap-northeast-2}
       bucket: ${S3_BUCKET:local-storage-bucket}
       presigned-url-expiration-seconds: ${S3_PRESIGNED_URL_EXPIRATION_SECONDS:600}
-
     image:
       max-file-size-bytes: ${IMAGE_MAX_FILE_SIZE_BYTES:10485760}
