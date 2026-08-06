@@ -8,6 +8,7 @@ import com.otboo.domain.weather.entity.Grid;
 import com.otboo.domain.weather.repository.GridRepository;
 import com.otboo.domain.weather.util.GridConverter;
 import com.otboo.domain.weather.util.WeatherGrid;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -81,7 +82,7 @@ public class LocationResolver {
         longitude,
         grid.x(),
         grid.y(),
-        new String[]{region.province(), region.city(), region.district()}
+        List.of(region.province(), region.city(), region.district())
     );
   }
 }

@@ -15,6 +15,7 @@ import com.otboo.domain.profile.repository.ProfileRepository;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
 import com.otboo.domain.weather.service.LocationResolver;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -91,7 +92,7 @@ class ProfileServiceTest {
     );
 
     WeatherAPILocation weatherLocation = new WeatherAPILocation(
-        37.5, 127.0, 60, 127, new String[]{"서울특별시", "강남구", "역삼동"}
+        37.5, 127.0, 60, 127, List.of("서울특별시", "강남구", "역삼동")
     );
     given(locationResolver.resolve(37.5, 127.0)).willReturn(Mono.just(weatherLocation));
 

@@ -57,7 +57,7 @@ class WeatherControllerTest {
       // given
       WeatherAPILocation response = new WeatherAPILocation(
           37.5665, 126.9780, 60, 127,
-          new String[]{"서울특별시", "강서구", "마곡동"}
+          List.of("서울특별시", "강서구", "마곡동")
       );
       given(weatherService.getLocation(37.5665, 126.9780)).willReturn(Mono.just(response));
 
@@ -135,7 +135,7 @@ class WeatherControllerTest {
     void returns200AndWeatherListWhenQueriedByLatLng() throws Exception {
       // given
       WeatherAPILocation location = new WeatherAPILocation(
-          37.5665, 126.9780, 60, 127, new String[]{"서울특별시", "강서구", "마곡동"});
+          37.5665, 126.9780, 60, 127, List.of("서울특별시", "강서구", "마곡동"));
       WeatherDto weather = new WeatherDto(
           UUID.fromString("3fa85f64-5717-4562-b3fc-2c963f66afa6"),
           Instant.parse("2026-07-30T00:00:00Z"),

@@ -6,6 +6,6 @@ import org.springframework.http.HttpStatus;
 public class WeatherNotFoundException extends WeatherException {
 
   public WeatherNotFoundException(UUID weatherId) {
-    super(HttpStatus.NOT_FOUND, "존재하지 않는 날씨 정보입니다: id=" + weatherId);
+    super(HttpStatus.BAD_REQUEST, "존재하지 않는 날씨 정보입니다: id=" + weatherId);
   }
 }

@@ -55,9 +55,9 @@ public class ProfileService {
       longitude = location.longitude();
       x = location.x();
       y = location.y();
-      province = location.locationNames()[0];
-      city = location.locationNames()[1];
-      district = location.locationNames()[2];
+      province = location.locationNames().get(0);
+      city = location.locationNames().get(1);
+      district = location.locationNames().get(2);
     }
 
     profile.update(

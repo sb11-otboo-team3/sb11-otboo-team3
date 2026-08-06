@@ -105,7 +105,7 @@ class WeatherServiceImplTest {
 
   private WeatherAPILocation location(double latitude, double longitude) {
     return new WeatherAPILocation(latitude, longitude, 60, 127,
-        new String[]{"서울특별시", "강서구", "마곡동"});
+        List.of("서울특별시", "강서구", "마곡동"));
   }
 
   @Test
