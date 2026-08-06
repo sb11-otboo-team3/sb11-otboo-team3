@@ -27,13 +27,13 @@ import com.otboo.domain.feed.exception.FeedLikeNotFoundException;
 import com.otboo.domain.feed.exception.FeedNotFoundException;
 import com.otboo.domain.feed.exception.FeedUserNotFoundException;
 import com.otboo.domain.feed.exception.FeedWeatherNotFoundException;
+import com.otboo.domain.feed.exception.InvalidFeedCommentRequestException;
 import com.otboo.domain.feed.mapper.FeedCommentMapper;
 import com.otboo.domain.feed.mapper.FeedMapper;
 import com.otboo.domain.feed.repository.FeedClothesRepository;
 import com.otboo.domain.feed.repository.FeedCommentRepository;
 import com.otboo.domain.feed.repository.FeedLikeRepository;
 import com.otboo.domain.feed.repository.FeedRepository;
-import com.otboo.domain.follow.entity.Follow;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.domain.weather.dto.WeatherSummaryDto;
@@ -191,7 +191,7 @@ public class FeedService {
     if (!feedLikeRepository.existsByFeedIdAndUserId(feedId, currentUserId)) {
       FeedLike feedLike = FeedLike.create(feed, user);
       feedLikeRepository.save(feedLike);
-      feed.increaseLikeCount();
+      feedRepository.increaseLikeCount(feedId);
     } else {
       throw new DuplicateFeedLikeException();
     }
@@ -209,13 +209,17 @@ public class FeedService {
         .orElseThrow(() -> new FeedLikeNotFoundException(feedId));
 
     feedLikeRepository.delete(feedLike);
-    feed.decreaseLikeCount();
+    feedRepository.decreaseLikeCount(feedId);
   }
 
   @Transactional
-  public FeedCommentDto createFeedComment(UUID feedId, FeedCommentCreateRequest request, UUID currentUserId) {
-    if(!request.authorId().equals(currentUserId)){
+  public FeedCommentDto createFeedComment(UUID feedId, FeedCommentCreateRequest request,
+      UUID currentUserId) {
+    if (!request.authorId().equals(currentUserId)) {
       throw new FeedCommentForbiddenException();
+    }
+    if (!request.feedId().equals(feedId)) {
+      throw new InvalidFeedCommentRequestException();
     }
 
     User user = userRepository.findById(currentUserId)
@@ -227,7 +231,7 @@ public class FeedService {
     Comment comment = Comment.create(feed, user, request.content());
     Comment savedComment = feedCommentRepository.save(comment);
 
-    feed.increaseCommentCount();
+    feedRepository.increaseCommentCount(feedId);
 
     return feedCommentMapper.toDto(savedComment);
   }

@@ -214,7 +214,7 @@ class FeedServiceTest {
     feedService.createFeedLike(feedId, userId);
 
     verify(feedLikeRepository).save(any(FeedLike.class));
-    assertThat(feed.getLikeCount()).isEqualTo(1L);
+    verify(feedRepository).increaseLikeCount(feedId);
   }
 
   @Test
@@ -232,8 +232,6 @@ class FeedServiceTest {
         objectMapper.createObjectNode(),
         "좋아요 취소 대상 피드"
     );
-    feed.increaseLikeCount();
-
     FeedLike feedLike = FeedLike.create(feed, user);
 
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
@@ -244,7 +242,7 @@ class FeedServiceTest {
     feedService.deleteFeedLike(feedId, userId);
 
     verify(feedLikeRepository).delete(feedLike);
-    assertThat(feed.getLikeCount()).isEqualTo(0L);
+    verify(feedRepository).decreaseLikeCount(feedId);
   }
 
   @Test
@@ -280,8 +278,8 @@ class FeedServiceTest {
     FeedCommentDto result = feedService.createFeedComment(feedId, request, authorId);
 
     assertThat(result).isEqualTo(feedCommentDto);
-    assertThat(feed.getCommentCount()).isEqualTo(1);
     verify(feedCommentRepository).save(any(Comment.class));
+    verify(feedRepository).increaseCommentCount(feedId);
   }
 
 }

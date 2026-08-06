@@ -59,18 +59,4 @@ public class Feed extends SoftDeletableEntity {
   public void updateContent(String content) {
     this.content = content;
   }
-
-  public void increaseLikeCount() {
-    this.likeCount++;
-  }
-
-  public void decreaseLikeCount() {
-    if (this.likeCount > 0) {
-      this.likeCount--;
-    }
-  }
-
-  public void increaseCommentCount() {
-    this.commentCount++;
-  }
 }
