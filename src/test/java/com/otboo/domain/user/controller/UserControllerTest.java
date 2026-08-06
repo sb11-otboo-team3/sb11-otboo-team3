@@ -493,4 +493,22 @@ class UserControllerTest {
             .param("sortBy", "invalidField"))
         .andExpect(status().isBadRequest());
   }
+
+  @Test
+  @WithMockUser(roles = "ADMIN")
+  @DisplayName("sortBy를 대문자로 보내도 200을 반환한다")
+  void getUsersWithUpperCaseSortByReturns200() throws Exception {
+    // given
+    UserDtoCursorResponse response = new UserDtoCursorResponse(
+        List.of(), null, null, false, 0L, "CREATEDAT", "DESCENDING"
+    );
+    given(userService.getUsers(any(), any(), any(Integer.class), any(), any(), any(), any(), any()))
+        .willReturn(response);
+
+    // when & then
+    mockMvc.perform(get("/api/users")
+            .param("limit", "10")
+            .param("sortBy", "CREATEDAT"))
+        .andExpect(status().isOk());
+  }
 }

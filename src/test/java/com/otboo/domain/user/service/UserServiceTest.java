@@ -341,4 +341,23 @@ class UserServiceTest {
         null, null, 10, "createdAt", "invalidDirection", null, null, null
     )).isInstanceOf(InvalidUserCursorException.class);
   }
+
+  @Test
+  @DisplayName("sortBy를 대문자로 보내도 정상 동작한다")
+  void getUsersWithUpperCaseSortByWorksCorrectly() throws Exception {
+    // given
+    given(userRepository.findUsers(
+        eq(null), eq(null), eq(11), eq("CREATEDAT"), eq("DESCENDING"),
+        eq(null), eq(null), eq(null)
+    )).willReturn(List.of());
+    given(userRepository.countUsers(null, null, null)).willReturn(0L);
+
+    // when
+    UserDtoCursorResponse result = userService.getUsers(
+        null, null, 10, "CREATEDAT", "DESCENDING", null, null, null
+    );
+
+    // then
+    assertThat(result.data()).isEmpty();
+  }
 }

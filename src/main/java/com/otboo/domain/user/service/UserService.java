@@ -157,10 +157,10 @@ public class UserService {
   }
 
   private void validateSort(String sortBy, String sortDirection) {
-    if (!VALID_SORT_BY.contains(sortBy)) {
-      throw new InvalidUserCursorException();
-    }
-    if (!VALID_SORT_DIRECTION.contains(sortDirection)) {
+    boolean validSortBy = "createdAt".equalsIgnoreCase(sortBy) || "email".equalsIgnoreCase(sortBy);
+    boolean validSortDirection = "ASCENDING".equalsIgnoreCase(sortDirection) || "DESCENDING".equalsIgnoreCase(sortDirection);
+
+    if (!validSortBy || !validSortDirection) {
       throw new InvalidUserCursorException();
     }
   }
