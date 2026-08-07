@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 import com.otboo.domain.auth.jwt.JwtProvider;
 import com.otboo.domain.profile.dto.LocationDto;
@@ -90,7 +91,7 @@ class ProfileControllerTest {
         userId, "새이름", Gender.MALE, LocalDate.of(1995, 5, 5),
         location, 3, null
     );
-    given(profileService.updateProfile(any(UUID.class), any(ProfileUpdateRequest.class)))
+    given(profileService.updateProfile(any(UUID.class), any(ProfileUpdateRequest.class), any()))
         .willReturn(response);
 
     MockPart requestPart = new MockPart(
@@ -117,7 +118,7 @@ class ProfileControllerTest {
   void updateProfileWithNonExistentProfileReturns400() throws Exception {
     // given
     UUID userId = UUID.randomUUID();
-    given(profileService.updateProfile(any(UUID.class), any(ProfileUpdateRequest.class)))
+    given(profileService.updateProfile(any(UUID.class), any(ProfileUpdateRequest.class), any()))
         .willThrow(new ProfileNotFoundException(userId));
 
     MockPart requestPart = new MockPart(
@@ -183,5 +184,42 @@ class ProfileControllerTest {
             })
             .with(csrf()))
         .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @WithMockUser
+  @DisplayName("이미지와 함께 프로필 수정 요청이 성공하면 서비스로 이미지가 전달된다")
+  void updateProfileWithImageReturns200() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+    LocationDto location = new LocationDto(null, null, null, null, List.of());
+    ProfileDto response = new ProfileDto(
+        userId, "이미지테스트", null, null, location, null,
+        "https://example.com/uploaded-image.jpg"
+    );
+    given(profileService.updateProfile(any(UUID.class), any(ProfileUpdateRequest.class), any()))
+        .willReturn(response);
+
+    MockPart requestPart = new MockPart(
+        "request",
+        "{\"name\":\"이미지테스트\"}".getBytes(StandardCharsets.UTF_8)
+    );
+    requestPart.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+
+    MockMultipartFile imagePart = new MockMultipartFile(
+        "image", "test.png", "image/png", "dummy-content".getBytes()
+    );
+
+    // when & then
+    mockMvc.perform(multipart("/api/users/{userId}/profiles", userId)
+            .file(imagePart)
+            .part(requestPart)
+            .with(request -> {
+              request.setMethod("PATCH");
+              return request;
+            })
+            .with(csrf()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.profileImageUrl").value("https://example.com/uploaded-image.jpg"));
   }
 }

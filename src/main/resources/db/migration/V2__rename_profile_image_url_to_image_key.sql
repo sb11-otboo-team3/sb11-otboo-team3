@@ -1,0 +1,1 @@
+ALTER TABLE profiles RENAME COLUMN image_url TO image_key;

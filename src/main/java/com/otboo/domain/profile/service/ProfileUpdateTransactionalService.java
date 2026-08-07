@@ -12,9 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-
-// DB 저장 전용 트랜잭션 빈.
-
+// DB 저장 전용 트랜잭션 빈
 @Service
 @RequiredArgsConstructor
 public class ProfileUpdateTransactionalService {
@@ -22,7 +20,13 @@ public class ProfileUpdateTransactionalService {
   private final ProfileRepository profileRepository;
 
   @Transactional
-  public ProfileDto update(UUID userId, ProfileUpdateRequest request, WeatherAPILocation location) {
+  public ProfileDto update(
+      UUID userId,
+      ProfileUpdateRequest request,
+      WeatherAPILocation location,
+      String newImageKey,
+      String profileImageUrl
+  ) {
     Profile profile = profileRepository.findById(userId)
         .orElseThrow(() -> new ProfileNotFoundException(userId));
 
@@ -43,8 +47,8 @@ public class ProfileUpdateTransactionalService {
       longitude = location.longitude();
       x = location.x();
       y = location.y();
-      // 세종시처럼 "구/군" 단계가 아예 없는 행정구역도 있어서 locationNames가 항상 3개라고
-      // 보장할 수 없다 - 없는 단계는 예외 던지지 말고 그냥 null로 둔다.
+
+      // 세종시처럼 행정구역 단계가 3개 미만일 수 있으므로 안전하게 조회한다.
       province = nameAt(location.locationNames(), 0);
       city = nameAt(location.locationNames(), 1);
       district = nameAt(location.locationNames(), 2);
@@ -53,15 +57,26 @@ public class ProfileUpdateTransactionalService {
     profile.update(
         request.gender(),
         request.birthDate(),
-        latitude, longitude, x, y,
-        province, city, district,
+        latitude,
+        longitude,
+        x,
+        y,
+        province,
+        city,
+        district,
         request.temperatureSensitivity()
     );
 
-    return ProfileDto.from(profile);
+    if (newImageKey != null) {
+      profile.updateImageKey(newImageKey);
+    }
+
+    return ProfileDto.from(profile, profileImageUrl);
   }
 
   private String nameAt(List<String> locationNames, int index) {
-    return locationNames != null && locationNames.size() > index ? locationNames.get(index) : null;
+    return locationNames != null && locationNames.size() > index
+        ? locationNames.get(index)
+        : null;
   }
 }

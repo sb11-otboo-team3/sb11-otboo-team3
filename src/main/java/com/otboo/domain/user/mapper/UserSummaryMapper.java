@@ -5,6 +5,7 @@ import com.otboo.domain.profile.repository.ProfileRepository;
 import com.otboo.domain.user.dto.UserSummary;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
+import com.otboo.global.infrastructure.storage.FileStorage;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -16,10 +17,16 @@ public class UserSummaryMapper {
 
   private final UserRepository userRepository;
   private final ProfileRepository profileRepository;
+  private final FileStorage fileStorage;
 
-  public UserSummaryMapper(UserRepository userRepository, ProfileRepository profileRepository) {
+  public UserSummaryMapper(
+      UserRepository userRepository,
+      ProfileRepository profileRepository,
+      FileStorage fileStorage
+  ) {
     this.userRepository = userRepository;
     this.profileRepository = profileRepository;
+    this.fileStorage = fileStorage;
   }
 
   public UserSummary toUserSummary(User user) {
@@ -49,11 +56,9 @@ public class UserSummaryMapper {
   }
 
   private String resolveImageUrl(Profile profile) {
-    if (profile == null) {
+    if (profile == null || profile.getImageKey() == null || profile.getImageKey().isBlank()) {
       return null;
     }
-    // TODO: #81 공통 S3 모듈 및 imageUrl -> imageKey 컬럼 변경 완료 후,
-    // profile.getImageKey() 기반 Presigned GET URL 생성 로직으로 교체
-    return profile.getImageUrl();
+    return fileStorage.generateReadUrl(profile.getImageKey());
   }
 }
