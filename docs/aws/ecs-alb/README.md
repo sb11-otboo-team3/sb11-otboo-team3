@@ -506,7 +506,10 @@ aws ecs describe-services \
     RunningCount:runningCount,
     PendingCount:pendingCount,
     TaskDefinition:taskDefinition,
-    RolloutState:deployments[?status==`PRIMARY`]|[0].rolloutState
+    RolloutState:deployments[?status==`PRIMARY`]|[0].rolloutState,
+    CircuitBreaker:deploymentConfiguration.deploymentCircuitBreaker.enable,
+    Rollback:deploymentConfiguration.deploymentCircuitBreaker.rollback,
+    HealthCheckGracePeriod:healthCheckGracePeriodSeconds
   }' \
   --output table
 ```
@@ -519,6 +522,9 @@ DesiredCount: 1
 RunningCount: 1
 PendingCount: 0
 RolloutState: COMPLETED
+CircuitBreaker: True
+Rollback: True
+HealthCheckGracePeriod: 120
 ```
 
 ### Target Group ARN 조회
@@ -722,6 +728,42 @@ aws ecs wait services-stable \
   --services "${ECS_SERVICE}" \
   --region "${AWS_REGION}" \
   --profile "${AWS_PROFILE}"
+```
+
+Service 안정화 후 Target 상태를 다시 확인합니다.
+
+```bash
+aws elbv2 describe-target-health \
+  --target-group-arn "${TARGET_GROUP_ARN}" \
+  --region "${AWS_REGION}" \
+  --profile "${AWS_PROFILE}" \
+  --query 'TargetHealthDescriptions[].{
+    Target:Target.Id,
+    Port:Target.Port,
+    State:TargetHealth.State
+  }' \
+  --output table
+```
+
+새 Target의 상태가 `healthy`인지 확인합니다.
+
+애플리케이션도 다시 확인합니다.
+
+```bash
+curl -sS -o /dev/null \
+  -w '메인 화면 HTTP %{http_code}\n' \
+  "http://${ALB_DNS}/"
+
+curl -sS "http://${ALB_DNS}/actuator/health"
+echo
+```
+
+정상 기준:
+
+```text
+Target State: healthy
+메인 화면 HTTP 200
+{"status":"UP"}
 ```
 
 복구 완료 기준은 다음과 같습니다.
