@@ -16,24 +16,14 @@ public record ProfileDto(
     Integer temperatureSensitivity,
     String profileImageUrl
 ) {
+
   public static ProfileDto from(Profile profile, String profileImageUrl) {
-    List<String> locationNames = new ArrayList<>();
-    if (profile.getProvince() != null) {
-      locationNames.add(profile.getProvince());
-    }
-    if (profile.getCity() != null) {
-      locationNames.add(profile.getCity());
-    }
-    if (profile.getDistrict() != null) {
-      locationNames.add(profile.getDistrict());
-    }
-    LocationDto location = new LocationDto(
-        profile.getLatitude(),
-        profile.getLongitude(),
-        profile.getX(),
-        profile.getY(),
-        locationNames
-    );
+    // 위치를 아직 한 번도 설정하지 않은 프로필은 location 자체를 null로 반환한다.
+    LocationDto location =
+        profile.getLatitude() == null
+            ? null
+            : buildLocation(profile);
+
     return new ProfileDto(
         profile.getUser().getId(),
         profile.getUser().getName(),
@@ -42,6 +32,30 @@ public record ProfileDto(
         location,
         profile.getTemperatureSensitivity(),
         profileImageUrl
+    );
+  }
+
+  private static LocationDto buildLocation(Profile profile) {
+    List<String> locationNames = new ArrayList<>();
+
+    if (profile.getProvince() != null) {
+      locationNames.add(profile.getProvince());
+    }
+
+    if (profile.getCity() != null) {
+      locationNames.add(profile.getCity());
+    }
+
+    if (profile.getDistrict() != null) {
+      locationNames.add(profile.getDistrict());
+    }
+
+    return new LocationDto(
+        profile.getLatitude(),
+        profile.getLongitude(),
+        profile.getX(),
+        profile.getY(),
+        locationNames
     );
   }
 }

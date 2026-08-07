@@ -143,7 +143,7 @@ develop
 
 ### 2. 환경변수 파일 생성
 
-프로젝트 루트에서 다음 명령을 실행합니다.
+프로젝트 루트에서 `.env.example`을 복사하여 `.env` 파일을 생성합니다.
 
 ```bash
 cp .env.example .env
@@ -162,7 +162,9 @@ ls -a
 .env.example
 ```
 
-기본 환경변수는 다음과 같습니다.
+`.env`에는 `.env.example`에 정의된 환경변수 값을 입력합니다.
+
+기본 로컬 인프라 설정 예시는 다음과 같습니다.
 
 ```dotenv
 # PostgreSQL
@@ -177,15 +179,32 @@ REDIS_HOST=localhost
 REDIS_PORT=6379
 ```
 
-기본 로컬 환경에서는 위 값을 그대로 사용할 수 있습니다.
+S3 연동 기능을 로컬에서 테스트할 때는 본인의 AWS CLI 프로필과 프로젝트 버킷 정보를 입력합니다.
 
-`.env` 파일에는 로컬 환경 정보와 민감 정보가 포함될 수 있으므로 Git에 커밋하지 않습니다.
+```dotenv
+AWS_REGION=ap-northeast-2
+AWS_PROFILE=본인의_AWS_CLI_프로필명
+S3_BUCKET=otboo-prod-assets-310567229825-ap-northeast-2
+```
+
+JWT Secret과 외부 API Key 등 추가 값도 반드시 `.env.example`에 정의된 변수명을 그대로 사용합니다.
+
+공백이나 셸에서 해석될 수 있는 특수문자가 포함된 값은 큰따옴표로 감쌉니다.
+
+```dotenv
+JWT_SECRET="특수문자가-포함된-긴-값"
+```
+
+`.env`에는 로컬 환경 정보와 민감정보가 포함될 수 있으므로 Git에 커밋하지 않습니다.
 
 다음 명령으로 `.env`가 Git 변경 파일에 표시되지 않는지 확인합니다.
 
 ```bash
-git status
+git status --short
 ```
+
+> Spring Boot의 `./gradlew bootRun`은 프로젝트 루트의 `.env`를 자동으로 읽지 않습니다.  
+> 이 프로젝트에서는 아래의 `./scripts/run-local.sh`를 팀 공통 로컬 실행 명령으로 사용합니다.
 
 ---
 
@@ -242,44 +261,44 @@ Control + C
 
 ---
 
-### 4. Spring Boot 환경변수 설정
+### 4. Spring Boot 환경변수 로드 방식
 
-Docker Compose는 프로젝트 루트의 `.env` 파일을 자동으로 읽습니다.
+Docker Compose와 Spring Boot의 `.env` 처리 방식은 서로 다릅니다.
 
-Spring Boot는 `.env` 파일을 직접 자동으로 읽지 않습니다.
+- Docker Compose는 Compose 설정에서 참조한 `.env` 값을 컨테이너 환경변수로 전달합니다.
+- Spring Boot의 `./gradlew bootRun`은 프로젝트 루트의 `.env`를 자동으로 읽지 않습니다.
+- 팀 공통 로컬 실행은 `./scripts/run-local.sh`를 사용합니다.
 
-기본 `.env` 값은 `application-local.yaml`의 기본값과 동일하므로 값을 변경하지 않았다면 별도의 환경변수 설정 없이 실행할 수 있습니다.
+`./scripts/run-local.sh`는 다음 순서로 동작합니다.
 
-`.env`의 포트, 계정 또는 비밀번호를 변경했다면 필요한 환경변수만 실행할 터미널에 개별적으로 등록합니다.
-
-```bash
-export DB_HOST='localhost'
-export DB_PORT='5433'
-export DB_NAME='otboo'
-export DB_USERNAME='otboo'
-export DB_PASSWORD='변경한-비밀번호'
-
-export REDIS_HOST='localhost'
-export REDIS_PORT='6380'
+```text
+프로젝트 루트의 .env 존재 확인
+→ .env 값을 현재 프로세스 환경변수로 등록
+→ local 프로필로 Spring Boot 실행
 ```
 
-환경변수 값이 셸에서 임의로 해석되지 않도록 작은따옴표로 감쌉니다.
-
-등록된 값을 확인합니다.
+따라서 `.env`의 DB, Redis, S3, JWT 설정을 반영하려면 `./gradlew bootRun`을 직접 실행하지 말고 다음 스크립트를 사용합니다.
 
 ```bash
-echo "$DB_HOST"
-echo "$DB_PORT"
-echo "$DB_NAME"
-echo "$REDIS_HOST"
-echo "$REDIS_PORT"
+./scripts/run-local.sh
 ```
 
-환경변수를 등록한 터미널에서 애플리케이션을 실행해야 합니다.
+스크립트는 별도의 Gradle 의존성이나 IntelliJ 플러그인 없이 동작합니다.
 
-터미널을 종료하면 해당 터미널에 등록한 환경변수도 사라집니다.
+> `.env` 파일은 Bash 문법으로 로드됩니다.  
+> 값에 공백 또는 특수문자가 포함되면 큰따옴표로 감싸고, 키와 값 사이에 공백을 넣지 않습니다.
 
-비밀번호에 작은따옴표가 포함되어 있거나 터미널 환경변수 등록이 어려운 경우에는 IntelliJ Run Configuration의 `Environment variables`에 직접 등록합니다.
+올바른 예:
+
+```dotenv
+JWT_SECRET="my local secret"
+```
+
+잘못된 예:
+
+```dotenv
+JWT_SECRET=my local secret
+```
 
 ---
 
@@ -288,22 +307,23 @@ echo "$REDIS_PORT"
 프로젝트 루트에서 다음 명령을 실행합니다.
 
 ```bash
-./gradlew bootRun
+./scripts/run-local.sh
 ```
 
-실행 권한 오류가 발생하면 다음 명령을 먼저 실행합니다.
+실행 권한 오류가 발생하면 다음 명령을 실행합니다.
 
 ```bash
 chmod +x gradlew
+chmod +x scripts/run-local.sh
 ```
 
 그다음 다시 실행합니다.
 
 ```bash
-./gradlew bootRun
+./scripts/run-local.sh
 ```
 
-기본 활성 프로필은 `local`입니다.
+스크립트에서 기본 활성 프로필은 `local`입니다.
 
 정상 실행 주소:
 
@@ -314,6 +334,8 @@ http://localhost:8080
 실행 로그에 다음과 비슷한 문구가 나타나면 정상입니다.
 
 ```text
+The following 1 profile is active: "local"
+Tomcat started on port 8080
 Started OtbooApplication
 ```
 
@@ -362,7 +384,11 @@ IntelliJ IDEA
 → Java 17
 ```
 
-`.env` 값을 기본값과 다르게 변경했다면 IntelliJ 실행 설정에도 동일한 값을 등록합니다.
+### IntelliJ 환경변수 설정
+
+IntelliJ에서 Spring Boot Application을 직접 실행하면 프로젝트 루트의 `.env`가 자동으로 적용되지 않습니다.
+
+직접 실행할 때는 다음 위치에 `.env`와 동일한 환경변수를 등록합니다.
 
 ```text
 Run
@@ -375,12 +401,23 @@ Run
 
 ```text
 DB_HOST=localhost
-DB_PORT=5433
+DB_PORT=5432
 DB_NAME=otboo
 DB_USERNAME=otboo
-DB_PASSWORD=변경한-비밀번호
+DB_PASSWORD=otboo
 REDIS_HOST=localhost
-REDIS_PORT=6380
+REDIS_PORT=6379
+AWS_REGION=ap-northeast-2
+AWS_PROFILE=본인의_AWS_CLI_프로필명
+S3_BUCKET=otboo-prod-assets-310567229825-ap-northeast-2
+```
+
+EnvFile 플러그인을 개인적으로 사용할 수도 있지만 필수 도구는 아닙니다.
+
+팀 공통 실행 기준은 별도 플러그인이 필요 없는 다음 명령입니다.
+
+```bash
+./scripts/run-local.sh
 ```
 
 ---
@@ -601,16 +638,14 @@ docker compose down
 docker compose up -d
 ```
 
-Spring Boot에도 변경한 포트를 적용합니다.
+.env의 `DB_PORT` 값을 변경한 뒤 로컬 실행 스크립트를 사용합니다.
 
-```bash
-export DB_PORT='5433'
+```dotenv
+DB_PORT=5433
 ```
 
-같은 터미널에서 애플리케이션을 실행합니다.
-
 ```bash
-./gradlew bootRun
+./scripts/run-local.sh
 ```
 
 ---
@@ -636,16 +671,14 @@ docker compose down
 docker compose up -d
 ```
 
-Spring Boot에도 변경한 포트를 적용합니다.
+.env의 `REDIS_PORT` 값을 변경한 뒤 로컬 실행 스크립트를 사용합니다.
 
-```bash
-export REDIS_PORT='6380'
+```dotenv
+REDIS_PORT=6380
 ```
 
-같은 터미널에서 애플리케이션을 실행합니다.
-
 ```bash
-./gradlew bootRun
+./scripts/run-local.sh
 ```
 
 ---
@@ -673,11 +706,15 @@ docker compose down -v
 docker compose up -d
 ```
 
-Spring Boot 실행 환경에도 변경한 계정 정보를 개별적으로 등록합니다.
+.env의 계정 정보를 변경한 뒤 로컬 실행 스크립트를 사용합니다.
+
+```dotenv
+DB_USERNAME=변경한-사용자명
+DB_PASSWORD="변경한-비밀번호"
+```
 
 ```bash
-export DB_USERNAME='변경한-사용자명'
-export DB_PASSWORD='변경한-비밀번호'
+./scripts/run-local.sh
 ```
 
 ---

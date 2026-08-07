@@ -4,29 +4,47 @@ import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.user.dto.UserSummary;
 import com.otboo.domain.follow.entity.Follow;
 import com.otboo.domain.user.entity.User;
+import com.otboo.domain.user.mapper.UserSummaryMapper;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
 
-public final class FollowMapper {
+@Component
+@RequiredArgsConstructor
+public class FollowMapper {
 
-  private FollowMapper() {
-  }
+  private final UserSummaryMapper userSummaryMapper;
 
-  public static FollowDto toDto(Follow follow) {
+  public FollowDto toDto(Follow follow) {
     return new FollowDto(
         follow.getId(),
-        toUserSummary(follow.getFollowee()),
-        toUserSummary(follow.getFollower())
+        userSummaryMapper.toUserSummary(follow.getFollowee()),
+        userSummaryMapper.toUserSummary(follow.getFollower())
     );
   }
 
-  private static UserSummary toUserSummary(User user) {
-    if (user == null) {
-      return null;
-    }
+  public List<FollowDto> toDtos(List<Follow> follows) {
+    List<UUID> userIds = follows.stream()
+        .flatMap(follow -> Stream.of(
+            follow.getFollowee().getId(),
+            follow.getFollower().getId()
+        ))
+        .distinct()
+        .toList();
 
-    return new UserSummary(
-        user.getId(),
-        user.getName(),
-        null
-    );
+    Map<UUID, UserSummary> userSummaryMap = userSummaryMapper.toUserSummaries(userIds).stream()
+        .collect(Collectors.toMap(UserSummary::userId, userSummary -> userSummary));
+
+    return follows.stream()
+        .map(follow -> new FollowDto(
+            follow.getId(),
+            userSummaryMap.get(follow.getFollowee().getId()),
+            userSummaryMap.get(follow.getFollower().getId())
+        ))
+        .toList();
   }
 }

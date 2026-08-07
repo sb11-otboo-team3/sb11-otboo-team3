@@ -33,6 +33,7 @@ public class DirectMessageService {
   private final DirectMessageRepository directMessageRepository;
   private final UserRepository userRepository;
   private final ApplicationEventPublisher eventPublisher;
+  private final DirectMessageMapper directMessageMapper;
 
   @Transactional
   public DirectMessageDto createDirectMessage(DirectMessageCreateRequest request,
@@ -77,7 +78,7 @@ public class DirectMessageService {
         )
     );
 
-    return DirectMessageMapper.toDto(savedMessage);
+    return directMessageMapper.toDto(savedMessage);
   }
 
   public DirectMessageDtoCursorResponse getDirectMessages(
@@ -111,9 +112,7 @@ public class DirectMessageService {
       messages = messages.subList(0, limit);
     }
 
-    List<DirectMessageDto> data = messages.stream()
-        .map(DirectMessageMapper::toDto)
-        .toList();
+    List<DirectMessageDto> data = directMessageMapper.toDtos(messages);
 
     // 기본은 다음 페이지 없음
     String nextCursor = null;
