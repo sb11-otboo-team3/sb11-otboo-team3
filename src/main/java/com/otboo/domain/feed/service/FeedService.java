@@ -7,14 +7,16 @@ import com.otboo.domain.clothes.entity.Clothes;
 import com.otboo.domain.clothes.entity.ClothesAttribute;
 import com.otboo.domain.clothes.entity.ClothesAttributeDefinition;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
-import com.otboo.domain.clothes.repository.ClothesAttributeDefinitionRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeRepository;
 import com.otboo.domain.clothes.repository.ClothesRepository;
 import com.otboo.domain.feed.dto.request.FeedCommentCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedUpdateRequest;
+import com.otboo.domain.feed.dto.request.SortBy;
+import com.otboo.domain.feed.dto.request.SortDirection;
 import com.otboo.domain.feed.dto.response.FeedCommentDto;
 import com.otboo.domain.feed.dto.response.FeedDto;
+import com.otboo.domain.feed.dto.response.FeedDtoCursorResponse;
 import com.otboo.domain.feed.entity.Comment;
 import com.otboo.domain.feed.entity.Feed;
 import com.otboo.domain.feed.entity.FeedClothes;
@@ -34,9 +36,12 @@ import com.otboo.domain.feed.repository.FeedClothesRepository;
 import com.otboo.domain.feed.repository.FeedCommentRepository;
 import com.otboo.domain.feed.repository.FeedLikeRepository;
 import com.otboo.domain.feed.repository.FeedRepository;
+import com.otboo.domain.follow.exception.InvalidFollowCursorException;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.domain.weather.dto.WeatherSummaryDto;
+import com.otboo.domain.weather.entity.PrecipitationType;
+import com.otboo.domain.weather.entity.SkyStatus;
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.repository.WeatherRepository;
 import com.otboo.domain.weather.service.WeatherService;
@@ -234,6 +239,94 @@ public class FeedService {
     feedRepository.increaseCommentCount(feedId);
 
     return feedCommentMapper.toDto(savedComment);
+  }
+
+  public FeedDtoCursorResponse getFeeds(
+      String cursor,
+      UUID idAfter,
+      int limit,
+      SortBy sortBy,
+      SortDirection sortDirection,
+      String keywordLike,
+      SkyStatus skyStatusEqual,
+      PrecipitationType precipitationTypeEqual,
+      UUID authorIdEqual,
+      UUID currentUserId
+  ) {
+    validateCursor(cursor, idAfter);
+
+    List<Feed> feeds = feedRepository.findFeeds(
+        cursor,
+        idAfter,
+        limit + 1,
+        sortBy,
+        sortDirection,
+        keywordLike,
+        skyStatusEqual,
+        precipitationTypeEqual,
+        authorIdEqual
+    );
+
+    boolean hasNext = feeds.size() > limit;
+
+    if (hasNext) {
+      feeds = feeds.subList(0, limit);
+    }
+
+    List<FeedDto> data = feeds.stream()
+        .map(feed -> {
+          boolean likedByMe = feedLikeRepository.existsByFeedIdAndUserId(
+              feed.getId(),
+              currentUserId
+          );
+
+          return toFeedDto(feed, likedByMe);
+        })
+        .toList();
+
+    String nextCursor = null;
+    UUID nextIdAfter = null;
+
+    if (hasNext) {
+      Feed last = feeds.get(feeds.size() - 1);
+
+      if (sortBy == SortBy.createdAt) {
+        nextCursor = last.getCreatedAt().toString();
+      }
+
+      if (sortBy == SortBy.likeCount) {
+        nextCursor = String.valueOf(last.getLikeCount());
+      }
+
+      nextIdAfter = last.getId();
+    }
+
+    long totalCount = feedRepository.countFeeds(
+        keywordLike,
+        skyStatusEqual,
+        precipitationTypeEqual,
+        authorIdEqual
+    );
+
+    return new FeedDtoCursorResponse(
+        data,
+        nextCursor,
+        nextIdAfter,
+        hasNext,
+        totalCount,
+        sortBy.name(),
+        sortDirection.name()
+    );
+  }
+
+  // cursor와 idAfter는 둘 다 있거나 둘 다 없어야 함
+  private void validateCursor(String cursor, UUID idAfter) {
+    boolean hasCursor = cursor != null && !cursor.isBlank();
+    boolean hasIdAfter = idAfter != null;
+
+    if (hasCursor != hasIdAfter) {
+      throw new InvalidFollowCursorException();
+    }
   }
 
 }
