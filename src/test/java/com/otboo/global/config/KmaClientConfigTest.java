@@ -3,12 +3,15 @@ package com.otboo.global.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.otboo.domain.weather.client.KakaoLocationClient;
-import com.otboo.domain.weather.exception.KakaoApiException;
+import com.otboo.domain.weather.client.KmaWeatherClient;
+import com.otboo.domain.weather.exception.KmaApiException;
+import com.otboo.domain.weather.util.VilageFcstBaseTime;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
@@ -17,9 +20,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-class KakaoClientConfigTest {
+class KmaClientConfigTest {
 
-  private final KakaoClientConfig kakaoClientConfig = new KakaoClientConfig();
+  private final KmaClientConfig kmaClientConfig = new KmaClientConfig();
 
   private ServerSocket serverSocket;
   private ExecutorService acceptExecutor;
@@ -50,19 +53,19 @@ class KakaoClientConfigTest {
   }
 
   @Test
-  @DisplayName("카카오 서버가 연결만 받고 응답이 없으면 응답 타임아웃(5초) 근방에서 KakaoApiException을 던진다")
-  void throwsKakaoApiExceptionOnReadTimeout() {
+  @DisplayName("기상청 서버가 연결만 받고 응답이 없으면 응답 타임아웃(5초) 근방에서 KmaApiException을 던진다")
+  void throwsKmaApiExceptionOnReadTimeout() {
     // given
     String baseUrl = "http://127.0.0.1:" + serverSocket.getLocalPort();
-    KakaoLocationClient kakaoLocationClient =
-        kakaoClientConfig.kakaoLocationClient(baseUrl, "test-api-key");
+    KmaWeatherClient kmaWeatherClient = kmaClientConfig.kmaWeatherClient(baseUrl, "test-api-key");
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
 
     // when
     long start = System.nanoTime();
 
     // then
-    assertThatThrownBy(() -> kakaoLocationClient.getRegion(37.5665, 126.9780).block())
-        .isInstanceOf(KakaoApiException.class);
+    assertThatThrownBy(() -> kmaWeatherClient.getForecast(60, 127, baseTime).block())
+        .isInstanceOf(KmaApiException.class);
 
     Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
     assertThat(elapsed).isBetween(Duration.ofSeconds(4), Duration.ofSeconds(9));

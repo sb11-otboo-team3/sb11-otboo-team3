@@ -13,7 +13,10 @@ import com.otboo.domain.weather.dto.WindSpeedDto;
 import com.otboo.domain.weather.entity.Grid;
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.entity.WindStrength;
+import com.otboo.domain.weather.exception.DailyForecastNotFoundException;
+import com.otboo.domain.weather.exception.GridRegistrationFailedException;
 import com.otboo.domain.weather.exception.KmaApiException;
+import com.otboo.domain.weather.exception.WeatherNotFoundException;
 import com.otboo.domain.weather.repository.GridRepository;
 import com.otboo.domain.weather.repository.WeatherRepository;
 import com.otboo.domain.weather.util.DailyForecastSelector;
@@ -33,6 +36,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 @Slf4j
 @Service
@@ -53,16 +58,24 @@ public class WeatherServiceImpl implements WeatherService {
   private final WeatherForecastCache weatherForecastCache;
 
   @Override
-  public WeatherAPILocation getLocation(double latitude, double longitude) {
+  public Mono<WeatherAPILocation> getLocation(double latitude, double longitude) {
     return locationResolver.resolve(latitude, longitude);
   }
 
   @Override
-  public List<WeatherDto> getWeathers(double latitude, double longitude) {
-
-    // 위치 가져오기.
+  public Mono<List<WeatherDto>> getWeathers(double latitude, double longitude) {
+    // 위치 가져오기(카카오 호출 포함 - 논블로킹).
     //TODO: 프로필에 있으면 프로필 위치 정보 가져오기
-    WeatherAPILocation location = locationResolver.resolve(latitude, longitude);
+    return locationResolver.resolve(latitude, longitude)
+        .flatMap(this::getWeathersForLocation);
+  }
+
+  // 위치를 알고 난 다음의 캐시/DB/기상청 조회 로직 전체. JPA/Redis처럼 진짜 블로킹인 구간만
+  // Mono.fromCallable(...).subscribeOn(boundedElastic)으로 개별적으로 감싸고, 기상청 호출은
+  // WebClient가 만들어주는 Mono를 그대로 flatMap으로 이어받는다(.block() 금지) - 응답을 기다리는
+  // 동안 boundedElastic 스레드를 하나도 붙잡아두지 않기 위함(여러 요청이 동시에 기상청 응답을
+  // 기다려야 하는 상황에서 스레드 풀이 불필요하게 고갈되는 걸 막는다).
+  private Mono<List<WeatherDto>> getWeathersForLocation(WeatherAPILocation location) {
     WeatherGrid weatherGrid = new WeatherGrid(location.x(), location.y());
 
     //필요한 날씨 발표 시각 걔산
@@ -70,47 +83,84 @@ public class WeatherServiceImpl implements WeatherService {
     Instant forecastedAt = baseTime.baseDate().atTime(baseTime.baseTime()).atZone(KST).toInstant();
 
     // 캐쉬에서 찾아보기.
-    Optional<List<WeatherDto>> cached = weatherForecastCache.find(weatherGrid, forecastedAt);
-    List<WeatherDto> allForecasts;
-    //캐시에 있으면 가져오기.
-    if (cached.isPresent()) {
-      log.debug("날씨 조회 - 캐시 히트, x={}, y={}, forecastedAt={}", weatherGrid.x(), weatherGrid.y(), forecastedAt);
-      allForecasts = cached.get().stream()
-          .map(dto -> withLocation(dto, location))
-          .toList();
-    } else { // 캐시에 없으면 DB에서 찾아보기.
-      Grid grid = gridRepository.findByXAndY(location.x(), location.y())
-          .orElseGet(() -> registerGrid(weatherGrid));
+    return Mono.fromCallable(() -> weatherForecastCache.find(weatherGrid, forecastedAt))
+        .subscribeOn(Schedulers.boundedElastic())
+        .flatMap(cached -> cached.isPresent()
+            ? cacheHit(cached.get(), weatherGrid, forecastedAt, location)
+            : fetchFromDbOrKma(weatherGrid, location, baseTime, forecastedAt))
+        .map(allForecasts -> dailyForecastSelector.select(allForecasts, clock.instant()));
+  }
 
-      List<Weather> existing = weatherRepository.findByGridAndForecastedAt(grid, forecastedAt);
-      //DB에 날씨 정보 있으면 가져오고 캐시 등록
-      if (!existing.isEmpty()) {
-        log.debug("날씨 조회 - DB 히트, x={}, y={}, forecastedAt={}", weatherGrid.x(), weatherGrid.y(), forecastedAt);
-        allForecasts = existing.stream()
-            .map(weather -> toWeatherDto(weather, location))
-            .toList();
-        weatherForecastCache.save(weatherGrid, forecastedAt, allForecasts);
-      } else {
-        // DB에도 날씨 정보 없으면 기상청 API 호출
-        try {
-          List<VilageFcstItem> forecasts = kmaWeatherClient.getForecast(location.x(), location.y(), baseTime);
-          log.debug("날씨 조회 - 기상청 API 호출, x={}, y={}, forecastedAt={}", weatherGrid.x(), weatherGrid.y(), forecastedAt);
-          allForecasts = forecasts.stream()
-              .map(item -> saveAndConvert(item, grid, location))
-              .flatMap(Optional::stream)
-              .toList();
-          weatherForecastCache.save(weatherGrid, forecastedAt, allForecasts);
-        } catch (KmaApiException e) {
-          // 기상청 API에서 응답을 못받았을시 이전 발표로 폴백
+  //캐시에 있으면 가져오기.
+  private Mono<List<WeatherDto>> cacheHit(
+      List<WeatherDto> cached, WeatherGrid weatherGrid, Instant forecastedAt, WeatherAPILocation location
+  ) {
+    log.debug("날씨 조회 - 캐시 히트, x={}, y={}, forecastedAt={}", weatherGrid.x(), weatherGrid.y(), forecastedAt);
+    return Mono.just(cached.stream().map(dto -> withLocation(dto, location)).toList());
+  }
+
+  private record GridAndExisting(Grid grid, List<Weather> existing) {
+  }
+
+  // 캐시에 없으면 DB에서 찾아보기.
+  private Mono<List<WeatherDto>> fetchFromDbOrKma(
+      WeatherGrid weatherGrid, WeatherAPILocation location, VilageFcstBaseTime baseTime, Instant forecastedAt
+  ) {
+    return Mono.fromCallable(() -> {
+          Grid grid = gridRepository.findByXAndY(location.x(), location.y())
+              .orElseGet(() -> registerGrid(weatherGrid));
+          List<Weather> existing = weatherRepository.findByGridAndForecastedAt(grid, forecastedAt);
+          return new GridAndExisting(grid, existing);
+        })
+        .subscribeOn(Schedulers.boundedElastic())
+        .flatMap(found -> found.existing().isEmpty()
+            ? fetchFromKma(found.grid(), weatherGrid, location, baseTime, forecastedAt)
+            : dbHit(found.existing(), weatherGrid, forecastedAt, location));
+  }
+
+  //DB에 날씨 정보 있으면 가져오고 캐시 등록
+  private Mono<List<WeatherDto>> dbHit(
+      List<Weather> existing, WeatherGrid weatherGrid, Instant forecastedAt, WeatherAPILocation location
+  ) {
+    log.debug("날씨 조회 - DB 히트, x={}, y={}, forecastedAt={}", weatherGrid.x(), weatherGrid.y(), forecastedAt);
+    List<WeatherDto> allForecasts = existing.stream()
+        .map(weather -> toWeatherDto(weather, location))
+        .toList();
+    return saveToCache(weatherGrid, forecastedAt, allForecasts);
+  }
+
+  // DB에도 날씨 정보 없으면 기상청 API 호출.
+  private Mono<List<WeatherDto>> fetchFromKma(
+      Grid grid, WeatherGrid weatherGrid, WeatherAPILocation location, VilageFcstBaseTime baseTime, Instant forecastedAt
+  ) {
+    // Mono.defer로 감싸는 이유: kmaWeatherClient.getForecast(...) 호출 자체가 (테스트 목이나 다른
+    // 이유로) 동기적으로 예외를 던지면, defer 없이는 그 예외가 뒤에 붙인 onErrorResume을 거치지도
+    // 못하고 그대로 튀어나간다. defer는 실제 구독 시점까지 호출을 미루고, 그 순간 던져진 예외도
+    // 정상적인 리액티브 에러 신호로 변환해줘서 이후 체인이 전부 제대로 동작하게 한다.
+    return Mono.defer(() -> kmaWeatherClient.getForecast(location.x(), location.y(), baseTime))
+        .doOnNext(forecasts -> log.debug("날씨 조회 - 기상청 API 호출, x={}, y={}, forecastedAt={}",
+            weatherGrid.x(), weatherGrid.y(), forecastedAt))
+        .flatMap(forecasts -> Mono.fromCallable(() -> forecasts.stream()
+                .map(item -> saveAndConvert(item, grid, location))
+                .flatMap(Optional::stream)
+                .toList())
+            .subscribeOn(Schedulers.boundedElastic()))
+        .flatMap(allForecasts -> saveToCache(weatherGrid, forecastedAt, allForecasts))
+        // 기상청 API에서 응답을 못받았을시 이전 발표로 폴백
+        .onErrorResume(KmaApiException.class, e -> {
           log.error("기상청 호출 실패 - 이전 판으로 폴백 시도, x={}, y={}, baseTime={}",
               weatherGrid.x(), weatherGrid.y(), baseTime, e);
-          allForecasts = fallbackToPreviousForecast(weatherGrid, grid, baseTime, location)
-              .orElseThrow(() -> e);
-        }
-      }
-    }
+          return fallbackToPreviousForecast(weatherGrid, grid, baseTime, location)
+              .switchIfEmpty(Mono.error(e));
+        });
+  }
 
-    return dailyForecastSelector.select(allForecasts, clock.instant());
+  private Mono<List<WeatherDto>> saveToCache(
+      WeatherGrid weatherGrid, Instant forecastedAt, List<WeatherDto> allForecasts
+  ) {
+    return Mono.<Void>fromRunnable(() -> weatherForecastCache.save(weatherGrid, forecastedAt, allForecasts))
+        .subscribeOn(Schedulers.boundedElastic())
+        .thenReturn(allForecasts);
   }
 
   // gridRecencyCache가 살아있는 동안 DB의 격자 row가 지워지면(예: DB만 초기화하고 앱은 재시작 안 한 경우)
@@ -123,14 +173,13 @@ public class WeatherServiceImpl implements WeatherService {
       log.warn("격자 재등록 - 동시성 충돌 발생, x={}, y={}", weatherGrid.x(), weatherGrid.y(), e);
     }
     return gridRepository.findByXAndY(weatherGrid.x(), weatherGrid.y())
-        .orElseThrow(() -> new IllegalStateException(
-            "격자 등록에 실패했습니다: x=" + weatherGrid.x() + ", y=" + weatherGrid.y()));
+        .orElseThrow(() -> new GridRegistrationFailedException(weatherGrid.x(), weatherGrid.y()));
   }
 
   @Override
   public WeatherSummaryDto getWeatherSummary(UUID weatherId) {
     Weather weather = weatherRepository.findById(weatherId)
-        .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 날씨 정보입니다: id=" + weatherId));
+        .orElseThrow(() -> new WeatherNotFoundException(weatherId));
 
     LocalDate date = weather.getForecastAt().atZone(KST).toLocalDate();
     Instant dayStart = date.atStartOfDay(KST).toInstant();
@@ -180,12 +229,14 @@ public class WeatherServiceImpl implements WeatherService {
   }
 
   // grid+forecastedAt으로 찾은 배치 안에 그 날짜(dayStart 기준) 예보가 하나도 없는, 정상적으로는 있을 수 없는 상태
-  private IllegalStateException noDailyForecastsFound(Instant dayStart) {
-    return new IllegalStateException("해당 날짜의 예보를 찾을 수 없습니다: date=" + dayStart);
+  private DailyForecastNotFoundException noDailyForecastsFound(Instant dayStart) {
+    return new DailyForecastNotFoundException(dayStart);
   }
 
   //가장 최근 발표 시각의 데이터가 없을 경우에 그 전 데이터로 대체.
-  private Optional<List<WeatherDto>> fallbackToPreviousForecast(
+  // 대체할 데이터를 못 찾으면 Mono.empty()로 완료해서, 호출부가 switchIfEmpty로 원래 예외를
+  // 그대로 전파하게 한다(기존 Optional.empty() + orElseThrow(() -> e)와 동일한 의미).
+  private Mono<List<WeatherDto>> fallbackToPreviousForecast(
       WeatherGrid weatherGrid, Grid grid, VilageFcstBaseTime baseTime, WeatherAPILocation location
   ) {
     // 전타임 시간
@@ -193,29 +244,34 @@ public class WeatherServiceImpl implements WeatherService {
     Instant previousForecastedAt = previousBaseTime.baseDate().atTime(previousBaseTime.baseTime()).atZone(KST).toInstant();
 
     // 캐시에서 찾기
-    Optional<List<WeatherDto>> cached = weatherForecastCache.find(weatherGrid, previousForecastedAt);
-    if (cached.isPresent()) {
-      log.warn("이전 발표로 폴백 성공(캐시), x={}, y={}, previousBaseTime={}",
-          weatherGrid.x(), weatherGrid.y(), previousBaseTime);
-      return Optional.of(cached.get().stream()
-          .map(dto -> withLocation(dto, location))
-          .toList());
-    }
+    return Mono.fromCallable(() -> weatherForecastCache.find(weatherGrid, previousForecastedAt))
+        .subscribeOn(Schedulers.boundedElastic())
+        .flatMap(cached -> {
+          if (cached.isPresent()) {
+            log.warn("이전 발표로 폴백 성공(캐시), x={}, y={}, previousBaseTime={}",
+                weatherGrid.x(), weatherGrid.y(), previousBaseTime);
+            return Mono.just(cached.get().stream()
+                .map(dto -> withLocation(dto, location))
+                .toList());
+          }
 
+          // 캐시에서 없으면 DB에서 찾기.
+          return Mono.fromCallable(() -> weatherRepository.findByGridAndForecastedAt(grid, previousForecastedAt))
+              .subscribeOn(Schedulers.boundedElastic())
+              .flatMap(previous -> {
+                if (previous.isEmpty()) {
+                  log.error("이전 발표로 폴백 실패 - 대체 데이터 없음, x={}, y={}, previousBaseTime={}",
+                      weatherGrid.x(), weatherGrid.y(), previousBaseTime);
+                  return Mono.<List<WeatherDto>>empty();
+                }
 
-    // 캐시에서 없으면 DB에서 찾기.
-    List<Weather> previous = weatherRepository.findByGridAndForecastedAt(grid, previousForecastedAt);
-    if (previous.isEmpty()) {
-      log.error("이전 발표로 폴백 실패 - 대체 데이터 없음, x={}, y={}, previousBaseTime={}",
-          weatherGrid.x(), weatherGrid.y(), previousBaseTime);
-      return Optional.empty();
-    }
-
-    log.warn("이전 발표로 폴백 성공(DB), x={}, y={}, previousBaseTime={}",
-        weatherGrid.x(), weatherGrid.y(), previousBaseTime);
-    return Optional.of(previous.stream()
-        .map(weather -> toWeatherDto(weather, location))
-        .toList());
+                log.warn("이전 발표로 폴백 성공(DB), x={}, y={}, previousBaseTime={}",
+                    weatherGrid.x(), weatherGrid.y(), previousBaseTime);
+                return Mono.just(previous.stream()
+                    .map(weather -> toWeatherDto(weather, location))
+                    .toList());
+              });
+        });
   }
 
   private WeatherDto withLocation(WeatherDto dto, WeatherAPILocation location) {

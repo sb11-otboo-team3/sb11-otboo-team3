@@ -18,6 +18,22 @@ public record ProfileDto(
 ) {
 
   public static ProfileDto from(Profile profile) {
+    // 위치를 아직 한 번도 설정한 적 없는 프로필(가입 직후 등)은 latitude가 null이다.
+
+    LocationDto location = profile.getLatitude() == null ? null : buildLocation(profile);
+
+    return new ProfileDto(
+        profile.getUser().getId(),
+        profile.getUser().getName(),
+        profile.getGender(),
+        profile.getBirthDate(),
+        location,
+        profile.getTemperatureSensitivity(),
+        profile.getImageUrl()
+    );
+  }
+
+  private static LocationDto buildLocation(Profile profile) {
     List<String> locationNames = new ArrayList<>();
     if (profile.getProvince() != null) {
       locationNames.add(profile.getProvince());
@@ -29,22 +45,12 @@ public record ProfileDto(
       locationNames.add(profile.getDistrict());
     }
 
-    LocationDto location = new LocationDto(
+    return new LocationDto(
         profile.getLatitude(),
         profile.getLongitude(),
         profile.getX(),
         profile.getY(),
         locationNames
-    );
-
-    return new ProfileDto(
-        profile.getUser().getId(),
-        profile.getUser().getName(),
-        profile.getGender(),
-        profile.getBirthDate(),
-        location,
-        profile.getTemperatureSensitivity(),
-        profile.getImageUrl()
     );
   }
 }

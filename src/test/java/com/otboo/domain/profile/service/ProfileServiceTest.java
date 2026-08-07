@@ -10,20 +10,23 @@ import com.otboo.domain.profile.entity.Gender;
 import com.otboo.domain.profile.service.ProfileService;
 import com.otboo.domain.profile.entity.Profile;
 import com.otboo.domain.user.entity.User;
+import com.otboo.domain.profile.exception.LocationResolutionFailedException;
 import com.otboo.domain.profile.exception.ProfileNotFoundException;
 import com.otboo.domain.profile.repository.ProfileRepository;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
 import com.otboo.domain.weather.service.LocationResolver;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import reactor.core.publisher.Mono;
 
 @ExtendWith(MockitoExtension.class)
 class ProfileServiceTest {
@@ -31,11 +34,20 @@ class ProfileServiceTest {
   @Mock
   private ProfileRepository profileRepository;
 
-  @InjectMocks
-  private ProfileService profileService;
-
   @Mock
   private LocationResolver locationResolver;
+
+  private ProfileService profileService;
+
+  // ProfileUpdateTransactionalService는 목이 아니라 실제 인스턴스를 씀 - ProfileService는
+  // 위치 조회 오케스트레이션만 하고, 실제 DB 반영/DTO 변환은 이 클래스가 하므로 그래야
+  // updateProfile 관련 테스트들이 기존처럼 결과값(location, name 등)을 그대로 검증할 수 있다.
+  @BeforeEach
+  void setUp() {
+    ProfileUpdateTransactionalService profileUpdateTransactionalService =
+        new ProfileUpdateTransactionalService(profileRepository);
+    profileService = new ProfileService(profileRepository, locationResolver, profileUpdateTransactionalService);
+  }
 
   @Test
   @DisplayName("프로필을 조회하면 ProfileDto를 반환한다")
@@ -56,6 +68,8 @@ class ProfileServiceTest {
     // then
     assertThat(result.userId()).isEqualTo(userId);
     assertThat(result.name()).isEqualTo("프로필테스트");
+    // 위치를 한 번도 설정한 적 없는 프로필은 location 자체가 null이어야 한다(필드만 null인 빈 객체 X).
+    assertThat(result.location()).isNull();
   }
 
   @Test
@@ -90,9 +104,9 @@ class ProfileServiceTest {
     );
 
     WeatherAPILocation weatherLocation = new WeatherAPILocation(
-        37.5, 127.0, 60, 127, new String[]{"서울특별시", "강남구", "역삼동"}
+        37.5, 127.0, 60, 127, List.of("서울특별시", "강남구", "역삼동")
     );
-    given(locationResolver.resolve(37.5, 127.0)).willReturn(weatherLocation);
+    given(locationResolver.resolve(37.5, 127.0)).willReturn(Mono.just(weatherLocation));
 
     // when
     ProfileDto result = profileService.updateProfile(userId, request);
@@ -103,6 +117,38 @@ class ProfileServiceTest {
     assertThat(result.location().x()).isEqualTo(60);
     assertThat(result.location().locationNames()).containsExactly("서울특별시", "강남구", "역삼동");
     assertThat(result.temperatureSensitivity()).isEqualTo(3);
+  }
+
+  @Test
+  @DisplayName("세종시처럼 구/군 단계가 없어 locationNames가 3개 미만이어도 예외 없이 있는 만큼만 반영한다")
+  void updateProfileHandlesLocationNamesWithFewerThanThreeElements() throws Exception {
+    // given
+    User user = User.create("sejong@otboo.io", "기존이름", "encoded-password");
+    UUID userId = UUID.randomUUID();
+    ReflectionTestUtils.setField(user, "id", userId);
+
+    Profile profile = Profile.createDefault(user);
+    ReflectionTestUtils.setField(profile, "userId", userId);
+
+    given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
+
+    ProfileUpdateRequest.LocationUpdateRequest location =
+        new ProfileUpdateRequest.LocationUpdateRequest(36.48, 127.29);
+    ProfileUpdateRequest request = new ProfileUpdateRequest(
+        null, null, null, location, null
+    );
+
+    // 세종시는 "구/군" 단계가 없어 카카오 응답이 2단계(시/도, 읍면동)만 오는 경우가 있다.
+    WeatherAPILocation weatherLocation = new WeatherAPILocation(
+        36.48, 127.29, 70, 80, List.of("세종특별자치시", "종촌동")
+    );
+    given(locationResolver.resolve(36.48, 127.29)).willReturn(Mono.just(weatherLocation));
+
+    // when
+    ProfileDto result = profileService.updateProfile(userId, request);
+
+    // then
+    assertThat(result.location().locationNames()).containsExactly("세종특별자치시", "종촌동");
   }
 
   @Test
@@ -134,6 +180,25 @@ class ProfileServiceTest {
     assertThat(result.temperatureSensitivity()).isEqualTo(4);
     assertThat(result.location().x()).isEqualTo(50);
     assertThat(result.location().locationNames()).containsExactly("서울특별시", "종로구", "청운동");
+  }
+
+  @Test
+  @DisplayName("위치 조회가 빈 신호로 끝나면 위치 갱신을 조용히 생략하지 않고 예외를 던진다")
+  void updateProfileThrowsWhenLocationResolutionCompletesEmpty() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+
+    ProfileUpdateRequest.LocationUpdateRequest location =
+        new ProfileUpdateRequest.LocationUpdateRequest(37.5, 127.0);
+    ProfileUpdateRequest request = new ProfileUpdateRequest(
+        "새이름", Gender.MALE, LocalDate.of(1995, 5, 5), location, 3
+    );
+
+    given(locationResolver.resolve(37.5, 127.0)).willReturn(Mono.empty());
+
+    // when & then
+    assertThatThrownBy(() -> profileService.updateProfile(userId, request))
+        .isInstanceOf(LocationResolutionFailedException.class);
   }
 
   @Test

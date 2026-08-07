@@ -73,7 +73,7 @@ class RedisWeatherForecastCacheTest {
   void saveStripsLocationAndSetsThreeHourTtl() throws Exception {
     // given
     WeatherAPILocation location = new WeatherAPILocation(37.5665, 126.9780, 60, 127,
-        new String[]{"서울특별시", "강서구", "마곡동"});
+        List.of("서울특별시", "강서구", "마곡동"));
     List<WeatherDto> forecasts = List.of(weatherDto(forecastedAt, location));
 
     // when
