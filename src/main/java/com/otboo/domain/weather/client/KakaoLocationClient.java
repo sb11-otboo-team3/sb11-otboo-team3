@@ -30,6 +30,7 @@ public class KakaoLocationClient {
     log.info("Kakao 좌표->행정구역 조회 요청 시작: latitude={}, longitude={}", latitude, longitude);
 
     return webClient.get()
+        // 요청 조립 및 보내기
         .uri(uriBuilder -> uriBuilder
             .path("/v2/local/geo/coord2regioncode.json")
             .queryParam("x", longitude)
@@ -38,8 +39,7 @@ public class KakaoLocationClient {
         .header("Authorization", "KakaoAK " + apiKey)
         .retrieve()
         .bodyToMono(KakaoRegionResponse.class)
-        // WebClientException(통신 실패)뿐 아니라 JSON 파싱 실패(DecodingException, WebClientException과 무관한 별도 계층)도
-        // 여기서 잡아야 한다 - 안 그러면 파싱 에러가 그대로 흘러가서 GlobalExceptionHandler의 500 catch-all로 떨어진다.
+
         .onErrorMap(Exception.class, e -> {
           log.error("Kakao 좌표->행정구역 조회 실패: latitude={}, longitude={}", latitude, longitude, e);
           return new KakaoApiException(latitude, longitude, e);
@@ -74,6 +74,7 @@ public class KakaoLocationClient {
             latitude, longitude, region.province(), region.city(), region.district()));
   }
 
+  // 카카오 응답 구조
   private record KakaoRegionResponse(List<KakaoDocument> documents) {
   }
 

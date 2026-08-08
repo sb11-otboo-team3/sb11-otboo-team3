@@ -166,6 +166,7 @@ public class KmaWeatherClient {
     };
   }
 
+  // 기상청 응답 구조
   private record KmaApiResponse(Response response) {
   }
 

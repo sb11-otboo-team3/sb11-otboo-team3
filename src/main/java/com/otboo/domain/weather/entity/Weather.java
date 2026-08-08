@@ -1,8 +1,12 @@
 package com.otboo.domain.weather.entity;
 
+import com.otboo.domain.weather.dto.HumidityDto;
 import com.otboo.domain.weather.dto.PrecipitationDto;
 import com.otboo.domain.weather.dto.TemperatureDto;
+import com.otboo.domain.weather.dto.WeatherAPILocation;
+import com.otboo.domain.weather.dto.WeatherDto;
 import com.otboo.domain.weather.dto.WeatherSummaryDto;
+import com.otboo.domain.weather.dto.WindSpeedDto;
 import com.otboo.global.common.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -116,6 +120,27 @@ public class Weather extends BaseEntity {
             dailyTemperatureMin,
             dailyTemperatureMax
         )
+    );
+  }
+
+  // 응답 DTO로 변환하는 정규 변환 지점 - 서비스 쪽에서 필드 하나하나 재조립하지 않도록 여기 한 곳에 모아둠.
+  // location은 요청자의 원본 좌표라 이 row(격자 단위)만으론 알 수 없어 호출부에서 넘겨받는다.
+  public WeatherDto toDto(WeatherAPILocation location) {
+    return new WeatherDto(
+        getId(),
+        forecastedAt,
+        forecastAt,
+        location,
+        skyStatus,
+        new PrecipitationDto(precipitationType, orElseZero(precipitationAmount), orElseZero(precipitationProbability)),
+        new HumidityDto(orElseZero(humidityCurrent), orElseZero(humidityComparedToDayBefore)),
+        new TemperatureDto(
+            orElseZero(temperatureCurrent),
+            orElseZero(temperatureComparedToDayBefore),
+            orElseZero(temperatureMin != null ? temperatureMin : temperatureCurrent),
+            orElseZero(temperatureMax != null ? temperatureMax : temperatureCurrent)
+        ),
+        new WindSpeedDto(orElseZero(windSpeed), WindStrength.fromSpeed(windSpeed))
     );
   }
 

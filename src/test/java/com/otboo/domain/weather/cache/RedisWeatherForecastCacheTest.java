@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.otboo.domain.weather.dto.HumidityDto;
@@ -19,6 +18,7 @@ import com.otboo.domain.weather.entity.WindStrength;
 import com.otboo.domain.weather.util.WeatherGrid;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -47,7 +47,8 @@ class RedisWeatherForecastCacheTest {
 
   private final WeatherGrid grid = new WeatherGrid(60, 127);
   private final Instant forecastedAt = Instant.parse("2026-07-31T05:00:00Z");
-  private final String key = "weather:60:127:" + forecastedAt.getEpochSecond();
+  private final LocalDate date = LocalDate.of(2026, 7, 31);
+  private final String key = "weather:60:127:" + forecastedAt.getEpochSecond() + ":" + date;
 
   @BeforeEach
   void setUp() {
@@ -62,7 +63,7 @@ class RedisWeatherForecastCacheTest {
     given(valueOperations.get(key)).willReturn(null);
 
     // when
-    Optional<List<WeatherDto>> result = cache.find(grid, forecastedAt);
+    Optional<WeatherDto> result = cache.find(grid, forecastedAt, date);
 
     // then
     assertThat(result).isEmpty();
@@ -74,38 +75,35 @@ class RedisWeatherForecastCacheTest {
     // given
     WeatherAPILocation location = new WeatherAPILocation(37.5665, 126.9780, 60, 127,
         List.of("서울특별시", "강서구", "마곡동"));
-    List<WeatherDto> forecasts = List.of(weatherDto(forecastedAt, location));
+    WeatherDto forecast = weatherDto(forecastedAt, location);
 
     // when
-    cache.save(grid, forecastedAt, forecasts);
+    cache.save(grid, forecastedAt, date, forecast);
 
     // then
     ArgumentCaptor<String> jsonCaptor = ArgumentCaptor.forClass(String.class);
     verify(valueOperations).set(eq(key), jsonCaptor.capture(), eq(Duration.ofHours(3)));
 
-    List<WeatherDto> stored = objectMapper.readValue(jsonCaptor.getValue(), new TypeReference<>() {
-    });
-    assertThat(stored).hasSize(1);
-    assertThat(stored.get(0).location()).isNull();
-    assertThat(stored.get(0).forecastAt()).isEqualTo(forecastedAt);
-    assertThat(stored.get(0).temperature().current()).isEqualTo(23.0);
+    WeatherDto stored = objectMapper.readValue(jsonCaptor.getValue(), WeatherDto.class);
+    assertThat(stored.location()).isNull();
+    assertThat(stored.forecastAt()).isEqualTo(forecastedAt);
+    assertThat(stored.temperature().current()).isEqualTo(23.0);
   }
 
   @Test
   @DisplayName("캐시에 값이 있으면 역직렬화해서 반환한다")
-  void findReturnsDeserializedListWhenCached() throws Exception {
+  void findReturnsDeserializedValueWhenCached() throws Exception {
     // given
-    List<WeatherDto> cached = List.of(weatherDto(forecastedAt, null));
+    WeatherDto cached = weatherDto(forecastedAt, null);
     given(valueOperations.get(key)).willReturn(objectMapper.writeValueAsString(cached));
 
     // when
-    Optional<List<WeatherDto>> result = cache.find(grid, forecastedAt);
+    Optional<WeatherDto> result = cache.find(grid, forecastedAt, date);
 
     // then
     assertThat(result).isPresent();
-    assertThat(result.get()).hasSize(1);
-    assertThat(result.get().get(0).forecastAt()).isEqualTo(forecastedAt);
-    assertThat(result.get().get(0).location()).isNull();
+    assertThat(result.get().forecastAt()).isEqualTo(forecastedAt);
+    assertThat(result.get().location()).isNull();
   }
 
   @Test
@@ -115,7 +113,7 @@ class RedisWeatherForecastCacheTest {
     given(valueOperations.get(key)).willReturn("not-valid-json{{{");
 
     // when
-    Optional<List<WeatherDto>> result = cache.find(grid, forecastedAt);
+    Optional<WeatherDto> result = cache.find(grid, forecastedAt, date);
 
     // then
     assertThat(result).isEmpty();

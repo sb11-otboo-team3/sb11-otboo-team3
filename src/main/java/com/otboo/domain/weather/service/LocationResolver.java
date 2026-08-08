@@ -9,10 +9,8 @@ import com.otboo.domain.weather.repository.GridRepository;
 import com.otboo.domain.weather.util.GridConverter;
 import com.otboo.domain.weather.util.WeatherGrid;
 import java.util.List;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -26,7 +24,7 @@ public class LocationResolver {
   private final GridRepository gridRepository;
   private final KakaoLocationClient kakaoLocationClient;
   private final GridRecencyCache gridRecencyCache;
-  private final GridSaver gridSaver;
+  private final GridResolver gridResolver;
 
   public Mono<WeatherAPILocation> resolve(double latitude, double longitude) {
     WeatherGrid grid = gridConverter.convert(latitude, longitude);
@@ -56,20 +54,10 @@ public class LocationResolver {
     }
 
     // 격자 레지스트리 갱신 (날씨 프리페치 배치가 실제로 쓰이는 격자만 골라낼 때 참고할 용도)
-    Optional<Grid> existing = gridRepository.findByXAndY(grid.x(), grid.y());
-    if (existing.isPresent()) {
-      Grid found = existing.get();
-      found.refreshRequestedAt();
-      gridRepository.save(found);
-    } else {
-      // REQUIRES_NEW로 분리된 저장 시도가 유니크 제약 위반으로 실패해도, 그 실패는 별도 트랜잭션 안에서
-      // 끝나므로 여기서 잡아도 이 메서드의 트랜잭션(바깥)엔 영향 없다.
-      try {
-        gridSaver.saveInNewTransaction(Grid.builder().x(grid.x()).y(grid.y()).build());
-      } catch (DataIntegrityViolationException e) {
-        log.warn("격자 등록 - 동시성 충돌 발생, x={}, y={}", grid.x(), grid.y(), e);
-      }
-    }
+    // 찾고 없으면 등록하는 로직 자체는 GridResolver로 통일 - 여기선 그 결과에 최근 요청 시각만 갱신.
+    Grid found = gridResolver.findOrRegister(grid);
+    found.refreshRequestedAt();
+    gridRepository.save(found);
 
     gridRecencyCache.markConfirmed(grid);
   }
