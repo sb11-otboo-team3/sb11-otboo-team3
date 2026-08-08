@@ -35,6 +35,10 @@ public class ProfileUpdateTransactionalService {
 
     String oldImageKey = profile.getImageKey();
 
+    if (newImageKey != null) {
+      eventPublisher.publishEvent(new FileReplacementEvent(oldImageKey, newImageKey));
+    }
+
     if (request.name() != null) {
       profile.getUser().changeName(request.name());
     }
@@ -53,7 +57,6 @@ public class ProfileUpdateTransactionalService {
       x = location.x();
       y = location.y();
 
-      // 세종시처럼 행정구역 단계가 3개 미만일 수 있으므로 안전하게 조회한다.
       province = nameAt(location.locationNames(), 0);
       city = nameAt(location.locationNames(), 1);
       district = nameAt(location.locationNames(), 2);
@@ -74,7 +77,6 @@ public class ProfileUpdateTransactionalService {
 
     if (newImageKey != null) {
       profile.updateImageKey(newImageKey);
-      eventPublisher.publishEvent(new FileReplacementEvent(oldImageKey, newImageKey));
     }
 
     return ProfileDto.from(profile, profileImageUrl);

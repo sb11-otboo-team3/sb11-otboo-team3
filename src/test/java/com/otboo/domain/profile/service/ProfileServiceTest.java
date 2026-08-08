@@ -37,6 +37,7 @@ import reactor.core.publisher.Mono;
 import org.springframework.context.ApplicationEventPublisher;
 import com.otboo.global.infrastructure.storage.event.FileReplacementEvent;
 import org.springframework.context.ApplicationEventPublisher;
+import com.otboo.global.infrastructure.storage.event.FileDeletionRetryService;
 
 @ExtendWith(MockitoExtension.class)
 class ProfileServiceTest {
@@ -55,6 +56,9 @@ class ProfileServiceTest {
   @Mock
   private ApplicationEventPublisher eventPublisher;
 
+  @Mock
+  private FileDeletionRetryService fileDeletionRetryService;
+
   @BeforeEach
   void setUp() {
     ProfileUpdateTransactionalService profileUpdateTransactionalService =
@@ -63,7 +67,8 @@ class ProfileServiceTest {
         profileRepository,
         locationResolver,
         fileStorage,
-        profileUpdateTransactionalService
+        profileUpdateTransactionalService,
+        fileDeletionRetryService
     );
   }
 
@@ -474,5 +479,23 @@ class ProfileServiceTest {
             "profiles/" + userId + "/first-key.png"
         )
     );
+  }
+
+  @Test
+  @DisplayName("이미지 업로드 후 프로필 갱신이 실패하면 새로 업로드한 이미지를 정리한다")
+  void updateProfileCleansUpNewImageWhenUpdateFails() {
+    // given
+    UUID userId = UUID.randomUUID();
+    given(profileRepository.findById(userId))
+        .willReturn(Optional.empty()); // 두 번째 조회 시점에 이미 삭제된 상황을 가정
+
+    ProfileUpdateRequest request = new ProfileUpdateRequest(null, null, null, null, null);
+    MultipartFile image = new MockMultipartFile(
+        "image", "test.png", "image/png", "dummy-content".getBytes()
+    );
+
+    // when & then
+    assertThatThrownBy(() -> profileService.updateProfile(userId, request, image))
+        .isInstanceOf(ProfileNotFoundException.class);
   }
 }
