@@ -42,7 +42,13 @@ public class RecommendationService {
             throw new LocationNotSetException(userId);
         }
 
-        List<WeatherDto> weathers = weatherService.getWeathers(profile.getLatitude(), profile.getLongitude()).block();
+        List<WeatherDto> weathers;
+        try {
+            weathers = weatherService.getWeathers(profile.getLatitude(), profile.getLongitude()).block();
+        } catch (RuntimeException e) {
+            // 날씨 도메인 내부 예외(카카오/기상청 API 실패 등)를 추천 API 계약으로 통일한다.
+            throw new WeatherUnavailableException(userId);
+        }
         if (weathers == null || weathers.isEmpty()) {
             throw new WeatherUnavailableException(userId);
         }

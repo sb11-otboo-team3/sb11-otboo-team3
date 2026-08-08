@@ -92,6 +92,24 @@ class RecommendationServiceTest {
     }
 
     @Test
+    void 날씨_API_호출이_실패하면_WeatherUnavailableException으로_변환된다() {
+        //given
+        UUID userId = UUID.randomUUID();
+        Profile profile = Profile.createDefault(owner);
+        ReflectionTestUtils.setField(profile, "userId", userId);
+        ReflectionTestUtils.setField(profile, "latitude", 37.5);
+        ReflectionTestUtils.setField(profile, "longitude", 127.0);
+
+        given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
+        given(weatherService.getWeathers(37.5, 127.0))
+                .willReturn(Mono.error(new RuntimeException("기상청 API 호출 실패")));
+
+        //when & then
+        assertThatThrownBy(() -> service.recommend(userId))
+                .isInstanceOf(WeatherUnavailableException.class);
+    }
+
+    @Test
     void 온도민감도가_null이면_기본값_3이_적용된다() {
         //given
         UUID userId = UUID.randomUUID();
