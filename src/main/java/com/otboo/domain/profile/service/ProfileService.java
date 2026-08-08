@@ -48,8 +48,6 @@ public class ProfileService {
     Profile currentProfile = profileRepository.findById(userId)
         .orElseThrow(() -> new ProfileNotFoundException(userId));
 
-    String oldImageKey = currentProfile.getImageKey();
-
     WeatherAPILocation location = resolveLocation(request);
 
     String newImageKey = null;
@@ -67,25 +65,17 @@ public class ProfileService {
     String resultImageKey =
         newImageKey != null
             ? newImageKey
-            : oldImageKey;
+            : currentProfile.getImageKey();
 
-    ProfileDto result = profileUpdateTransactionalService.update(
+    // 기존 이미지 삭제(AFTER_COMMIT) 및 새 이미지 정리(AFTER_ROLLBACK), 재시도 처리는
+    // ProfileUpdateTransactionalService가 FileReplacementEvent 발행을 통해 담당한다. (#108)
+    return profileUpdateTransactionalService.update(
         userId,
         request,
         location,
         newImageKey,
         resolveImageUrl(resultImageKey)
     );
-
-    // 현재 PR의 기존 동작 유지.
-    // AFTER_COMMIT/AFTER_ROLLBACK 및 Retry 처리는 후속 브랜치에서 공통화한다.
-    if (newImageKey != null
-        && oldImageKey != null
-        && !oldImageKey.isBlank()) {
-      fileStorage.delete(oldImageKey);
-    }
-
-    return result;
   }
 
   private WeatherAPILocation resolveLocation(ProfileUpdateRequest request) {

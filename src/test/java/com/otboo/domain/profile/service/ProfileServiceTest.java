@@ -34,6 +34,9 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Mono;
+import org.springframework.context.ApplicationEventPublisher;
+import com.otboo.global.infrastructure.storage.event.FileReplacementEvent;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class ProfileServiceTest {
@@ -49,11 +52,13 @@ class ProfileServiceTest {
 
   private ProfileService profileService;
 
+  @Mock
+  private ApplicationEventPublisher eventPublisher;
+
   @BeforeEach
   void setUp() {
     ProfileUpdateTransactionalService profileUpdateTransactionalService =
-        new ProfileUpdateTransactionalService(profileRepository);
-
+        new ProfileUpdateTransactionalService(profileRepository, eventPublisher);
     profileService = new ProfileService(
         profileRepository,
         locationResolver,
@@ -331,10 +336,8 @@ class ProfileServiceTest {
         "이미지테스트",
         "encoded-password"
     );
-
     UUID userId = UUID.randomUUID();
     ReflectionTestUtils.setField(user, "id", userId);
-
     Profile profile = Profile.createDefault(user);
     ReflectionTestUtils.setField(profile, "userId", userId);
     ReflectionTestUtils.setField(
@@ -342,10 +345,8 @@ class ProfileServiceTest {
         "imageKey",
         "profiles/" + userId + "/old-key.png"
     );
-
     given(profileRepository.findById(userId))
         .willReturn(Optional.of(profile));
-
     ProfileUpdateRequest request = new ProfileUpdateRequest(
         null,
         null,
@@ -353,20 +354,17 @@ class ProfileServiceTest {
         null,
         null
     );
-
     MultipartFile image = new MockMultipartFile(
         "image",
         "test.png",
         "image/png",
         "dummy-content".getBytes()
     );
-
     StoredFile storedFile = new StoredFile(
         "profiles/" + userId + "/new-key.png",
         "image/png",
         13L
     );
-
     given(
         fileStorage.upload(
             StorageDirectory.PROFILES,
@@ -374,32 +372,29 @@ class ProfileServiceTest {
             image
         )
     ).willReturn(storedFile);
-
     given(
         fileStorage.generateReadUrl(
             "profiles/" + userId + "/new-key.png"
         )
     ).willReturn("https://example.com/new-key.png");
-
     // when
     ProfileDto result =
         profileService.updateProfile(userId, request, image);
-
     // then
     assertThat(result.profileImageUrl())
         .isEqualTo("https://example.com/new-key.png");
-
     assertThat(profile.getImageKey())
         .isEqualTo("profiles/" + userId + "/new-key.png");
-
     verify(fileStorage).upload(
         StorageDirectory.PROFILES,
         userId,
         image
     );
-
-    verify(fileStorage).delete(
-        "profiles/" + userId + "/old-key.png"
+    verify(eventPublisher).publishEvent(
+        new FileReplacementEvent(
+            "profiles/" + userId + "/old-key.png",
+            "profiles/" + userId + "/new-key.png"
+        )
     );
   }
 
@@ -473,7 +468,11 @@ class ProfileServiceTest {
         userId,
         image
     );
-
-    verify(fileStorage, never()).delete(any());
+    verify(eventPublisher).publishEvent(
+        new FileReplacementEvent(
+            null,
+            "profiles/" + userId + "/first-key.png"
+        )
+    );
   }
 }
