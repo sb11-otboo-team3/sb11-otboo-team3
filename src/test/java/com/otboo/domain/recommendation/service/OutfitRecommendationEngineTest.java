@@ -122,7 +122,8 @@ class OutfitRecommendationEngineTest {
         given(candidateService.getCandidatesByType(ownerId)).willReturn(
                 candidatesByType);
         given(combinationRule.apply(candidatesByType)).willReturn(candidatesByType);
-
+        given(scoreCalculator.calculateScore(any(), anyDouble(), anyDouble(), any(), anyInt()))
+                .willReturn(1.0);
 
         //when
         List<Clothes> result = engine.recommend(ownerId, 10.0, 15.0,
@@ -131,6 +132,32 @@ class OutfitRecommendationEngineTest {
         //then
         assertThat(result).containsExactlyInAnyOrder(top, bottom,
                 shoes);
+    }
+
+    @Test
+    void 점수가_0인_후보는_조합에서_제외된다() {
+        //given
+        UUID ownerId = UUID.randomUUID();
+        Clothes top = new Clothes(owner, "상의", null, ClothesType.TOP);
+        Clothes outer = new Clothes(owner, "패딩", null, ClothesType.OUTER);
+
+        Map<ClothesType, List<Clothes>> candidatesByType = Map.of(
+                ClothesType.TOP, List.of(top),
+                ClothesType.OUTER, List.of(outer)
+        );
+
+        given(candidateService.getCandidatesByType(ownerId)).willReturn(candidatesByType);
+        given(combinationRule.apply(candidatesByType)).willReturn(candidatesByType);
+        given(scoreCalculator.calculateScore(eq(ClothesType.TOP), anyDouble(), anyDouble(), any(), anyInt()))
+                .willReturn(1.0);
+        given(scoreCalculator.calculateScore(eq(ClothesType.OUTER), anyDouble(), anyDouble(), any(), anyInt()))
+                .willReturn(0.0);
+
+        //when
+        List<Clothes> result = engine.recommend(ownerId, 25.0, 28.0, PrecipitationType.NONE, 3);
+
+        //then
+        assertThat(result).containsExactly(top);
     }
 
 }

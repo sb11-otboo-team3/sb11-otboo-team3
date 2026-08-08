@@ -49,6 +49,9 @@ public class OutfitRecommendationEngine {
         return combination;
     }
 
+    // 점수가 0이면 "안 입어도 되는" 상태(예: 더운 날의 아우터)라 조합에서 아예 제외한다.
+    private static final double MINIMUM_INCLUSION_SCORE = 0.0;
+
     private Optional<Clothes> pickBest(
             List<Clothes> candidates,
             double minTemperature,
@@ -57,10 +60,19 @@ public class OutfitRecommendationEngine {
             int temperatureSensitivity
     ) {
         return candidates.stream()
-                .max(Comparator
-                        .comparingDouble((Clothes clothes) -> scoreCalculator.calculateScore(
+                .map(clothes -> new ScoredClothes(
+                        clothes,
+                        scoreCalculator.calculateScore(
                                 clothes.getType(), minTemperature, maxTemperature, precipitationType, temperatureSensitivity
-                        ))
-                        .thenComparing(Clothes::getCreatedAt));
+                        )
+                ))
+                .filter(scored -> scored.score() > MINIMUM_INCLUSION_SCORE)
+                .max(Comparator
+                        .comparingDouble(ScoredClothes::score)
+                        .thenComparing(scored -> scored.clothes().getCreatedAt()))
+                .map(ScoredClothes::clothes);
+    }
+
+    private record ScoredClothes(Clothes clothes, double score) {
     }
 }
