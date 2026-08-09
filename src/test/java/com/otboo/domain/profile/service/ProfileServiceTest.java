@@ -514,17 +514,43 @@ class ProfileServiceTest {
   @DisplayName("이미지 업로드 후 프로필 갱신이 실패하면 새로 업로드한 이미지를 정리한다")
   void updateProfileCleansUpNewImageWhenUpdateFails() {
     // given
+    User user = User.create(
+        "cleanup@otboo.io",
+        "정리테스트",
+        "encoded-password"
+    );
     UUID userId = UUID.randomUUID();
+    ReflectionTestUtils.setField(user, "id", userId);
+
+    Profile profile = Profile.createDefault(user);
+    ReflectionTestUtils.setField(profile, "userId", userId);
+
+    // 첫 번째 조회(ProfileService)는 성공, 두 번째 조회(ProfileUpdateTransactionalService)는
+    // 동시 삭제 등으로 실패하는 상황을 가정
     given(profileRepository.findById(userId))
-        .willReturn(Optional.empty()); // 두 번째 조회 시점에 이미 삭제된 상황을 가정
+        .willReturn(Optional.of(profile))
+        .willReturn(Optional.empty());
 
     ProfileUpdateRequest request = new ProfileUpdateRequest(null, null, null, null, null);
     MultipartFile image = new MockMultipartFile(
         "image", "test.png", "image/png", "dummy-content".getBytes()
     );
 
+    StoredFile storedFile = new StoredFile(
+        "profiles/" + userId + "/orphan-key.png",
+        "image/png",
+        13L
+    );
+    given(
+        fileStorage.upload(StorageDirectory.PROFILES, userId, image)
+    ).willReturn(storedFile);
+
     // when & then
     assertThatThrownBy(() -> profileService.updateProfile(userId, userId, request, image))
         .isInstanceOf(ProfileNotFoundException.class);
+
+    verify(fileDeletionRetryService).deleteWithRetry(
+        "profiles/" + userId + "/orphan-key.png"
+    );
   }
 }
