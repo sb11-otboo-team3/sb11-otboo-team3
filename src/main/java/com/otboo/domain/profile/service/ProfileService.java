@@ -4,6 +4,7 @@ import com.otboo.domain.profile.dto.ProfileDto;
 import com.otboo.domain.profile.dto.ProfileUpdateRequest;
 import com.otboo.domain.profile.entity.Profile;
 import com.otboo.domain.profile.exception.LocationResolutionFailedException;
+import com.otboo.domain.profile.exception.ProfileAccessDeniedException;
 import com.otboo.domain.profile.exception.ProfileNotFoundException;
 import com.otboo.domain.profile.repository.ProfileRepository;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
@@ -32,7 +33,9 @@ public class ProfileService {
   private final ProfileUpdateTransactionalService profileUpdateTransactionalService;
   private final FileDeletionRetryService fileDeletionRetryService;
 
-  public ProfileDto getProfile(UUID userId) {
+  public ProfileDto getProfile(UUID userId, UUID currentUserId) {
+    validateOwnership(userId, currentUserId);
+
     Profile profile = profileRepository.findById(userId)
         .orElseThrow(() -> new ProfileNotFoundException(userId));
 
@@ -46,9 +49,12 @@ public class ProfileService {
   @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public ProfileDto updateProfile(
       UUID userId,
+      UUID currentUserId,
       ProfileUpdateRequest request,
       MultipartFile image
   ) {
+    validateOwnership(userId, currentUserId);
+
     Profile currentProfile = profileRepository.findById(userId)
         .orElseThrow(() -> new ProfileNotFoundException(userId));
 
@@ -94,6 +100,12 @@ public class ProfileService {
         fileDeletionRetryService.deleteWithRetry(newImageKey);
       }
       throw e;
+    }
+  }
+
+  private void validateOwnership(UUID userId, UUID currentUserId) {
+    if (!userId.equals(currentUserId)) {
+      throw new ProfileAccessDeniedException();
     }
   }
 
