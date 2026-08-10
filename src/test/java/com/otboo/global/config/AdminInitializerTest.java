@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.entity.UserRole;
@@ -16,6 +17,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
 class AdminInitializerTest {
@@ -84,5 +86,38 @@ class AdminInitializerTest {
 
     // then
     verify(userRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("동시 생성 시도로 저장이 실패하면 예외를 삼키고 정상 종료한다")
+  void skipsWhenSaveThrowsDataIntegrityViolationException() throws Exception {
+    // given
+    given(userRepository.existsByRole(UserRole.ADMIN)).willReturn(false);
+    given(userRepository.existsByEmail("admin@otboo.io")).willReturn(false);
+    given(passwordEncoder.encode("admin1234!")).willReturn("encoded-password");
+    given(userRepository.save(any()))
+        .willThrow(new DataIntegrityViolationException("duplicate key"));
+
+    AdminInitializer initializer =
+        new AdminInitializer(userRepository, passwordEncoder, adminProperties);
+
+    // when & then
+    assertThatCode(() -> initializer.run())
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @DisplayName("초기화 중 예외가 발생해도 run()은 예외를 전파하지 않는다")
+  void runDoesNotPropagateExceptionOnUnexpectedFailure() throws Exception {
+    // given
+    given(userRepository.existsByRole(UserRole.ADMIN))
+        .willThrow(new RuntimeException("DB 순간 장애"));
+
+    AdminInitializer initializer =
+        new AdminInitializer(userRepository, passwordEncoder, adminProperties);
+
+    // when & then
+    assertThatCode(() -> initializer.run())
+        .doesNotThrowAnyException();
   }
 }
