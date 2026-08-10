@@ -11,7 +11,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
+import com.otboo.domain.feed.dto.response.FeedDtoCursorResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.feed.dto.request.FeedCommentCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedCreateRequest;
@@ -185,6 +187,55 @@ class FeedControllerTest {
     verify(feedService).createFeedComment(
         eq(feedId),
         any(FeedCommentCreateRequest.class),
+        eq(currentUserId)
+    );
+  }
+
+  @Test
+  @DisplayName("피드 목록 조회 API 성공")
+  void getFeeds_success() throws Exception {
+    UUID currentUserId = UUID.randomUUID();
+
+    FeedDtoCursorResponse response = new FeedDtoCursorResponse(
+        List.of(),
+        null,
+        null,
+        false,
+        0L,
+        "createdAt",
+        "DESCENDING"
+    );
+
+    given(feedService.getFeeds(
+        eq(null),
+        eq(null),
+        eq(20),
+        eq(com.otboo.domain.feed.dto.request.SortBy.createdAt),
+        eq(com.otboo.domain.feed.dto.request.SortDirection.DESCENDING),
+        eq(null),
+        eq(null),
+        eq(null),
+        eq(null),
+        eq(currentUserId)
+    )).willReturn(response);
+
+    mockMvc.perform(get("/api/feeds")
+            .with(authentication(mockAuthentication(currentUserId)))
+            .param("limit", "20")
+            .param("sortBy", "createdAt")
+            .param("sortDirection", "DESCENDING"))
+        .andExpect(status().isOk());
+
+    verify(feedService).getFeeds(
+        eq(null),
+        eq(null),
+        eq(20),
+        eq(com.otboo.domain.feed.dto.request.SortBy.createdAt),
+        eq(com.otboo.domain.feed.dto.request.SortDirection.DESCENDING),
+        eq(null),
+        eq(null),
+        eq(null),
+        eq(null),
         eq(currentUserId)
     );
   }

@@ -1,14 +1,8 @@
 package com.otboo.domain.follow.repository;
 
-import static com.otboo.domain.feed.entity.QFeed.feed;
 import static com.otboo.domain.follow.entity.QFollow.follow;
 
-import com.otboo.domain.feed.dto.request.SortBy;
-import com.otboo.domain.feed.dto.request.SortDirection;
-import com.otboo.domain.feed.entity.Feed;
 import com.otboo.domain.follow.entity.Follow;
-import com.otboo.domain.weather.entity.PrecipitationType;
-import com.otboo.domain.weather.entity.SkyStatus;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
@@ -145,58 +139,4 @@ public class FollowRepositoryImpl implements FollowRepositoryCustom {
                 .and(follow.id.gt(idAfter))
         );
   }
-
-  @Override
-  public List<Feed> findFeeds(
-      String cursor,
-      UUID idAfter,
-      int limit,
-      SortBy sortBy,
-      SortDirection sortDirection,
-      String keywordLike,
-      SkyStatus skyStatusEqual,
-      PrecipitationType precipitationTypeEqual,
-      UUID authorIdEqual
-  ){
-    return queryFactory
-        .selectFrom(feed)
-        .join(feed.author).fetchJoin()
-        .where(
-            feed.deletedAt.isNull(),
-            keywordLike(keywordLike),
-            skyStatusEqual(skyStatusEqual),
-            precipitationTypeEqual(precipitationTypeEqual),
-            authorIdEqual(authorIdEqual),
-            feedCursorCondition(cursor, idAfter, sortBy, sortDirection)
-        )
-        .orderBy(
-            feedOrder(sortBy, sortDirection),
-            idOrder(sortDirection)
-        )
-        .limit(limit)
-        .fetch();
-  }
-
-  @Override
-  public long countFeeds(
-      String keywordLike,
-      SkyStatus skyStatusEqual,
-      PrecipitationType precipitationTypeEqual,
-      UUID authorIdEqual
-  ) {
-    Long count = queryFactory
-        .select(feed.count())
-        .from(feed)
-        .where(
-            feed.deletedAt.isNull(),
-            keywordLike(keywordLike),
-            skyStatusEqual(skyStatusEqual),
-            precipitationTypeEqual(precipitationTypeEqual),
-            authorIdEqual(authorIdEqual)
-        )
-        .fetchOne();
-
-    return count == null ? 0 : count;
-  }
-
 }
