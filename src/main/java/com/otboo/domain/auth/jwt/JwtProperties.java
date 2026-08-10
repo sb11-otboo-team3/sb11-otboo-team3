@@ -1,5 +1,6 @@
 package com.otboo.domain.auth.jwt;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -17,4 +18,9 @@ public record JwtProperties(
     @Positive(message = "adminAccessExpiration은 양수여야 합니다.")
     long adminAccessExpiration
 ) {
+
+    @AssertTrue(message = "adminAccessExpiration은 accessExpiration보다 짧아야 합니다.")
+    public boolean isAdminExpirationShorterThanDefault() {
+        return adminAccessExpiration < accessExpiration;
+    }
 }
