@@ -13,6 +13,10 @@ import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import com.otboo.domain.user.exception.InvalidUserCursorException;
+import com.otboo.domain.user.exception.InvalidUserFilterException;
+import java.time.format.DateTimeParseException;
+
 
 public class UserRepositoryImpl implements UserRepositoryCustom {
 
@@ -64,7 +68,7 @@ public class UserRepositoryImpl implements UserRepositoryCustom {
     try {
       return UserRole.valueOf(roleEqual.toUpperCase());
     } catch (IllegalArgumentException e) {
-      throw new InvalidUserCursorException();
+      throw new InvalidUserFilterException();
     }
   }
 
@@ -90,7 +94,7 @@ public class UserRepositoryImpl implements UserRepositoryCustom {
             : user.email.gt(cursor)
               .or(user.email.eq(cursor).and(user.id.gt(idAfter)));
       }
-    } catch (Exception e) {
+    } catch (DateTimeParseException e) {
       throw new InvalidUserCursorException();
     }
   }
