@@ -37,14 +37,6 @@ public class RefreshTokenService {
     return parse(value);
   }
 
-  public boolean exists(String refreshToken) {
-    return Boolean.TRUE.equals(redisTemplate.hasKey(KEY_PREFIX + refreshToken));
-  }
-
-  public void delete(String refreshToken) {
-    redisTemplate.delete(KEY_PREFIX + refreshToken);
-  }
-
   private Optional<TokenInfo> parse(String value) {
     String[] parts = value.split(DELIMITER);
     if (parts.length != 2) {

@@ -170,4 +170,39 @@ class AuthControllerTest {
             .with(csrf()))
         .andExpect(status().isNotFound());
   }
+
+  @Test
+  @DisplayName("password가 72바이트를 초과하면 400을 반환한다")
+  void signInWithPasswordExceeding72BytesReturns400() throws Exception {
+    // given
+    String longPassword = "가".repeat(25); // 25자 * 3바이트 = 75바이트, 72바이트 초과
+
+    // when & then
+    mockMvc.perform(multipart("/api/auth/sign-in")
+            .param("username", "test@otboo.io")
+            .param("password", longPassword)
+            .with(csrf()))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  @DisplayName("password가 72바이트 이하면 정상 처리된다")
+  void signInWithPasswordWithin72BytesReturns200() throws Exception {
+    // given
+    String password = "가".repeat(24); // 24자 * 3바이트 = 72바이트, 정확히 72바이트
+
+    UserDto userDto = new UserDto(
+        UUID.randomUUID(), Instant.now(), "test@otboo.io", "테스트유저", UserRole.USER, false
+    );
+    JwtDto jwtDto = new JwtDto(userDto, "access-token");
+    AuthService.SignInResult result = new AuthService.SignInResult(jwtDto, "refresh-token-value");
+    given(authService.signIn(any(SignInRequest.class))).willReturn(result);
+
+    // when & then
+    mockMvc.perform(multipart("/api/auth/sign-in")
+            .param("username", "test@otboo.io")
+            .param("password", password)
+            .with(csrf()))
+        .andExpect(status().isOk());
+  }
 }

@@ -6,9 +6,11 @@ import com.otboo.domain.profile.entity.Profile;
 import com.otboo.domain.profile.exception.ProfileNotFoundException;
 import com.otboo.domain.profile.repository.ProfileRepository;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
+import com.otboo.global.infrastructure.storage.event.FileReplacementEvent;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProfileUpdateTransactionalService {
 
   private final ProfileRepository profileRepository;
+  private final ApplicationEventPublisher eventPublisher;
 
   @Transactional
   public ProfileDto update(
@@ -29,6 +32,12 @@ public class ProfileUpdateTransactionalService {
   ) {
     Profile profile = profileRepository.findById(userId)
         .orElseThrow(() -> new ProfileNotFoundException(userId));
+
+    String oldImageKey = profile.getImageKey();
+
+    if (newImageKey != null) {
+      eventPublisher.publishEvent(new FileReplacementEvent(oldImageKey, newImageKey));
+    }
 
     if (request.name() != null) {
       profile.getUser().changeName(request.name());
@@ -48,7 +57,6 @@ public class ProfileUpdateTransactionalService {
       x = location.x();
       y = location.y();
 
-      // 세종시처럼 행정구역 단계가 3개 미만일 수 있으므로 안전하게 조회한다.
       province = nameAt(location.locationNames(), 0);
       city = nameAt(location.locationNames(), 1);
       district = nameAt(location.locationNames(), 2);

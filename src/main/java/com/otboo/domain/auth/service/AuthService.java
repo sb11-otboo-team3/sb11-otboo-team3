@@ -105,10 +105,11 @@ public class AuthService {
 
   @Transactional
   public void signOut(String refreshToken) {
-    if (refreshToken == null || !refreshTokenService.exists(refreshToken)) {
+    if (refreshToken == null) {
       throw new InvalidCredentialsException();
     }
-    refreshTokenService.delete(refreshToken);
+    refreshTokenService.consumeTokenInfo(refreshToken)
+        .orElseThrow(InvalidCredentialsException::new);
   }
 
   public record SignInResult(JwtDto jwtDto, String refreshToken) {
