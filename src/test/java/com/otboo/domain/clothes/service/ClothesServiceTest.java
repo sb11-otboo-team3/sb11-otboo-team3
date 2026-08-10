@@ -35,9 +35,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
@@ -64,8 +64,19 @@ class ClothesServiceTest {
     @Mock
     private ClothesMapper clothesMapper;
 
-    @InjectMocks
     private ClothesService service;
+
+    @BeforeEach
+    void setUp() {
+        ClothesWriteTransactionalService writeService = new ClothesWriteTransactionalService(
+                clothesRepository, clothesAttributeRepository, definitionRepository,
+                selectableValueRepository, userRepository, clothesMapper
+        );
+        service = new ClothesService(
+                clothesRepository, clothesAttributeRepository, selectableValueRepository,
+                clothesMapper, writeService
+        );
+    }
 
     @Test
     void 정상_등록하면_의상이_생성된다() {
