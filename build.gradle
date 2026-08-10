@@ -65,6 +65,10 @@ dependencies {
 	// Redis
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
+	// Retry (파일 삭제 등 부수 작업 재시도)
+	implementation 'org.springframework.retry:spring-retry'
+	implementation 'org.springframework.boot:spring-boot-starter-aop'
+
 	// AWS SDK
 	implementation platform('software.amazon.awssdk:bom:2.48.0')
 	implementation 'software.amazon.awssdk:s3'

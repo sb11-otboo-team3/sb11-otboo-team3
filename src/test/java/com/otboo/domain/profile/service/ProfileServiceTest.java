@@ -12,6 +12,7 @@ import com.otboo.domain.profile.dto.ProfileUpdateRequest;
 import com.otboo.domain.profile.entity.Gender;
 import com.otboo.domain.profile.entity.Profile;
 import com.otboo.domain.profile.exception.LocationResolutionFailedException;
+import com.otboo.domain.profile.exception.ProfileAccessDeniedException;
 import com.otboo.domain.profile.exception.ProfileNotFoundException;
 import com.otboo.domain.profile.repository.ProfileRepository;
 import com.otboo.domain.user.entity.User;
@@ -20,6 +21,8 @@ import com.otboo.domain.weather.service.LocationResolver;
 import com.otboo.global.infrastructure.storage.FileStorage;
 import com.otboo.global.infrastructure.storage.StorageDirectory;
 import com.otboo.global.infrastructure.storage.StoredFile;
+import com.otboo.global.infrastructure.storage.event.FileDeletionRetryService;
+import com.otboo.global.infrastructure.storage.event.FileReplacementEvent;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -30,6 +33,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -49,16 +53,22 @@ class ProfileServiceTest {
 
   private ProfileService profileService;
 
+  @Mock
+  private ApplicationEventPublisher eventPublisher;
+
+  @Mock
+  private FileDeletionRetryService fileDeletionRetryService;
+
   @BeforeEach
   void setUp() {
     ProfileUpdateTransactionalService profileUpdateTransactionalService =
-        new ProfileUpdateTransactionalService(profileRepository);
-
+        new ProfileUpdateTransactionalService(profileRepository, eventPublisher);
     profileService = new ProfileService(
         profileRepository,
         locationResolver,
         fileStorage,
-        profileUpdateTransactionalService
+        profileUpdateTransactionalService,
+        fileDeletionRetryService
     );
   }
 
@@ -82,7 +92,7 @@ class ProfileServiceTest {
         .willReturn(Optional.of(profile));
 
     // when
-    ProfileDto result = profileService.getProfile(userId);
+    ProfileDto result = profileService.getProfile(userId, userId);
 
     // then
     assertThat(result.userId()).isEqualTo(userId);
@@ -100,8 +110,20 @@ class ProfileServiceTest {
         .willReturn(Optional.empty());
 
     // when & then
-    assertThatThrownBy(() -> profileService.getProfile(userId))
+    assertThatThrownBy(() -> profileService.getProfile(userId, userId))
         .isInstanceOf(ProfileNotFoundException.class);
+  }
+
+  @Test
+  @DisplayName("본인이 아닌 사용자의 프로필을 조회하면 예외가 발생한다")
+  void getProfileWithDifferentUserThrowsException() {
+    // given
+    UUID userId = UUID.randomUUID();
+    UUID otherUserId = UUID.randomUUID();
+
+    // when & then
+    assertThatThrownBy(() -> profileService.getProfile(userId, otherUserId))
+        .isInstanceOf(ProfileAccessDeniedException.class);
   }
 
   @Test
@@ -147,7 +169,7 @@ class ProfileServiceTest {
 
     // when
     ProfileDto result =
-        profileService.updateProfile(userId, request, null);
+        profileService.updateProfile(userId, userId, request, null);
 
     // then
     assertThat(result.name()).isEqualTo("새이름");
@@ -201,7 +223,7 @@ class ProfileServiceTest {
 
     // when
     ProfileDto result =
-        profileService.updateProfile(userId, request, null);
+        profileService.updateProfile(userId, userId, request, null);
 
     // then
     assertThat(result.location().locationNames())
@@ -250,7 +272,7 @@ class ProfileServiceTest {
 
     // when
     ProfileDto result =
-        profileService.updateProfile(userId, request, null);
+        profileService.updateProfile(userId, userId, request, null);
 
     // then
     assertThat(result.temperatureSensitivity()).isEqualTo(4);
@@ -295,7 +317,7 @@ class ProfileServiceTest {
 
     // when & then
     assertThatThrownBy(
-        () -> profileService.updateProfile(userId, request, null)
+        () -> profileService.updateProfile(userId, userId, request, null)
     ).isInstanceOf(LocationResolutionFailedException.class);
   }
 
@@ -318,8 +340,25 @@ class ProfileServiceTest {
 
     // when & then
     assertThatThrownBy(
-        () -> profileService.updateProfile(userId, request, null)
+        () -> profileService.updateProfile(userId, userId, request, null)
     ).isInstanceOf(ProfileNotFoundException.class);
+  }
+
+  @Test
+  @DisplayName("본인이 아닌 사용자의 프로필을 수정하면 예외가 발생한다")
+  void updateProfileWithDifferentUserThrowsException() {
+    // given
+    UUID userId = UUID.randomUUID();
+    UUID otherUserId = UUID.randomUUID();
+
+    ProfileUpdateRequest request = new ProfileUpdateRequest(
+        "이름", null, null, null, null
+    );
+
+    // when & then
+    assertThatThrownBy(
+        () -> profileService.updateProfile(userId, otherUserId, request, null)
+    ).isInstanceOf(ProfileAccessDeniedException.class);
   }
 
   @Test
@@ -331,10 +370,8 @@ class ProfileServiceTest {
         "이미지테스트",
         "encoded-password"
     );
-
     UUID userId = UUID.randomUUID();
     ReflectionTestUtils.setField(user, "id", userId);
-
     Profile profile = Profile.createDefault(user);
     ReflectionTestUtils.setField(profile, "userId", userId);
     ReflectionTestUtils.setField(
@@ -342,10 +379,8 @@ class ProfileServiceTest {
         "imageKey",
         "profiles/" + userId + "/old-key.png"
     );
-
     given(profileRepository.findById(userId))
         .willReturn(Optional.of(profile));
-
     ProfileUpdateRequest request = new ProfileUpdateRequest(
         null,
         null,
@@ -353,20 +388,17 @@ class ProfileServiceTest {
         null,
         null
     );
-
     MultipartFile image = new MockMultipartFile(
         "image",
         "test.png",
         "image/png",
         "dummy-content".getBytes()
     );
-
     StoredFile storedFile = new StoredFile(
         "profiles/" + userId + "/new-key.png",
         "image/png",
         13L
     );
-
     given(
         fileStorage.upload(
             StorageDirectory.PROFILES,
@@ -374,32 +406,29 @@ class ProfileServiceTest {
             image
         )
     ).willReturn(storedFile);
-
     given(
         fileStorage.generateReadUrl(
             "profiles/" + userId + "/new-key.png"
         )
     ).willReturn("https://example.com/new-key.png");
-
     // when
     ProfileDto result =
-        profileService.updateProfile(userId, request, image);
-
+        profileService.updateProfile(userId, userId, request, image);
     // then
     assertThat(result.profileImageUrl())
         .isEqualTo("https://example.com/new-key.png");
-
     assertThat(profile.getImageKey())
         .isEqualTo("profiles/" + userId + "/new-key.png");
-
     verify(fileStorage).upload(
         StorageDirectory.PROFILES,
         userId,
         image
     );
-
-    verify(fileStorage).delete(
-        "profiles/" + userId + "/old-key.png"
+    verify(eventPublisher).publishEvent(
+        new FileReplacementEvent(
+            "profiles/" + userId + "/old-key.png",
+            "profiles/" + userId + "/new-key.png"
+        )
     );
   }
 
@@ -459,7 +488,7 @@ class ProfileServiceTest {
 
     // when
     ProfileDto result =
-        profileService.updateProfile(userId, request, image);
+        profileService.updateProfile(userId, userId, request, image);
 
     // then
     assertThat(result.profileImageUrl())
@@ -473,7 +502,55 @@ class ProfileServiceTest {
         userId,
         image
     );
+    verify(eventPublisher).publishEvent(
+        new FileReplacementEvent(
+            null,
+            "profiles/" + userId + "/first-key.png"
+        )
+    );
+  }
 
-    verify(fileStorage, never()).delete(any());
+  @Test
+  @DisplayName("이미지 업로드 후 프로필 갱신이 실패하면 새로 업로드한 이미지를 정리한다")
+  void updateProfileCleansUpNewImageWhenUpdateFails() {
+    // given
+    User user = User.create(
+        "cleanup@otboo.io",
+        "정리테스트",
+        "encoded-password"
+    );
+    UUID userId = UUID.randomUUID();
+    ReflectionTestUtils.setField(user, "id", userId);
+
+    Profile profile = Profile.createDefault(user);
+    ReflectionTestUtils.setField(profile, "userId", userId);
+
+    // 첫 번째 조회(ProfileService)는 성공, 두 번째 조회(ProfileUpdateTransactionalService)는
+    // 동시 삭제 등으로 실패하는 상황을 가정
+    given(profileRepository.findById(userId))
+        .willReturn(Optional.of(profile))
+        .willReturn(Optional.empty());
+
+    ProfileUpdateRequest request = new ProfileUpdateRequest(null, null, null, null, null);
+    MultipartFile image = new MockMultipartFile(
+        "image", "test.png", "image/png", "dummy-content".getBytes()
+    );
+
+    StoredFile storedFile = new StoredFile(
+        "profiles/" + userId + "/orphan-key.png",
+        "image/png",
+        13L
+    );
+    given(
+        fileStorage.upload(StorageDirectory.PROFILES, userId, image)
+    ).willReturn(storedFile);
+
+    // when & then
+    assertThatThrownBy(() -> profileService.updateProfile(userId, userId, request, image))
+        .isInstanceOf(ProfileNotFoundException.class);
+
+    verify(fileDeletionRetryService).deleteWithRetry(
+        "profiles/" + userId + "/orphan-key.png"
+    );
   }
 }

@@ -4,6 +4,7 @@ import com.otboo.domain.profile.dto.ProfileDto;
 import com.otboo.domain.profile.dto.ProfileUpdateRequest;
 import com.otboo.domain.profile.entity.Profile;
 import com.otboo.domain.profile.exception.LocationResolutionFailedException;
+import com.otboo.domain.profile.exception.ProfileAccessDeniedException;
 import com.otboo.domain.profile.exception.ProfileNotFoundException;
 import com.otboo.domain.profile.repository.ProfileRepository;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
@@ -11,13 +12,16 @@ import com.otboo.domain.weather.service.LocationResolver;
 import com.otboo.global.infrastructure.storage.FileStorage;
 import com.otboo.global.infrastructure.storage.StorageDirectory;
 import com.otboo.global.infrastructure.storage.StoredFile;
+import com.otboo.global.infrastructure.storage.event.FileDeletionRetryService;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -27,8 +31,11 @@ public class ProfileService {
   private final LocationResolver locationResolver;
   private final FileStorage fileStorage;
   private final ProfileUpdateTransactionalService profileUpdateTransactionalService;
+  private final FileDeletionRetryService fileDeletionRetryService;
 
-  public ProfileDto getProfile(UUID userId) {
+  public ProfileDto getProfile(UUID userId, UUID currentUserId) {
+    validateOwnership(userId, currentUserId);
+
     Profile profile = profileRepository.findById(userId)
         .orElseThrow(() -> new ProfileNotFoundException(userId));
 
@@ -42,13 +49,14 @@ public class ProfileService {
   @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public ProfileDto updateProfile(
       UUID userId,
+      UUID currentUserId,
       ProfileUpdateRequest request,
       MultipartFile image
   ) {
+    validateOwnership(userId, currentUserId);
+
     Profile currentProfile = profileRepository.findById(userId)
         .orElseThrow(() -> new ProfileNotFoundException(userId));
-
-    String oldImageKey = currentProfile.getImageKey();
 
     WeatherAPILocation location = resolveLocation(request);
 
@@ -67,25 +75,38 @@ public class ProfileService {
     String resultImageKey =
         newImageKey != null
             ? newImageKey
-            : oldImageKey;
+            : currentProfile.getImageKey();
 
-    ProfileDto result = profileUpdateTransactionalService.update(
-        userId,
-        request,
-        location,
-        newImageKey,
-        resolveImageUrl(resultImageKey)
-    );
-
-    // 현재 PR의 기존 동작 유지.
-    // AFTER_COMMIT/AFTER_ROLLBACK 및 Retry 처리는 후속 브랜치에서 공통화한다.
-    if (newImageKey != null
-        && oldImageKey != null
-        && !oldImageKey.isBlank()) {
-      fileStorage.delete(oldImageKey);
+    try {
+      // 기존 이미지 삭제(AFTER_COMMIT) 및 새 이미지 정리(AFTER_ROLLBACK)는
+      // ProfileUpdateTransactionalService가 FileReplacementEvent 발행을 통해 담당한다. (#108)
+      return profileUpdateTransactionalService.update(
+          userId,
+          request,
+          location,
+          newImageKey,
+          resolveImageUrl(resultImageKey)
+      );
+    } catch (RuntimeException e) {
+      // update() 진입 자체(예: 동시 삭제로 인한 findById 실패)를 포함해 어느 시점에
+      // 실패하더라도, 이벤트가 아예 등록되지 못했을 수 있으므로 여기서 한 번 더
+      // 새로 업로드한 이미지를 직접 정리한다. (이벤트로 이미 정리된 경우와 중복될
+      // 수 있으나 S3 삭제는 멱등하므로 안전하다.)
+      if (newImageKey != null) {
+        log.warn(
+            "프로필 갱신 실패로 신규 업로드 이미지를 정리합니다. userId={}, newImageKey={}",
+            userId, newImageKey, e
+        );
+        fileDeletionRetryService.deleteWithRetry(newImageKey);
+      }
+      throw e;
     }
+  }
 
-    return result;
+  private void validateOwnership(UUID userId, UUID currentUserId) {
+    if (!userId.equals(currentUserId)) {
+      throw new ProfileAccessDeniedException();
+    }
   }
 
   private WeatherAPILocation resolveLocation(ProfileUpdateRequest request) {
