@@ -2,12 +2,14 @@ package com.otboo.domain.auth.jwt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import java.security.Key;
 import java.util.Date;
 import java.util.UUID;
+import javax.crypto.SecretKey;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,7 +23,8 @@ class JwtProviderTest {
     JwtProperties properties = new JwtProperties(
         "3WayDafV59YynmTwCpaDtnpeur8sokrAkQ+wFlXO4QY=",
         900000L,
-        604800000L
+        604800000L,
+        300000L
     );
     jwtProvider = new JwtProvider(properties);
   }
@@ -99,5 +102,38 @@ class JwtProviderTest {
 
     // when & then
     assertThat(jwtProvider.isValid(tokenWithInvalidSubject)).isFalse();
+  }
+
+  @Test
+  @DisplayName("ADMIN role로 발급하면 일반 사용자보다 짧은 만료 시간이 적용된다")
+  void createAccessTokenWithAdminRoleUsesShorterExpiration() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+
+    // when
+    String adminToken = jwtProvider.createAccessToken(userId, "ADMIN", 1L);
+    String userToken = jwtProvider.createAccessToken(userId, "USER", 1L);
+
+    // then
+    Claims adminClaims = Jwts.parser()
+        .verifyWith((SecretKey) Keys.hmacShaKeyFor(
+            Decoders.BASE64.decode("3WayDafV59YynmTwCpaDtnpeur8sokrAkQ+wFlXO4QY=")))
+        .build()
+        .parseSignedClaims(adminToken)
+        .getPayload();
+
+    Claims userClaims = Jwts.parser()
+        .verifyWith((SecretKey) Keys.hmacShaKeyFor(
+            Decoders.BASE64.decode("3WayDafV59YynmTwCpaDtnpeur8sokrAkQ+wFlXO4QY=")))
+        .build()
+        .parseSignedClaims(userToken)
+        .getPayload();
+
+    long adminValidity = adminClaims.getExpiration().getTime() - adminClaims.getIssuedAt().getTime();
+    long userValidity = userClaims.getExpiration().getTime() - userClaims.getIssuedAt().getTime();
+
+    assertThat(adminValidity).isLessThan(userValidity);
+    assertThat(adminValidity).isEqualTo(300000L);
+    assertThat(userValidity).isEqualTo(900000L);
   }
 }

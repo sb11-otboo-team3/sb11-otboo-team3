@@ -10,11 +10,11 @@ import org.springframework.validation.annotation.Validated;
 public record JwtProperties(
     @NotBlank(message = "JWT secret은 필수입니다.")
     String secret,
-
     @Positive(message = "accessExpiration은 양수여야 합니다.")
     long accessExpiration,
-
     @Positive(message = "refreshExpiration은 양수여야 합니다.")
-    long refreshExpiration
+    long refreshExpiration,
+    @Positive(message = "adminAccessExpiration은 양수여야 합니다.")
+    long adminAccessExpiration
 ) {
 }
