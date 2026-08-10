@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - develop
-      - feature/124-github-actions-ecr
   workflow_dispatch:
 
 permissions:
