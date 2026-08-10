@@ -29,6 +29,7 @@ import com.otboo.domain.clothes.repository.ClothesRepository;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.exception.UserNotFoundException;
 import com.otboo.domain.user.repository.UserRepository;
+import com.otboo.global.infrastructure.storage.FileStorage;
 
 import java.time.Instant;
 import java.util.List;
@@ -64,6 +65,9 @@ class ClothesServiceTest {
     @Mock
     private ClothesMapper clothesMapper;
 
+    @Mock
+    private FileStorage fileStorage;
+
     private ClothesService service;
 
     @BeforeEach
@@ -74,7 +78,7 @@ class ClothesServiceTest {
         );
         service = new ClothesService(
                 clothesRepository, clothesAttributeRepository, selectableValueRepository,
-                clothesMapper, writeService
+                clothesMapper, writeService, fileStorage
         );
     }
 
@@ -91,7 +95,7 @@ class ClothesServiceTest {
                 .willReturn(new ClothesResponse(UUID.randomUUID(), userId, "티셔츠", null, ClothesType.TOP, List.of()));
 
         //when
-        ClothesResponse response = service.create(userId, request);
+        ClothesResponse response = service.create(userId, request, null);
 
         //then
         assertThat(response.name()).isEqualTo("티셔츠");
@@ -105,7 +109,7 @@ class ClothesServiceTest {
         ClothesCreateRequest request = new ClothesCreateRequest(otherOwnerId, "티셔츠", ClothesType.TOP, List.of());
 
         //when & then
-        assertThatThrownBy(() -> service.create(currentUserId, request))
+        assertThatThrownBy(() -> service.create(currentUserId, request, null))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
@@ -118,7 +122,7 @@ class ClothesServiceTest {
         given(userRepository.findById(userId)).willReturn(Optional.empty());
 
         //when & then
-        assertThatThrownBy(() -> service.create(userId, request))
+        assertThatThrownBy(() -> service.create(userId, request, null))
                 .isInstanceOf(UserNotFoundException.class);
     }
 
@@ -140,7 +144,7 @@ class ClothesServiceTest {
         given(clothesRepository.save(any(Clothes.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         //when & then
-        assertThatThrownBy(() -> service.create(userId, request))
+        assertThatThrownBy(() -> service.create(userId, request, null))
                 .isInstanceOf(DuplicateClothesAttributeException.class);
     }
 
@@ -161,7 +165,7 @@ class ClothesServiceTest {
                 .willReturn(List.of());
 
         //when & then
-        assertThatThrownBy(() -> service.create(userId, request))
+        assertThatThrownBy(() -> service.create(userId, request, null))
                 .isInstanceOf(ClothesAttributeDefinitionNotFoundException.class);
     }
 
@@ -185,7 +189,7 @@ class ClothesServiceTest {
                 .willReturn(List.of());
 
         //when & then
-        assertThatThrownBy(() -> service.create(userId, request))
+        assertThatThrownBy(() -> service.create(userId, request, null))
                 .isInstanceOf(InvalidClothesAttributeValueException.class);
     }
 
@@ -214,7 +218,7 @@ class ClothesServiceTest {
                 .willReturn(new ClothesResponse(UUID.randomUUID(), userId, "티셔츠", null, ClothesType.TOP, List.of()));
 
         //when
-        service.create(userId, request);
+        service.create(userId, request, null);
 
         //then
         verify(clothesAttributeRepository).save(any(ClothesAttribute.class));

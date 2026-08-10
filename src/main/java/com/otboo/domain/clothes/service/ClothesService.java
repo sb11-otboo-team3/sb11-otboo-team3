@@ -10,11 +10,15 @@ import com.otboo.domain.clothes.mapper.ClothesMapper;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeRepository;
 import com.otboo.domain.clothes.repository.ClothesRepository;
+import com.otboo.global.infrastructure.storage.FileStorage;
+import com.otboo.global.infrastructure.storage.StorageDirectory;
+import com.otboo.global.infrastructure.storage.StoredFile;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -32,13 +36,20 @@ public class ClothesService {
     private final AttributeSelectableValueRepository selectableValueRepository;
     private final ClothesMapper clothesMapper;
     private final ClothesWriteTransactionalService clothesWriteTransactionalService;
+    private final FileStorage fileStorage;
 
-    public ClothesResponse create(UUID currentUserId, ClothesCreateRequest request) {
+    public ClothesResponse create(UUID currentUserId, ClothesCreateRequest request, MultipartFile image) {
         if (!request.ownerId().equals(currentUserId)) {
             throw new AccessDeniedException("본인 명의로만 의상을 등록할 수 있습니다.");
         }
 
-        return clothesWriteTransactionalService.create(request);
+        String imageKey = null;
+        if (image != null && !image.isEmpty()) {
+            StoredFile storedFile = fileStorage.upload(StorageDirectory.CLOTHES, currentUserId, image);
+            imageKey = storedFile.objectKey();
+        }
+
+        return clothesWriteTransactionalService.create(request, imageKey);
     }
 
     public ClothesResponse update(UUID currentUserId, UUID clothesId, ClothesUpdateRequest request) {

@@ -38,12 +38,12 @@ public class ClothesWriteTransactionalService {
     private final ClothesMapper clothesMapper;
 
     @Transactional
-    public ClothesResponse create(ClothesCreateRequest request) {
+    public ClothesResponse create(ClothesCreateRequest request, String imageKey) {
         User owner = userRepository.findById(request.ownerId())
                 .orElseThrow(() -> new UserNotFoundException(request.ownerId()));
 
         Clothes clothes = clothesRepository.save(
-                new Clothes(owner, request.name().trim(), null, request.type())
+                new Clothes(owner, request.name().trim(), imageKey, request.type())
         );
 
         List<ClothesAttributeRequest> attributeRequests =
