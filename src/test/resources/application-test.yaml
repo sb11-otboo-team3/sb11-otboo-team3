@@ -61,3 +61,8 @@ app:
 
     image:
       max-file-size-bytes: 10485760
+
+  admin:
+    init-email: admin@otboo.io
+    init-name: admin
+    init-password: admin1234
