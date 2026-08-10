@@ -3,7 +3,6 @@ package com.otboo.domain.weather.client;
 import com.otboo.domain.weather.dto.VilageFcstItem;
 import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
-import com.otboo.domain.weather.entity.WindStrength;
 import com.otboo.domain.weather.exception.KmaApiException;
 import com.otboo.domain.weather.util.VilageFcstBaseTime;
 import java.time.LocalDate;
@@ -106,8 +105,7 @@ public class KmaWeatherClient {
         parseDoubleOrNull(valuesByCategory.get("TMP")),
         parseDoubleOrNull(valuesByCategory.get("TMN")),
         parseDoubleOrNull(valuesByCategory.get("TMX")),
-        windSpeed,
-        WindStrength.fromSpeed(windSpeed)
+        windSpeed
     );
   }
 

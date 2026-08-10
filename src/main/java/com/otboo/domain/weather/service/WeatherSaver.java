@@ -2,20 +2,40 @@ package com.otboo.domain.weather.service;
 
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.repository.WeatherRepository;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+// 같은 (grid, forecastAt)에 이미 row가 있으면 최신 값으로 덮어쓰고, 없으면 새로 만든다(upsert).
+// 별도 트랜잭션으로 분리해서 이 저장 하나가 바깥 트랜잭션과 독립적으로 즉시 커밋되게 한다.
 @Component
 @RequiredArgsConstructor
 public class WeatherSaver {
 
   private final WeatherRepository weatherRepository;
 
-  // 별도 트랜잭션으로 분리, saveAndFlush로 즉시 반영(동시성 문제 때문에)
+  // weather.getId()는 쓰지 않는다 - 이 시점의 weather는 아직 저장 전(transient)이라 id가 없고,
+  // upsert가 실제로 INSERT로 처리될 때만 여기서 새로 생성한 id가 쓰인다(이미 있던 row면 기존 id 유지).
   @Transactional(propagation = Propagation.REQUIRES_NEW)
-  public void saveInNewTransaction(Weather weather) {
-    weatherRepository.saveAndFlush(weather);
+  public Weather upsertInNewTransaction(Weather weather) {
+    return weatherRepository.upsert(
+        UUID.randomUUID(),
+        weather.getGrid().getId(),
+        weather.getForecastedAt(),
+        weather.getForecastAt(),
+        weather.getSkyStatus().name(),
+        weather.getPrecipitationType().name(),
+        weather.getPrecipitationAmount(),
+        weather.getPrecipitationProbability(),
+        weather.getHumidityCurrent(),
+        weather.getHumidityComparedToDayBefore(),
+        weather.getTemperatureCurrent(),
+        weather.getTemperatureComparedToDayBefore(),
+        weather.getTemperatureMin(),
+        weather.getTemperatureMax(),
+        weather.getWindSpeed()
+    );
   }
 }

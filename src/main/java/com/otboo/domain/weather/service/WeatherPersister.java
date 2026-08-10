@@ -7,12 +7,17 @@ import com.otboo.domain.weather.entity.Grid;
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.repository.WeatherRepository;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.function.Function;
+import java.util.stream.DoubleStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
 // 기상청 응답 항목 하나를 저장하고 응답 DTO로 변환한다. 온디맨드 조회 흐름(WeatherForecastFinder)과
@@ -42,7 +47,7 @@ public class WeatherPersister {
 
     Double humidityComparedToDayBefore = null;
     Double temperatureComparedToDayBefore = null;
-    Optional<Weather> dayBefore = weatherRepository.findFirstByGridAndForecastAtOrderByForecastedAtDesc(
+    Optional<Weather> dayBefore = weatherRepository.findByGridAndForecastAt(
         grid, forecastAt.minus(1, ChronoUnit.DAYS));
     if (dayBefore.isPresent()) {
       Double humidityDayBefore = dayBefore.get().getHumidityCurrent();
@@ -72,21 +77,52 @@ public class WeatherPersister {
         .windSpeed(item.windSpeed())
         .build();
 
-    // REQUIRES_NEW로 분리된 저장 시도가 유니크 제약 위반으로 실패해도, 그 실패는 별도 트랜잭션 안에서
-    // 끝나므로 여기서 잡아도 이 메서드의 트랜잭션(바깥)엔 영향 없다.
-    try {
-      weatherSaver.saveInNewTransaction(weather);
-    } catch (DataIntegrityViolationException e) {
-      log.warn("날씨 저장 - 동시성 충돌 발생, grid={}, forecastAt={}, forecastedAt={}",
-          grid.getId(), forecastAt, forecastedAt, e);
-      // 이 스레드는 저장에 실패했으니 다시 조회해서 id를 채워준다.
-      return Optional.of(
-          weatherRepository.findByGridAndForecastAtAndForecastedAt(grid, forecastAt, forecastedAt)
-              .map(existing -> existing.toDto(location))
-              .orElseGet(() -> item.toDto(location))
-      );
+    // 같은 (grid, forecastAt)에 이미 row가 있으면(예: 예전 배치가 이미 이 시간대를 예측해놨으면) upsert가
+    // 알아서 최신 값으로 덮어쓴다 - 유니크 위반을 신경 쓸 필요가 없어짐(WeatherSaver 참고).
+    Weather saved = weatherSaver.upsertInNewTransaction(weather);
+    return Optional.of(saved.toDto(location));
+  }
+
+  // 그 날짜(grid+date)의 min/max를 확정해서 그 날짜에 속한 모든 row에 통일해서 채운다. 기상청이 그 날짜
+  // 어딘가에 실제 TMN/TMX를 실어줬으면 그 값을 그대로 신뢰하고, 하나도 없으면(배치 경계에 걸린 날 등)
+  // 그 날짜 전체 row의 temperature(현재기온) 값들로 직접 계산한다. 이 시점에 grid+날짜로 다시 조회하니까
+  // 방금 새로 저장한 row뿐 아니라 이전에 이미 저장돼 있던 row(예: 오늘 이미 지나간 시간대)까지 다 포함된다.
+  public void reconcileDailyMinMax(Grid grid, LocalDate date) {
+    Instant dayStart = date.atStartOfDay(KST).toInstant();
+    Instant dayEnd = date.plusDays(1).atStartOfDay(KST).toInstant();
+
+    List<Weather> dayForecasts = weatherRepository
+        .findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, dayStart, dayEnd);
+    if (dayForecasts.isEmpty()) {
+      return;
     }
 
-    return Optional.of(weather.toDto(location));
+    OptionalDouble min = resolvedExtreme(dayForecasts, Weather::getTemperatureMin, true);
+    OptionalDouble max = resolvedExtreme(dayForecasts, Weather::getTemperatureMax, false);
+
+    if (min.isEmpty() || max.isEmpty()) {
+      log.warn("일 최저/최고기온 확정 실패 - 이 날짜에 유효한 기온 데이터가 하나도 없음, grid={}, date={}",
+          grid.getId(), date);
+      return;
+    }
+
+    weatherRepository.updateDailyTemperatureRange(grid, min.getAsDouble(), max.getAsDouble(), dayStart, dayEnd);
+  }
+
+  // 공식값(TMN/TMX)이 그 날짜 어딘가에 있으면 그걸 신뢰하고, 하나도 없으면 그 날짜 전체의
+  // temperature(현재기온)로 직접 계산한다.
+  private OptionalDouble resolvedExtreme(
+      List<Weather> dayForecasts, Function<Weather, Double> officialValue, boolean isMin
+  ) {
+    OptionalDouble official = extreme(dayForecasts, officialValue, isMin);
+    return official.isPresent() ? official : extreme(dayForecasts, Weather::getTemperatureCurrent, isMin);
+  }
+
+  private OptionalDouble extreme(List<Weather> dayForecasts, Function<Weather, Double> valueOf, boolean isMin) {
+    DoubleStream values = dayForecasts.stream()
+        .map(valueOf)
+        .filter(Objects::nonNull)
+        .mapToDouble(Double::doubleValue);
+    return isMin ? values.min() : values.max();
   }
 }

@@ -43,6 +43,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
@@ -68,6 +69,9 @@ class WeatherForecastFinderTest {
   @Mock
   private WeatherForecastCache weatherForecastCache;
 
+  @Captor
+  private ArgumentCaptor<List<WeatherDto>> savedForecastsCaptor;
+
   private final Clock clock = Clock.fixed(
       LocalDateTime.of(2026, 7, 30, 9, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant(),
       ZoneId.of("Asia/Seoul")
@@ -88,9 +92,8 @@ class WeatherForecastFinderTest {
         weatherForecastCache
     );
 
-    // 캐시 조회는 이제 넉넉한 후보 날짜(최대 5개)를 한 번에 찔러보기 때문에, 특정 날짜만 히트로
-    // stub한 테스트에서도 나머지 후보 날짜 호출은 이 기본값(미스)으로 받게 해준다.
-    lenient().when(weatherForecastCache.find(any(), any(), any())).thenReturn(Optional.empty());
+    // 캐시 조회를 별도로 stub하지 않는 테스트에서도 기본값(미스)을 받게 해준다.
+    lenient().when(weatherForecastCache.find(any(), any())).thenReturn(Optional.empty());
 
     // weatherPersister는 이제 별도 유닛(WeatherPersisterTest)에서 저장/전일대비/동시성 로직을 검증하므로,
     // 여기서는 "item을 dto로 바꿔서 돌려준다" 정도의 단순 스텁으로 충분함 - 실제 변환 규칙은 VilageFcstItem.toDto와 동일.
@@ -129,8 +132,7 @@ class WeatherForecastFinderTest {
         23.0,
         null,
         null,
-        2.3,
-        WindStrength.WEAK
+        2.3
     );
     given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(Mono.just(List.of(item)));
 
@@ -222,6 +224,10 @@ class WeatherForecastFinderTest {
         LocalDateTime.of(2026, 7, 31, 8, 0).atZone(kst).toInstant(),
         LocalDateTime.of(2026, 8, 1, 9, 0).atZone(kst).toInstant()
     );
+    // 저장한 항목들이 걸치는 날짜(7/30, 7/31, 8/1) 각각에 대해 min/max 확정이 한 번씩만 이뤄져야 함
+    verify(weatherPersister).reconcileDailyMinMax(existingGrid, LocalDate.of(2026, 7, 30));
+    verify(weatherPersister).reconcileDailyMinMax(existingGrid, LocalDate.of(2026, 7, 31));
+    verify(weatherPersister).reconcileDailyMinMax(existingGrid, LocalDate.of(2026, 8, 1));
   }
 
   private VilageFcstItem vilageFcstItem(LocalDateTime forecastAt) {
@@ -236,8 +242,7 @@ class WeatherForecastFinderTest {
         23.0,
         null,
         null,
-        2.3,
-        WindStrength.WEAK
+        2.3
     );
   }
 
@@ -263,8 +268,8 @@ class WeatherForecastFinderTest {
         new TemperatureDto(23.0, 0.0, 20.0, 26.0),
         new WindSpeedDto(2.3, WindStrength.WEAK)
     );
-    given(weatherForecastCache.find(new WeatherGrid(60, 127), forecastedAt, LocalDate.of(2026, 7, 30)))
-        .willReturn(Optional.of(cachedDto));
+    given(weatherForecastCache.find(new WeatherGrid(60, 127), forecastedAt))
+        .willReturn(Optional.of(List.of(cachedDto)));
 
     // when
     List<WeatherDto> result = weatherForecastFinder.find(location).block();
@@ -280,7 +285,7 @@ class WeatherForecastFinderTest {
   }
 
   @Test
-  @DisplayName("캐시가 비어 있어 기상청까지 호출하면, 날짜별로 고른 대표 예보를 그 날짜 키로 캐시에 저장한다")
+  @DisplayName("캐시가 비어 있어 기상청까지 호출하면, 날짜별로 고른 대표 예보 목록 전체를 이 발표의 캐시 키 하나에 저장한다")
   void savesDailyRepresentativeToCachePerDateAfterFetchingFromKma() {
     // given
     WeatherAPILocation location = location(37.5665, 126.9780);
@@ -306,9 +311,10 @@ class WeatherForecastFinderTest {
     // then
     assertThat(result).hasSize(1); // 같은 날짜(7/30) 슬롯 2개가 대표 하나로 좁혀짐
 
-    ArgumentCaptor<WeatherDto> captor = ArgumentCaptor.forClass(WeatherDto.class);
-    verify(weatherForecastCache).save(eq(new WeatherGrid(60, 127)), eq(forecastedAt), eq(LocalDate.of(2026, 7, 30)), captor.capture());
-    assertThat(captor.getValue().forecastAt()).isEqualTo(LocalDateTime.of(2026, 7, 30, 9, 0).atZone(kst).toInstant());
+    verify(weatherForecastCache).save(eq(new WeatherGrid(60, 127)), eq(forecastedAt), savedForecastsCaptor.capture());
+    assertThat(savedForecastsCaptor.getValue()).hasSize(1);
+    assertThat(savedForecastsCaptor.getValue().get(0).forecastAt())
+        .isEqualTo(LocalDateTime.of(2026, 7, 30, 9, 0).atZone(kst).toInstant());
   }
 
   @Test
@@ -344,7 +350,7 @@ class WeatherForecastFinderTest {
     weatherForecastFinder.find(location).block();
 
     // then
-    verify(weatherForecastCache).save(eq(new WeatherGrid(60, 127)), eq(forecastedAt), eq(LocalDate.of(2026, 7, 30)), any());
+    verify(weatherForecastCache).save(eq(new WeatherGrid(60, 127)), eq(forecastedAt), any());
     verifyNoInteractions(kmaWeatherClient);
   }
 
@@ -378,8 +384,8 @@ class WeatherForecastFinderTest {
         new TemperatureDto(23.0, 0.0, 20.0, 26.0),
         new WindSpeedDto(2.3, WindStrength.WEAK)
     );
-    given(weatherForecastCache.find(new WeatherGrid(60, 127), previousForecastedAt, LocalDate.of(2026, 7, 30)))
-        .willReturn(Optional.of(cachedPrevious));
+    given(weatherForecastCache.find(new WeatherGrid(60, 127), previousForecastedAt))
+        .willReturn(Optional.of(List.of(cachedPrevious)));
 
     // when
     List<WeatherDto> result = weatherForecastFinder.find(location).block();

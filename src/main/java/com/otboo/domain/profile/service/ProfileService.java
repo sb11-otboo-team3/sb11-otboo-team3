@@ -77,8 +77,6 @@ public class ProfileService {
         resolveImageUrl(resultImageKey)
     );
 
-    // 현재 PR의 기존 동작 유지.
-    // AFTER_COMMIT/AFTER_ROLLBACK 및 Retry 처리는 후속 브랜치에서 공통화한다.
     if (newImageKey != null
         && oldImageKey != null
         && !oldImageKey.isBlank()) {

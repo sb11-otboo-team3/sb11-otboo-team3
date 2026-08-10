@@ -19,7 +19,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.IntStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -34,10 +33,6 @@ import reactor.core.scheduler.Schedulers;
 public class WeatherForecastFinder {
 
   private static final ZoneId KST = ZoneId.of("Asia/Seoul");
-
-  // 캐시에서 "이 발표가 며칠치인지" 미리 알 방법이 없어서, 실제 기상청이 주는 범위보다 넉넉하게 잡은
-  // 후보 날짜만큼 그냥 찔러본다 - 존재하지 않는 날짜를 찔러봐도 캐시 미스 하나 늘 뿐 손해가 없다.
-  private static final int CANDIDATE_WINDOW_DAYS = 5;
 
   private final GridResolver gridResolver;
   private final VilageFcstBaseTimeResolver baseTimeResolver;
@@ -60,7 +55,8 @@ public class WeatherForecastFinder {
     VilageFcstBaseTime baseTime = baseTimeResolver.resolve(LocalDateTime.now(clock));
     Instant forecastedAt = baseTime.baseDate().atTime(baseTime.baseTime()).atZone(KST).toInstant();
 
-    // 캐쉬에서 찾아보기 - 캐시엔 이미 날짜별로 완성된 대표 예보가 들어있어서, 히트하면 재계산 없이 그대로 씀.
+    // 캐쉬에서 찾아보기 - 캐시엔 이 발표의 날짜별 대표 예보 전체가 한 덩어리로 들어있어서, 히트하면
+    // 재계산 없이 그대로 씀(하나의 키라 부분적으로만 있는 상태는 있을 수 없음 - 전부 있거나 전부 없거나).
     return Mono.fromCallable(() -> findCachedForecasts(weatherGrid, forecastedAt))
         .subscribeOn(Schedulers.boundedElastic())
         .flatMap(cached -> cached.isEmpty()
@@ -68,14 +64,8 @@ public class WeatherForecastFinder {
             : cacheHit(cached, weatherGrid, forecastedAt, location));
   }
 
-  // "이 발표가 며칠치인지" 미리 몰라도, 오늘부터 넉넉한 후보 날짜만큼 그냥 하나씩 찔러보고 걸리는 것만 모은다.
   private List<WeatherDto> findCachedForecasts(WeatherGrid weatherGrid, Instant forecastedAt) {
-    LocalDate today = clock.instant().atZone(KST).toLocalDate();
-    return IntStream.range(0, CANDIDATE_WINDOW_DAYS)
-        .mapToObj(today::plusDays)
-        .map(date -> weatherForecastCache.find(weatherGrid, forecastedAt, date))
-        .flatMap(Optional::stream)
-        .toList();
+    return weatherForecastCache.find(weatherGrid, forecastedAt).orElseGet(List::of);
   }
 
   //캐시에 있으면 가져오기.
@@ -127,10 +117,19 @@ public class WeatherForecastFinder {
     return Mono.defer(() -> kmaWeatherClient.getForecast(location.x(), location.y(), baseTime))
         .doOnNext(forecasts -> log.debug("날씨 조회 - 기상청 API 호출, x={}, y={}, forecastedAt={}",
             weatherGrid.x(), weatherGrid.y(), forecastedAt))
-        .flatMap(forecasts -> Mono.fromCallable(() -> forecasts.stream()
-                .map(item -> weatherPersister.persist(item, grid, location))
-                .flatMap(Optional::stream)
-                .toList())
+        .flatMap(forecasts -> Mono.fromCallable(() -> {
+              List<WeatherDto> persisted = forecasts.stream()
+                  .map(item -> weatherPersister.persist(item, grid, location))
+                  .flatMap(Optional::stream)
+                  .toList();
+              // 방금 저장한 항목들이 걸치는 날짜마다 min/max를 확정해서 그 날짜 전체 row에 통일해서 채운다
+              // (이전에 이미 저장돼 있던 row까지 포함해서 재계산됨 - WeatherPersister.reconcileDailyMinMax 참고).
+              forecasts.stream()
+                  .map(item -> item.forecastAt().atZone(KST).toLocalDate())
+                  .distinct()
+                  .forEach(date -> weatherPersister.reconcileDailyMinMax(grid, date));
+              return persisted;
+            })
             .subscribeOn(Schedulers.boundedElastic()))
         .map(allForecasts -> dailyForecastSelector.select(allForecasts, clock.instant()))
         .flatMap(dailyForecasts -> saveToCache(weatherGrid, forecastedAt, dailyForecasts))
@@ -143,12 +142,11 @@ public class WeatherForecastFinder {
         });
   }
 
-  // 날짜별 대표 예보 하나하나를 각자의 날짜 키로 캐시에 씀 - dailyForecasts는 이미 하루에 하나씩만 있는 상태.
+  // 날짜별 대표 예보 전체(dailyForecasts, 이미 하루에 하나씩만 있는 상태)를 이 발표 하나의 키에 통째로 씀.
   private Mono<List<WeatherDto>> saveToCache(
       WeatherGrid weatherGrid, Instant forecastedAt, List<WeatherDto> dailyForecasts
   ) {
-    return Mono.<Void>fromRunnable(() -> dailyForecasts.forEach(dto ->
-            weatherForecastCache.save(weatherGrid, forecastedAt, dto.forecastAt().atZone(KST).toLocalDate(), dto)))
+    return Mono.<Void>fromRunnable(() -> weatherForecastCache.save(weatherGrid, forecastedAt, dailyForecasts))
         .subscribeOn(Schedulers.boundedElastic())
         .thenReturn(dailyForecasts);
   }
@@ -163,7 +161,7 @@ public class WeatherForecastFinder {
     VilageFcstBaseTime previousBaseTime = baseTimeResolver.previous(baseTime);
     Instant previousForecastedAt = previousBaseTime.baseDate().atTime(previousBaseTime.baseTime()).atZone(KST).toInstant();
 
-    // 캐시에서 찾기 (넉넉한 후보 날짜를 찔러봄 - 메인 흐름과 동일한 방식)
+    // 캐시에서 찾기 (메인 흐름과 동일한 방식 - 이 발표 키가 통째로 있는지만 확인)
     return Mono.fromCallable(() -> findCachedForecasts(weatherGrid, previousForecastedAt))
         .subscribeOn(Schedulers.boundedElastic())
         .flatMap(cached -> {
