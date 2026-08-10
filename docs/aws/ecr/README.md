@@ -15,7 +15,9 @@ Amazon ECR Private Repository를 구성하고 다음 항목을 검증합니다.
 * Push·Pull 이미지 Digest 일치
 * Lifecycle Policy 적용
 
-GitHub Actions 자동 Push와 ECS 배포는 후속 이슈에서 진행합니다.
+Issue #46에서는 수동 ECR 빌드·Push를 검증했으며,
+GitHub Actions 기반 자동 ECR Push는 Issue #124에서 추가 구성했습니다.
+ECS 자동 배포는 후속 이슈에서 진행합니다.
 
 ## 2. ECR Repository 구성
 
@@ -191,7 +193,10 @@ Docker Buildx의 기본 Provenance Attestation이 포함되면
 ECR Basic Scan에서는 OCI Image Index를 스캔하지 못하므로
 이번 수동 검증에서는 단일 이미지 Manifest를 생성합니다.
 
-SBOM과 Provenance는 후속 GitHub Actions CD에서
+GitHub Actions 자동 Push에서도 ECR Basic Scan과 단일 이미지 Manifest 기준을 유지하기 위해
+기본 Provenance Attestation을 비활성화합니다.
+
+SBOM과 Provenance는 후속 공급망 보안 점검에서
 ECR 스캔 방식과 공급망 메타데이터 관리 방식을 함께 검토한 뒤 적용합니다.
 
 ## 7. 이미지 Push
@@ -733,7 +738,7 @@ ECS Task Definition이 해당 이미지 태그 또는 Digest를 참조하는지 
 
 ```text
 Repository: otboo/backend
-Tag: manual-6b5ce7d-amd64 
+Tag: manual-6b5ce7d-amd64
 Digest: sha256:6f1372fe6594b531f2c37565688bab2970ce060132a30bf476a780d950f80c1a
 Scan completed at: 2026-08-03T10:15:33+09:00
 ```
@@ -790,17 +795,806 @@ Dockerfile, 애플리케이션 소스, Gradle 설정 및 의존성,
 새 Git Commit SHA를 기준으로 이미지 빌드, ECR Push, 취약점 스캔,
 Runtime 검증 및 Pull Digest 검증을 다시 수행합니다.
 
-## 15. 후속 작업
+## 15. GitHub Actions ECR 자동 Push
+
+Issue #124에서는 Issue #46에서 검증한 수동 ECR Push 절차를 기반으로
+GitHub Actions에서 운영 Docker 이미지를 자동으로 빌드하고
+Amazon ECR에 Push하는 Workflow를 구성했습니다.
+
+이번 Issue의 범위는 ECR 이미지 Build 및 Push까지입니다.
+
+ECS Task Definition Revision 등록과 ECS Service 자동 배포는
+후속 배포 Issue에서 진행합니다.
+
+### Workflow 파일
+
+GitHub Actions Workflow는 다음 파일에서 관리합니다.
+
+```text
+.github/workflows/ecr-push.yml
+```
+
+기존 CI Workflow와 책임을 분리합니다.
+
+```text
+.github/workflows/ci.yml
+→ 애플리케이션 Build 및 Test
+
+.github/workflows/ecr-push.yml
+→ 운영 Docker 이미지 Build 및 ECR Push
+```
+
+자동 Push 대상 Branch는 `develop`입니다.
+
+수동 실행(`workflow_dispatch`)도 `develop` Branch에서만 수행합니다.
+다른 Branch를 선택한 수동 실행은 AWS 인증 전에 Workflow에서 중단합니다.
+
+```text
+develop Push 또는 develop 기준 수동 실행
+    ↓
+GitHub Actions
+    ↓
+실행 Ref 검증
+    ↓
+GitHub OIDC Token 발급
+    ↓
+AWS STS를 통한 IAM Role Assume
+    ↓
+Amazon ECR 로그인
+    ↓
+동일 Git SHA 이미지 존재 여부 확인
+    ├─ 존재함 → Digest / OCI Label / Platform 검증
+    │             └─ 일치하면 성공 처리
+    └─ 없음   → Docker Buildx
+                  ↓
+              linux/amd64 이미지 빌드
+                  ↓
+              Git Commit SHA 태그로 ECR Push
+    ↓
+최종 Image Digest 출력
+```
+
+수동 검증에 사용하는 사람용 AWS Profile이나
+장기 AWS Access Key는 GitHub Actions에서 사용하지 않습니다.
+
+### GitHub OIDC 인증
+
+GitHub Actions에서 AWS 장기 인증정보를 저장하지 않도록
+GitHub OIDC Provider와 전용 IAM Role을 구성했습니다.
+
+```text
+OIDC Provider: token.actions.githubusercontent.com
+Audience: sts.amazonaws.com
+IAM Role: otboo-github-actions-ecr-role
+```
+
+IAM Role Trust Policy는 GitHub에서 실제 발급된
+immutable OIDC Subject 형식을 기준으로 구성합니다.
+
+최종 운영 기준에서는 대상 Repository의 `develop` Branch만
+Role을 Assume할 수 있도록 제한합니다.
+
+```text
+repo:{OWNER}@{OWNER_ID}/{REPOSITORY}@{REPOSITORY_ID}:ref:refs/heads/develop
+```
+
+Owner ID, Repository ID, AWS Account ID 및 IAM Role ARN 전체 값은
+공개 문서에 기록하지 않습니다.
+
+GitHub Repository에는 Role ARN을 다음 Repository Variable로 등록합니다.
+
+```text
+AWS_GITHUB_ACTIONS_ROLE_ARN
+```
+
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`와 같은
+장기 AWS 인증정보는 GitHub Secrets에 등록하지 않습니다.
+
+### IAM Role Trust Policy 기준
+
+Issue #124 검증 중에는
+`feature/124-github-actions-ecr` Branch도 일시적으로 허용하여
+OIDC 인증과 ECR Push를 검증했습니다.
+
+검증 완료 후에는 feature Branch Subject를 제거하고
+`develop` Branch만 허용합니다.
+
+최종 기준:
+
+```text
+Audience:
+sts.amazonaws.com
+
+Subject:
+repo:{OWNER}@{OWNER_ID}/{REPOSITORY}@{REPOSITORY_ID}:ref:refs/heads/develop
+```
+
+Workflow 실행 Branch와 IAM Trust Policy의 허용 Branch를 동일하게 유지합니다.
+
+`workflow_dispatch`는 GitHub UI에서 실행 Ref를 선택할 수 있으므로
+Workflow에서도 AWS 인증 전에 `refs/heads/develop`인지 확인합니다.
+
+### ECR 최소 권한
+
+GitHub Actions IAM Role에는
+`otboo/backend` Repository의 이미지 확인 및 Push에 필요한 권한만 부여합니다.
+
+ECR 로그인에 필요한 권한:
+
+```text
+ecr:GetAuthorizationToken
+```
+
+`otboo/backend` Repository에 제한하는 이미지 조회·검증·Push 권한:
+
+```text
+ecr:BatchCheckLayerAvailability
+ecr:BatchGetImage
+ecr:DescribeImages
+ecr:GetDownloadUrlForLayer
+ecr:InitiateLayerUpload
+ecr:UploadLayerPart
+ecr:CompleteLayerUpload
+ecr:PutImage
+```
+
+각 조회 권한은 다음 목적으로 사용합니다.
+
+```text
+ecr:DescribeImages
+→ 동일 Git SHA 태그의 기존 이미지 존재 여부와 Digest 조회
+
+ecr:BatchGetImage
+→ Buildx 및 ECR 이미지 Manifest 조회
+
+ecr:GetDownloadUrlForLayer
+→ 기존 SHA 이미지 검증을 위한 Docker Pull
+```
+
+`ecr:GetAuthorizationToken`은 ECR 인증 특성상 전체 Resource를 대상으로 하며,
+나머지 이미지 조회·다운로드·업로드 권한은
+`otboo/backend` Repository ARN으로 제한합니다.
+
+AWS 관리형 `AmazonEC2ContainerRegistryFullAccess` 정책은 사용하지 않습니다.
+
+### Workflow 권한
+
+GitHub Actions Workflow에는 OIDC Token 발급과
+Repository Checkout에 필요한 권한만 선언합니다.
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+```
+
+`id-token: write`는 GitHub Actions가 OIDC Token을 발급받기 위해 사용합니다.
+
+GitHub Repository Contents는 읽기 권한만 사용합니다.
+
+### Docker Buildx 및 Platform
+
+Workflow에서는 Docker Buildx를 사용해 운영 이미지를 빌드합니다.
+
+운영 ECS Task의 CPU Architecture가 `X86_64`이므로
+다음 Platform으로 고정합니다.
+
+```text
+linux/amd64
+```
+
+Dockerfile 내부 Builder Stage에서 Gradle `bootJar`를 생성하므로
+ECR Workflow에서 별도의 Gradle 빌드 결과물을 준비하지 않습니다.
+
+Workflow는 기존 운영 Dockerfile을 그대로 사용합니다.
+
+```text
+Dockerfile
+```
+
+ECR Basic Scan과 단일 이미지 Manifest 기준을 유지하기 위해
+GitHub Actions Build에서도 Provenance Attestation을 비활성화합니다.
+
+```yaml
+provenance: false
+```
+
+SBOM과 Provenance 적용은 후속 공급망 보안 점검에서 별도로 검토합니다.
+
+### 자동 이미지 태그
+
+GitHub Actions에서 생성하는 운영 이미지에는
+Workflow를 실행한 Git Commit의 전체 SHA를 태그로 사용합니다.
+
+```text
+{ECR Repository URI}:{Git Commit SHA 40자리}
+```
+
+예시:
+
+```text
+otboo/backend:0123456789abcdef0123456789abcdef01234567
+```
+
+Repository가 `IMMUTABLE`로 설정되어 있으므로
+`latest` 태그는 사용하지 않습니다.
+
+Workflow에서는 동일한 Commit SHA를 Dockerfile의 빌드 인자로 전달합니다.
+
+```text
+IMAGE_SOURCE_COMMIT=${{ github.sha }}
+```
+
+Dockerfile은 해당 값을 다음 OCI Label에 기록합니다.
+
+```text
+org.opencontainers.image.revision
+```
+
+따라서 다음 세 값이 동일한 Git Commit을 가리켜야 합니다.
+
+```text
+Git Commit SHA
+=
+ECR Image Tag
+=
+org.opencontainers.image.revision OCI Label
+```
+
+### IMMUTABLE 태그 재실행 처리
+
+ECR Repository는 `IMMUTABLE`이므로
+이미 존재하는 Git SHA 태그에 이미지를 다시 Push할 수 없습니다.
+
+GitHub Actions의 Re-run 또는 동일 Commit에서의 수동 재실행이
+단순히 `ImageTagAlreadyExistsException`으로 실패하지 않도록
+Push 전에 동일 SHA 태그의 존재 여부를 확인합니다.
+
+동일 SHA 태그가 없는 경우:
+
+```text
+Docker Buildx
+→ linux/amd64 빌드
+→ Git SHA 태그 ECR Push
+```
+
+동일 SHA 태그가 이미 있는 경우:
+
+```text
+ECR Image Digest 조회
+→ 기존 이미지 Pull
+→ Pull Digest와 ECR Digest 비교
+→ Architecture가 amd64인지 확인
+→ OCI revision Label이 Git SHA와 같은지 확인
+→ 모두 일치하면 기존 immutable 이미지를 정상 결과로 사용
+→ 하나라도 일치하지 않으면 Workflow 실패
+```
+
+기존 이미지를 검증하지 않은 채 성공 처리하거나
+Repository를 `MUTABLE`로 변경하여 덮어쓰지 않습니다.
+
+### GitHub Actions ECR Push Workflow
+
+최종 Workflow는 다음 기준을 따릅니다.
+
+```yaml
+name: Build and Push ECR Image
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ecr-push-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: otboo/backend
+
+jobs:
+  build-and-push:
+    name: Build and Push ECR Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Validate workflow ref
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/develop'
+        run: |
+          echo "Manual ECR push is allowed only from develop."
+          exit 1
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@b040164c4934333d597f3f9c67502ff28f814e9c # v2.1.6
+
+      - name: Check existing immutable image
+        id: existing-image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+
+          EXISTING_DIGEST="$(
+            aws ecr describe-images \
+              --repository-name "$ECR_REPOSITORY" \
+              --region "$AWS_REGION" \
+              --filter tagStatus=TAGGED \
+              --query "imageDetails[?contains(imageTags, '${GITHUB_SHA}')].imageDigest | [0]" \
+              --output text \
+              --no-cli-pager
+          )"
+
+          if [ -z "$EXISTING_DIGEST" ] || [ "$EXISTING_DIGEST" = "None" ]; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No existing image found for ${GITHUB_SHA}."
+            exit 0
+          fi
+
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+          echo "digest=$EXISTING_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Validate existing immutable image
+        if: steps.existing-image.outputs.exists == 'true'
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          EXISTING_DIGEST: ${{ steps.existing-image.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+
+          docker pull \
+            --platform linux/amd64 \
+            "$IMAGE_URI"
+
+          PULLED_DIGEST="$(
+            docker image inspect "$IMAGE_URI" \
+              --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+            | grep "^${REGISTRY}/${ECR_REPOSITORY}@" \
+            | head -n 1 \
+            | cut -d '@' -f 2
+          )"
+
+          IMAGE_ARCH="$(
+            docker image inspect "$IMAGE_URI" \
+              --format '{{.Architecture}}'
+          )"
+
+          IMAGE_REVISION="$(
+            docker image inspect "$IMAGE_URI" \
+              --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'
+          )"
+
+          test "$PULLED_DIGEST" = "$EXISTING_DIGEST" || {
+            echo "Pulled image digest does not match the ECR digest."
+            exit 1
+          }
+
+          test "$IMAGE_ARCH" = "amd64" || {
+            echo "Existing image architecture is not amd64: $IMAGE_ARCH"
+            exit 1
+          }
+
+          test "$IMAGE_REVISION" = "$GITHUB_SHA" || {
+            echo "Existing image revision label does not match GITHUB_SHA."
+            exit 1
+          }
+
+          echo "Existing immutable image matches the requested Git SHA and platform."
+
+      - name: Set up Docker Buildx
+        if: steps.existing-image.outputs.exists != 'true'
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Build and push Docker image
+        if: steps.existing-image.outputs.exists != 'true'
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          provenance: false
+          push: true
+          tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          build-args: |
+            IMAGE_SOURCE_COMMIT=${{ github.sha }}
+
+      - name: Resolve final image digest
+        id: final-image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IMAGE_DIGEST="$(
+            aws ecr describe-images \
+              --repository-name "$ECR_REPOSITORY" \
+              --image-ids imageTag="$GITHUB_SHA" \
+              --region "$AWS_REGION" \
+              --query 'imageDetails[0].imageDigest' \
+              --output text \
+              --no-cli-pager
+          )"
+
+          test -n "$IMAGE_DIGEST"
+          test "$IMAGE_DIGEST" != "None"
+
+          echo "digest=$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Print pushed image information
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_DIGEST: ${{ steps.final-image.outputs.digest }}
+        run: |
+          echo "Image URI: ${REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+          echo "Image Digest: ${IMAGE_DIGEST}"
+```
+
+ECS Task Definition 등록이나 ECS Service 업데이트 명령은
+이 Workflow에 포함하지 않습니다.
+
+### ECR Push 검증
+
+Workflow 성공 후 검증할 자동 Push 이미지를
+Workflow를 실행한 Git Commit SHA 기준으로 설정합니다.
+
+수동 검증에서 사용하는 `manual-{Short SHA}-amd64` 태그와 혼동하지 않도록
+자동 Push 검증에서는 관련 변수를 다시 설정합니다.
+
+```bash
+AWS_REGION="ap-northeast-2"
+AWS_PROFILE="otboo"
+ECR_REPOSITORY="otboo/backend"
+
+IMAGE_SOURCE_COMMIT="{Git Commit SHA 40자리}"
+IMAGE_TAG="$IMAGE_SOURCE_COMMIT"
+
+ECR_REPOSITORY_URI="$(
+  aws ecr describe-repositories \
+    --repository-names "$ECR_REPOSITORY" \
+    --region "$AWS_REGION" \
+    --profile "$AWS_PROFILE" \
+    --query 'repositories[0].repositoryUri' \
+    --output text \
+    --no-cli-pager
+)"
+
+ECR_IMAGE="${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
+
+IMAGE_DIGEST="$(
+  aws ecr describe-images \
+    --repository-name "$ECR_REPOSITORY" \
+    --image-ids imageTag="$IMAGE_TAG" \
+    --region "$AWS_REGION" \
+    --profile "$AWS_PROFILE" \
+    --query 'imageDetails[0].imageDigest' \
+    --output text \
+    --no-cli-pager
+)"
+```
+
+`IMAGE_SOURCE_COMMIT`에는 검증하려는 GitHub Actions 실행의
+전체 Git Commit SHA 40자리를 입력합니다.
+
+예시:
+
+```text
+IMAGE_SOURCE_COMMIT="0123456789abcdef0123456789abcdef01234567"
+```
+
+자동 Push 이미지 정보를 확인합니다.
+
+```bash
+aws ecr describe-images \
+  --repository-name "$ECR_REPOSITORY" \
+  --image-ids imageTag="$IMAGE_TAG" \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE" \
+  --query 'imageDetails[0].{
+    Tags:imageTags,
+    Digest:imageDigest,
+    PushedAt:imagePushedAt,
+    Size:imageSizeInBytes
+  }' \
+  --output table \
+  --no-cli-pager
+```
+
+검증 항목:
+
+```text
+Git Commit SHA 기반 Image Tag 존재
+Image Digest 정상 조회
+ECR Push 시각 정상 조회
+```
+
+Issue #124 검증에서는 Git Commit SHA 기반 이미지가 실제 ECR에 Push되었고
+Image Digest가 정상적으로 조회되는 것을 확인했습니다.
+
+### Pull 및 OCI Label 검증
+
+운영 이미지는 `linux/amd64` 단일 Platform으로 생성합니다.
+
+Apple Silicon Mac에서 Pull할 경우
+로컬 Docker의 기본 Platform이 `linux/arm64/v8`이므로
+Platform을 명시하지 않으면 다음 오류가 발생할 수 있습니다.
+
+```text
+no matching manifest for linux/arm64/v8
+```
+
+이 경우 운영 Platform을 명시해 Pull합니다.
+
+```bash
+docker pull \
+  --platform linux/amd64 \
+  "$ECR_IMAGE"
+```
+
+Pull된 이미지의 Digest를 확인합니다.
+
+```bash
+PULLED_DIGEST="$(
+  docker image inspect "$ECR_IMAGE" \
+    --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+  | grep "^${ECR_REPOSITORY_URI}@" \
+  | head -n 1 \
+  | cut -d '@' -f 2
+)"
+
+test "$IMAGE_DIGEST" = "$PULLED_DIGEST" || {
+  echo "ECR Digest와 Pull 이미지 Digest가 일치하지 않습니다."
+  exit 1
+}
+```
+
+Pull된 이미지의 OS와 Architecture를 확인합니다.
+
+```bash
+test "$(docker image inspect "$ECR_IMAGE" --format '{{.Os}}')" = "linux"
+test "$(docker image inspect "$ECR_IMAGE" --format '{{.Architecture}}')" = "amd64"
+```
+
+Pull된 이미지의 OCI revision Label을 확인합니다.
+
+```bash
+PULLED_LABEL_COMMIT="$(
+  docker image inspect "$ECR_IMAGE" \
+    --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'
+)"
+
+test "$PULLED_LABEL_COMMIT" = "$IMAGE_SOURCE_COMMIT" || {
+  echo "OCI revision Label과 자동 Push 원본 Commit이 일치하지 않습니다."
+  exit 1
+}
+```
+
+검증 성공 조건:
+
+```text
+Git Commit SHA
+=
+ECR Image Tag
+=
+OCI revision Label
+
+ECR Image Digest
+=
+Pull 이미지 Digest
+
+OS
+=
+linux
+
+Architecture
+=
+amd64
+```
+
+Issue #124에서는 Git Commit SHA, ECR Image Tag 및 OCI revision Label이
+동일한 Commit을 가리키는 것을 확인했습니다.
+
+또한 ECR에서 조회한 Image Digest와
+Pull된 이미지의 RepoDigest가 동일함을 확인합니다.
+
+### 수동 실행 Branch 제한 검증
+
+`workflow_dispatch`는 수동 실행 시 Ref를 선택할 수 있으므로
+`develop` 이외의 Branch를 선택한 경우 AWS 인증 전에 실패하도록 구성합니다.
+
+Workflow Guard:
+
+```yaml
+- name: Validate workflow ref
+  if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/develop'
+  run: |
+    echo "Manual ECR push is allowed only from develop."
+    exit 1
+```
+
+검증 기준:
+
+```text
+develop 수동 실행
+→ AWS OIDC 인증 단계 진행
+
+develop 이외 Branch 수동 실행
+→ Validate workflow ref 단계에서 실패
+→ AWS 인증 시도 없음
+```
+
+### 권한 오류 검증
+
+Workflow 구성 과정에서 최소 권한이 실제로 적용되는지도 확인했습니다.
+
+#### OIDC Trust Policy Subject 불일치
+
+초기 Trust Policy에서는 Repository 이름 기반 Subject를 사용했습니다.
+
+```text
+repo:{OWNER}/{REPOSITORY}:ref:refs/heads/{BRANCH}
+```
+
+그러나 실제 GitHub OIDC Token은
+Owner ID와 Repository ID가 포함된 immutable Subject 형식으로 발급되었습니다.
+
+```text
+repo:{OWNER}@{OWNER_ID}/{REPOSITORY}@{REPOSITORY_ID}:ref:refs/heads/{BRANCH}
+```
+
+이로 인해 다음 오류가 발생했습니다.
+
+```text
+Not authorized to perform sts:AssumeRoleWithWebIdentity
+```
+
+실제 OIDC Claim을 확인한 뒤
+Trust Policy를 immutable Subject 형식으로 변경하여 해결했습니다.
+
+OIDC 진단 과정에서는 Token 자체를 출력하지 않고,
+`sub`, `aud`, Repository, Ref 등 필요한 Claim만 확인했습니다.
+
+검증 완료 후 OIDC Claim 출력 Step은 Workflow에서 제거했습니다.
+
+#### ECR Manifest 조회 권한 부족
+
+초기 ECR Push 정책에는
+일반적인 이미지 업로드 권한만 포함되어 있었습니다.
+
+Docker Buildx Push 과정에서 Manifest 조회를 시도하면서
+다음 오류가 발생했습니다.
+
+```text
+403 Forbidden
+```
+
+원인은 IAM Role에 `ecr:BatchGetImage` 권한이 없었던 것이었습니다.
+
+다음 권한을 `otboo/backend` Repository에 한정해 추가한 뒤
+정상 Push를 확인했습니다.
+
+```text
+ecr:BatchGetImage
+```
+
+#### IMMUTABLE 재실행 검증용 조회 권한
+
+동일 Git SHA 태그의 재실행을 안전하게 처리하기 위해
+기존 이미지 존재 여부와 Digest를 조회하고
+이미지를 Pull하여 Label과 Platform을 검증합니다.
+
+이에 따라 다음 조회 권한을
+`otboo/backend` Repository에 한정해 추가합니다.
+
+```text
+ecr:DescribeImages
+ecr:GetDownloadUrlForLayer
+```
+
+오류 해결 과정에서도
+ECR 전체 Repository나 AWS 계정 전체에 대한
+광범위한 이미지 Push 권한은 부여하지 않습니다.
+
+### 권한 오류 재검증 기준
+
+향후 IAM Policy를 변경하는 경우
+정상 Push만 확인하지 않고 권한 범위도 함께 검증합니다.
+
+확인 항목:
+
+```text
+GitHub OIDC 인증 성공
+대상 Repository Push 성공
+기존 SHA 이미지 조회 및 Pull 성공
+허용되지 않은 Resource에 대한 권한 없음
+장기 AWS Access Key 미사용
+Trust Policy가 develop Branch로 제한됨
+```
+
+권한 오류가 발생한 경우
+AWS 관리형 FullAccess 정책을 임시로 추가하기보다
+실패한 API Action을 확인한 뒤 필요한 최소 권한만 추가합니다.
+
+### Lifecycle Policy와 자동 이미지
+
+현재 Lifecycle Policy는 미태그 이미지와 `manual-` 이미지의 정리 기준을 관리합니다.
+
+GitHub Actions에서 생성되는 전체 Git SHA 태그 이미지는
+`manual-` 접두사를 사용하지 않으므로 현재 `manual-` 보관 규칙의 대상이 아닙니다.
+
+자동 Push 이미지의 장기 보관 개수 또는 기간 제한이 필요한 경우에는
+후속 운영 점검에서 별도 Lifecycle 규칙을 검토합니다.
+
+### 최종 검증 기준
+
+Issue #124에서는 다음 항목을 완료 기준으로 검증합니다.
+
+```text
+GitHub OIDC Provider 구성
+GitHub Actions용 IAM Role 구성
+immutable OIDC Subject 기반 Trust Policy 제한
+develop Branch 기준 최종 Trust Policy 구성
+workflow_dispatch develop Branch Guard 적용
+장기 AWS Access Key 미사용
+otboo/backend Repository 기준 최소 ECR 권한 적용
+GitHub Repository Variable을 통한 Role ARN 참조
+Amazon ECR 로그인 성공
+기존 Git SHA 이미지 존재 여부 조회
+IMMUTABLE 태그 재실행 시 기존 이미지 검증
+ECR Digest와 Pull Digest 일치 확인
+linux/amd64 Platform 확인
+Docker Buildx 구성
+Provenance Attestation 비활성화
+linux/amd64 운영 이미지 빌드 성공
+Git Commit SHA 기반 Image Tag 생성
+latest 태그 미사용
+ECR Push 성공
+Image Digest 정상 조회
+Git Commit SHA와 OCI revision Label 일치
+권한 부족 상황에서 Workflow 실패 확인
+최종 Workflow 정상 실행 확인
+```
+
+자동 ECR Push까지 완료한 뒤
+ECS 자동 배포는 후속 Issue에서 진행합니다.
+
+## 16. 후속 작업
 
 * Issue #21: RDS PostgreSQL 및 S3 운영 환경 구성
 * 별도 이슈: 운영 Redis 또는 ElastiCache 구성
 * Issue #22: ECS Cluster, Task Definition, Service 및 ALB 구성
-* 후속 CD 이슈: GitHub Actions OIDC, ECR Push 및 ECS 자동 배포
+* Issue #124: GitHub Actions OIDC 기반 이미지 빌드 및 ECR Push 구성
+* 후속 배포 이슈: ECR 이미지 기반 ECS Task Definition 갱신 및 Service 자동 배포
 * 후속 보안 점검: MEDIUM 및 UNDEFINED 취약점 영향 분석
 * 후속 운영 점검: 베이스 이미지 Digest 갱신
 * 후속 공급망 보안 점검: Provenance 및 SBOM 적용
 
 GitHub Actions에서는 사람용 IAM 사용자의 Access Key를 사용하지 않습니다.
 
-자동 배포는 OIDC 기반 IAM Role을 구성한 뒤
-GitHub Actions에서 ECR Push와 ECS 배포를 수행하도록 확장합니다.
+GitHub Actions 기반 ECR 자동 Push는 Issue #124에서 구성했습니다.
+후속 배포 Issue에서는 ECR에 Push된 Git SHA 이미지를 기준으로
+ECS Task Definition Revision 등록과 ECS Service 자동 배포를 구성합니다.
