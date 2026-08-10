@@ -30,6 +30,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate workflow ref
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/develop'
+        shell: bash
+        run: |
+          echo "Manual ECR push is allowed only from develop."
+          exit 1
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
@@ -40,25 +47,159 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Check existing immutable image
+        id: existing-image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ERROR_FILE="$(mktemp)"
+
+          set +e
+          EXISTING_DIGEST="$(
+            aws ecr describe-images \
+              --repository-name "$ECR_REPOSITORY" \
+              --image-ids imageTag="$GITHUB_SHA" \
+              --region "$AWS_REGION" \
+              --query 'imageDetails[0].imageDigest' \
+              --output text \
+              --no-cli-pager \
+              2>"$ERROR_FILE"
+          )"
+          DESCRIBE_STATUS=$?
+          set -e
+
+          if [ "$DESCRIBE_STATUS" -eq 0 ]; then
+            test -n "$EXISTING_DIGEST"
+            test "$EXISTING_DIGEST" != "None"
+
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "digest=$EXISTING_DIGEST" >> "$GITHUB_OUTPUT"
+            echo "Existing immutable image found for ${GITHUB_SHA}."
+
+            rm -f "$ERROR_FILE"
+            exit 0
+          fi
+
+          if grep -q "ImageNotFoundException" "$ERROR_FILE"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No existing image found for ${GITHUB_SHA}."
+
+            rm -f "$ERROR_FILE"
+            exit 0
+          fi
+
+          cat "$ERROR_FILE"
+          rm -f "$ERROR_FILE"
+          exit "$DESCRIBE_STATUS"
+
+      - name: Validate existing immutable image
+        if: steps.existing-image.outputs.exists == 'true'
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          EXISTING_DIGEST: ${{ steps.existing-image.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+
+          docker pull \
+            --platform linux/amd64 \
+            "$IMAGE_URI"
+
+          PULLED_DIGEST="$(
+            docker image inspect "$IMAGE_URI" \
+              --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+            | grep "^${REGISTRY}/${ECR_REPOSITORY}@" \
+            | head -n 1 \
+            | cut -d '@' -f 2
+          )"
+
+          IMAGE_OS="$(
+            docker image inspect "$IMAGE_URI" \
+              --format '{{.Os}}'
+          )"
+
+          IMAGE_ARCH="$(
+            docker image inspect "$IMAGE_URI" \
+              --format '{{.Architecture}}'
+          )"
+
+          IMAGE_REVISION="$(
+            docker image inspect "$IMAGE_URI" \
+              --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'
+          )"
+
+          test "$PULLED_DIGEST" = "$EXISTING_DIGEST" || {
+            echo "Pulled image digest does not match the ECR digest."
+            exit 1
+          }
+
+          test "$IMAGE_OS" = "linux" || {
+            echo "Existing image OS is not linux: $IMAGE_OS"
+            exit 1
+          }
+
+          test "$IMAGE_ARCH" = "amd64" || {
+            echo "Existing image architecture is not amd64: $IMAGE_ARCH"
+            exit 1
+          }
+
+          test "$IMAGE_REVISION" = "$GITHUB_SHA" || {
+            echo "Existing image revision label does not match GITHUB_SHA."
+            exit 1
+          }
+
+          echo "Existing immutable image matches the requested Git SHA."
+          echo "Digest: ${EXISTING_DIGEST}"
+          echo "Platform: ${IMAGE_OS}/${IMAGE_ARCH}"
+          echo "Revision: ${IMAGE_REVISION}"
+
       - name: Set up Docker Buildx
+        if: steps.existing-image.outputs.exists != 'true'
         uses: docker/setup-buildx-action@v4
 
       - name: Build and push Docker image
+        if: steps.existing-image.outputs.exists != 'true'
         id: build
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
+          provenance: false
           push: true
           tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
           build-args: |
             IMAGE_SOURCE_COMMIT=${{ github.sha }}
 
+      - name: Resolve final image digest
+        id: final-image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IMAGE_DIGEST="$(
+            aws ecr describe-images \
+              --repository-name "$ECR_REPOSITORY" \
+              --image-ids imageTag="$GITHUB_SHA" \
+              --region "$AWS_REGION" \
+              --query 'imageDetails[0].imageDigest' \
+              --output text \
+              --no-cli-pager
+          )"
+
+          test -n "$IMAGE_DIGEST"
+          test "$IMAGE_DIGEST" != "None"
+
+          echo "digest=$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
+
       - name: Print pushed image information
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_DIGEST: ${{ steps.final-image.outputs.digest }}
+        shell: bash
         run: |
           echo "Image URI: ${REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
           echo "Image Digest: ${IMAGE_DIGEST}"
