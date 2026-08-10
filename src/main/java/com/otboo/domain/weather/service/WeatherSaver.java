@@ -2,6 +2,7 @@ package com.otboo.domain.weather.service;
 
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.repository.WeatherRepository;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -20,7 +21,7 @@ public class WeatherSaver {
   // upsert가 실제로 INSERT로 처리될 때만 여기서 새로 생성한 id가 쓰인다(이미 있던 row면 기존 id 유지).
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public Weather upsertInNewTransaction(Weather weather) {
-    return weatherRepository.upsert(
+    Optional<Weather> upserted = weatherRepository.upsert(
         UUID.randomUUID(),
         weather.getGrid().getId(),
         weather.getForecastedAt(),
@@ -37,5 +38,13 @@ public class WeatherSaver {
         weather.getTemperatureMax(),
         weather.getWindSpeed()
     );
+
+    // upsert가 비어있으면(WHERE 절에 걸려 스킵됨) 이 요청의 forecastedAt이 기존 row보다 과거라는 뜻 -
+    // 이미 DB엔 더 최신 값이 있으니, 내가 만들려던 값 대신 그 현재 row를 그대로 반환한다.
+    return upserted.orElseGet(() -> weatherRepository
+        .findByGridAndForecastAt(weather.getGrid(), weather.getForecastAt())
+        .orElseThrow(() -> new IllegalStateException(
+            "upsert가 스킵됐는데(더 최신 forecastedAt 존재) 정작 그 row를 재조회하지 못함 - grid=%s, forecastAt=%s"
+                .formatted(weather.getGrid().getId(), weather.getForecastAt()))));
   }
 }

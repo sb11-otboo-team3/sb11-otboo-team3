@@ -29,6 +29,8 @@ public interface WeatherRepository extends JpaRepository<Weather, UUID> {
 
   // 같은 (grid_id, forecast_at)에 이미 row가 있으면 최신 값으로 덮어쓰고(id/created_at은 유지),
   // 없으면 새로 만든다. RETURNING으로 결과 row를 한 번의 왕복으로 그대로 받아온다.
+  // WHERE 절: 기존 row의 forecasted_at보다 이번 값이 과거면(늦게 도착한 옛날 배치 등) 덮어쓰지 않는다 -
+  // 이 조건에 걸려 UPDATE가 스킵되면 RETURNING이 0행이라 결과가 비어있을 수 있음(Optional로 표현).
   @Query(value = """
       INSERT INTO weathers (
           id, grid_id, forecasted_at, forecast_at, sky_status, precipitation_type,
@@ -54,9 +56,10 @@ public interface WeatherRepository extends JpaRepository<Weather, UUID> {
           temperature_min = EXCLUDED.temperature_min,
           temperature_max = EXCLUDED.temperature_max,
           wind_speed = EXCLUDED.wind_speed
+      WHERE weathers.forecasted_at <= EXCLUDED.forecasted_at
       RETURNING *
       """, nativeQuery = true)
-  Weather upsert(
+  Optional<Weather> upsert(
       @Param("id") UUID id,
       @Param("gridId") UUID gridId,
       @Param("forecastedAt") Instant forecastedAt,

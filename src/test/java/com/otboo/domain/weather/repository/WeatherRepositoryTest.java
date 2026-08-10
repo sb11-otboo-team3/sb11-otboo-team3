@@ -8,6 +8,7 @@ import com.otboo.domain.weather.entity.Weather;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -67,7 +68,7 @@ class WeatherRepositoryTest {
     Weather result = weatherRepository.upsert(
         UUID.randomUUID(), grid.getId(), forecastedAt, forecastAt,
         "CLEAR", "NONE", 0.0, 20.0, 55.0, null, 23.0, null, null, null, 2.3
-    );
+    ).orElseThrow();
     entityManager.flush();
     entityManager.clear();
 
@@ -89,17 +90,17 @@ class WeatherRepositoryTest {
     Weather first = weatherRepository.upsert(
         UUID.randomUUID(), grid.getId(), firstForecastedAt, forecastAt,
         "CLOUDY", "NONE", 0.0, 10.0, 50.0, null, 20.0, null, null, null, 1.5
-    );
+    ).orElseThrow();
     entityManager.flush();
     entityManager.clear();
 
     Instant secondForecastedAt = Instant.parse("2026-07-30T05:00:00Z");
 
-    // when: 나중 배치가 같은 시간대를 CLEAR/23.0으로 다시 예측
+    // when: 나중 배치(더 최신 발표)가 같은 시간대를 CLEAR/23.0으로 다시 예측
     Weather second = weatherRepository.upsert(
         UUID.randomUUID(), grid.getId(), secondForecastedAt, forecastAt,
         "CLEAR", "NONE", 0.0, 20.0, 55.0, null, 23.0, null, null, null, 2.3
-    );
+    ).orElseThrow();
     entityManager.flush();
     entityManager.clear();
 
@@ -220,5 +221,67 @@ class WeatherRepositoryTest {
     // then
     assertThat(result.getResolvedMin()).isNull();
     assertThat(result.getResolvedMax()).isNull();
+  }
+
+  @Test
+  @DisplayName("이미 최신 발표로 갱신된 row에, 그보다 과거 발표가 뒤섞여서 나중에 도착해도 값이 되돌아가지 않는다")
+  void upsertDoesNotRevertToOlderForecastedAt() {
+    // given
+    Grid grid = persistGrid(60, 127);
+    Instant forecastAt = Instant.parse("2026-07-30T09:00:00Z");
+    Instant olderForecastedAt = Instant.parse("2026-07-30T02:00:00Z");
+    Instant newerForecastedAt = Instant.parse("2026-07-30T05:00:00Z");
+
+    // 최신 배치(05시 발표)가 먼저 저장됨
+    Weather latest = weatherRepository.upsert(
+        UUID.randomUUID(), grid.getId(), newerForecastedAt, forecastAt,
+        "CLEAR", "NONE", 0.0, 20.0, 55.0, null, 23.0, null, null, null, 2.3
+    ).orElseThrow();
+    entityManager.flush();
+    entityManager.clear();
+
+    // when: 순서가 뒤섞여서(재시도, 지연 등) 더 오래된 배치(02시 발표)가 나중에 도착
+    Optional<Weather> result = weatherRepository.upsert(
+        UUID.randomUUID(), grid.getId(), olderForecastedAt, forecastAt,
+        "CLOUDY", "NONE", 0.0, 10.0, 50.0, null, 20.0, null, null, null, 1.5
+    );
+    entityManager.flush();
+    entityManager.clear();
+
+    // then: 갱신은 스킵되어 빈 값이 리턴되고, DB엔 여전히 최신(05시) 값이 그대로 남아있음
+    assertThat(result).isEmpty();
+    Weather stillLatest = weatherRepository.findByGridAndForecastAt(grid, forecastAt).orElseThrow();
+    assertThat(stillLatest.getId()).isEqualTo(latest.getId());
+    assertThat(stillLatest.getForecastedAt()).isEqualTo(newerForecastedAt);
+    assertThat(stillLatest.getSkyStatus()).isEqualTo(SkyStatus.CLEAR);
+    assertThat(stillLatest.getTemperatureCurrent()).isEqualTo(23.0);
+  }
+
+  @Test
+  @DisplayName("같은 forecastedAt이 다시 오면(재시도 등) 값 갱신은 허용된다")
+  void upsertAllowsUpdateWhenForecastedAtIsEqual() {
+    // given
+    Grid grid = persistGrid(60, 127);
+    Instant forecastAt = Instant.parse("2026-07-30T09:00:00Z");
+    Instant forecastedAt = Instant.parse("2026-07-30T05:00:00Z");
+    weatherRepository.upsert(
+        UUID.randomUUID(), grid.getId(), forecastedAt, forecastAt,
+        "CLOUDY", "NONE", 0.0, 10.0, 50.0, null, 20.0, null, null, null, 1.5
+    );
+    entityManager.flush();
+    entityManager.clear();
+
+    // when: 같은 forecastedAt으로 다시 옴(예: 동시성 충돌 후 재시도)
+    Optional<Weather> result = weatherRepository.upsert(
+        UUID.randomUUID(), grid.getId(), forecastedAt, forecastAt,
+        "CLEAR", "NONE", 0.0, 20.0, 55.0, null, 23.0, null, null, null, 2.3
+    );
+    entityManager.flush();
+    entityManager.clear();
+
+    // then
+    assertThat(result).isPresent();
+    assertThat(result.get().getSkyStatus()).isEqualTo(SkyStatus.CLEAR);
+    assertThat(result.get().getTemperatureCurrent()).isEqualTo(23.0);
   }
 }

@@ -1,6 +1,7 @@
 package com.otboo.domain.weather.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -12,6 +13,7 @@ import com.otboo.domain.weather.entity.SkyStatus;
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.repository.WeatherRepository;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -64,7 +66,7 @@ class WeatherSaverTest {
     given(weatherRepository.upsert(
         any(UUID.class), any(), any(), any(), any(), any(),
         any(), any(), any(), any(), any(), any(), any(), any(), any()
-    )).willReturn(upserted);
+    )).willReturn(Optional.of(upserted));
 
     // when
     Weather result = weatherSaver.upsertInNewTransaction(weather);
@@ -88,5 +90,43 @@ class WeatherSaverTest {
         eq(27.0),
         eq(2.3)
     );
+  }
+
+  @Test
+  @DisplayName("upsert가 비어있으면(더 최신 forecastedAt이 이미 있어 스킵됨) 현재 row를 재조회해서 반환한다")
+  void fallsBackToExistingRowWhenUpsertIsSkipped() {
+    // given
+    Weather weather = newWeather();
+    given(weatherRepository.upsert(
+        any(UUID.class), any(), any(), any(), any(), any(),
+        any(), any(), any(), any(), any(), any(), any(), any(), any()
+    )).willReturn(Optional.empty());
+
+    Weather existing = newWeather();
+    given(weatherRepository.findByGridAndForecastAt(weather.getGrid(), weather.getForecastAt()))
+        .willReturn(Optional.of(existing));
+
+    // when
+    Weather result = weatherSaver.upsertInNewTransaction(weather);
+
+    // then
+    assertThat(result).isSameAs(existing);
+  }
+
+  @Test
+  @DisplayName("upsert가 스킵됐는데 재조회로도 못 찾으면 예외를 던진다(있어선 안 되는 상태)")
+  void throwsWhenUpsertSkippedAndRefetchAlsoMisses() {
+    // given
+    Weather weather = newWeather();
+    given(weatherRepository.upsert(
+        any(UUID.class), any(), any(), any(), any(), any(),
+        any(), any(), any(), any(), any(), any(), any(), any(), any()
+    )).willReturn(Optional.empty());
+    given(weatherRepository.findByGridAndForecastAt(weather.getGrid(), weather.getForecastAt()))
+        .willReturn(Optional.empty());
+
+    // when & then
+    assertThatThrownBy(() -> weatherSaver.upsertInNewTransaction(weather))
+        .isInstanceOf(IllegalStateException.class);
   }
 }
