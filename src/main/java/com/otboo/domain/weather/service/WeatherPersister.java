@@ -19,6 +19,7 @@ import java.util.stream.DoubleStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 // 기상청 응답 항목 하나를 저장하고 응답 DTO로 변환한다. 온디맨드 조회 흐름(WeatherForecastFinder)과
 // 나중에 붙을 배치가 똑같이 재사용할 수 있도록 저장 로직만 따로 뺀 것.
@@ -87,6 +88,9 @@ public class WeatherPersister {
   // 어딘가에 실제 TMN/TMX를 실어줬으면 그 값을 그대로 신뢰하고, 하나도 없으면(배치 경계에 걸린 날 등)
   // 그 날짜 전체 row의 temperature(현재기온) 값들로 직접 계산한다. 이 시점에 grid+날짜로 다시 조회하니까
   // 방금 새로 저장한 row뿐 아니라 이전에 이미 저장돼 있던 row(예: 오늘 이미 지나간 시간대)까지 다 포함된다.
+  // updateDailyTemperatureRange가 @Modifying UPDATE라 트랜잭션이 반드시 있어야 함 - 이 메서드 안에서
+  // SELECT+UPDATE를 하나의 트랜잭션으로 묶는다(트랜잭션 없이 호출되면 TransactionRequiredException).
+  @Transactional
   public void reconcileDailyMinMax(Grid grid, LocalDate date) {
     Instant dayStart = date.atStartOfDay(KST).toInstant();
     Instant dayEnd = date.plusDays(1).atStartOfDay(KST).toInstant();
