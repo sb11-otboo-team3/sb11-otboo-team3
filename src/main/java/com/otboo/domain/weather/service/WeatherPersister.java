@@ -10,12 +10,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
-import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.OptionalDouble;
-import java.util.function.Function;
-import java.util.stream.DoubleStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -84,49 +79,39 @@ public class WeatherPersister {
     return Optional.of(saved.toDto(location));
   }
 
-  // 그 날짜(grid+date)의 min/max를 확정해서 그 날짜에 속한 모든 row에 통일해서 채운다. 기상청이 그 날짜
-  // 어딘가에 실제 TMN/TMX를 실어줬으면 그 값을 그대로 신뢰하고, 하나도 없으면(배치 경계에 걸린 날 등)
-  // 그 날짜 전체 row의 temperature(현재기온) 값들로 직접 계산한다. 이 시점에 grid+날짜로 다시 조회하니까
-  // 방금 새로 저장한 row뿐 아니라 이전에 이미 저장돼 있던 row(예: 오늘 이미 지나간 시간대)까지 다 포함된다.
-  // updateDailyTemperatureRange가 @Modifying UPDATE라 트랜잭션이 반드시 있어야 함 - 이 메서드 안에서
-  // SELECT+UPDATE를 하나의 트랜잭션으로 묶는다(트랜잭션 없이 호출되면 TransactionRequiredException).
-  @Transactional
-  public void reconcileDailyMinMax(Grid grid, LocalDate date) {
+  // 그 날짜(grid+date)의 min/max를 "계산만" 한다(쓰지 않음). 기상청이 그 날짜 어딘가에 실제 TMN/TMX를
+  // 실어줬으면 그 값을 그대로 신뢰하고, 하나도 없으면(배치 경계에 걸린 날 등) 그 날짜 전체 row의
+  // temperature(현재기온) 값들로 직접 계산한다 - row를 앱으로 끌어오지 않고 DB가 집계까지 끝내서 값
+  // 2개만 돌려준다(WeatherRepository.findDailyTemperatureRange). 이 시점에 grid+날짜로 조회하니까
+  // 방금 새로 저장한 row뿐 아니라 이전에 이미 저장돼 있던 row(예: 오늘 이미 지나간 시간대)까지 다
+  // 포함된다. 응답을 만드는 동기 경로에서 쓰이는 부분이라 여기선 DB에 쓰지 않는다(persistDailyMinMax가 담당).
+  @Transactional(readOnly = true)
+  public Optional<DailyTemperatureRange> resolveDailyMinMax(Grid grid, LocalDate date) {
     Instant dayStart = date.atStartOfDay(KST).toInstant();
     Instant dayEnd = date.plusDays(1).atStartOfDay(KST).toInstant();
 
-    List<Weather> dayForecasts = weatherRepository
-        .findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, dayStart, dayEnd);
-    if (dayForecasts.isEmpty()) {
-      return;
-    }
+    WeatherRepository.DailyTemperatureRangeProjection resolved =
+        weatherRepository.findDailyTemperatureRange(grid.getId(), dayStart, dayEnd);
 
-    OptionalDouble min = resolvedExtreme(dayForecasts, Weather::getTemperatureMin, true);
-    OptionalDouble max = resolvedExtreme(dayForecasts, Weather::getTemperatureMax, false);
-
-    if (min.isEmpty() || max.isEmpty()) {
+    if (resolved == null || resolved.getResolvedMin() == null || resolved.getResolvedMax() == null) {
       log.warn("일 최저/최고기온 확정 실패 - 이 날짜에 유효한 기온 데이터가 하나도 없음, grid={}, date={}",
           grid.getId(), date);
-      return;
+      return Optional.empty();
     }
 
-    weatherRepository.updateDailyTemperatureRange(grid, min.getAsDouble(), max.getAsDouble(), dayStart, dayEnd);
+    return Optional.of(new DailyTemperatureRange(resolved.getResolvedMin(), resolved.getResolvedMax()));
   }
 
-  // 공식값(TMN/TMX)이 그 날짜 어딘가에 있으면 그걸 신뢰하고, 하나도 없으면 그 날짜 전체의
-  // temperature(현재기온)로 직접 계산한다.
-  private OptionalDouble resolvedExtreme(
-      List<Weather> dayForecasts, Function<Weather, Double> officialValue, boolean isMin
-  ) {
-    OptionalDouble official = extreme(dayForecasts, officialValue, isMin);
-    return official.isPresent() ? official : extreme(dayForecasts, Weather::getTemperatureCurrent, isMin);
+  // resolveDailyMinMax가 확정한 값을 그 날짜에 속한 모든 row에 통일해서 써넣는다. 이번 응답 자체엔
+  // 이미 위에서 값을 확보해서 반영했으니 영향이 없는, "나중에 다른 요청이 DB를 읽을 때를 위한" 정리
+  // 작업이다 - 그래서 호출부(WeatherForecastFinder)가 응답을 기다리지 않고 백그라운드로 실행한다.
+  @Transactional
+  public void persistDailyMinMax(Grid grid, LocalDate date, double min, double max) {
+    Instant dayStart = date.atStartOfDay(KST).toInstant();
+    Instant dayEnd = date.plusDays(1).atStartOfDay(KST).toInstant();
+    weatherRepository.updateDailyTemperatureRange(grid, min, max, dayStart, dayEnd);
   }
 
-  private OptionalDouble extreme(List<Weather> dayForecasts, Function<Weather, Double> valueOf, boolean isMin) {
-    DoubleStream values = dayForecasts.stream()
-        .map(valueOf)
-        .filter(Objects::nonNull)
-        .mapToDouble(Double::doubleValue);
-    return isMin ? values.min() : values.max();
+  public record DailyTemperatureRange(double min, double max) {
   }
 }

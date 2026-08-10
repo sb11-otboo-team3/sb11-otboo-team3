@@ -2,7 +2,6 @@ package com.otboo.domain.weather.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
@@ -174,120 +173,60 @@ class WeatherPersisterTest {
     assertThat(result.get().skyStatus()).isEqualTo(SkyStatus.MOSTLY_CLOUDY);
   }
 
-  private Weather weatherWithTemperature(Instant forecastAt, Double current, Double min, Double max) {
-    return Weather.builder()
-        .grid(grid)
-        .forecastedAt(forecastAt)
-        .forecastAt(forecastAt)
-        .skyStatus(SkyStatus.CLEAR)
-        .precipitationType(PrecipitationType.NONE)
-        .temperatureCurrent(current)
-        .temperatureMin(min)
-        .temperatureMax(max)
-        .build();
-  }
-
   @Test
-  @DisplayName("그 날짜에 예보가 하나도 없으면 아무것도 하지 않는다")
-  void reconcileDailyMinMaxDoesNothingWhenNoForecastsForDate() {
+  @DisplayName("DB가 계산해준 min/max가 있으면 그대로 감싸서 리턴한다")
+  void resolveDailyMinMaxReturnsValueWhenPresent() {
     // given
     LocalDate date = LocalDate.of(2026, 7, 30);
     Instant dayStart = date.atStartOfDay(KST).toInstant();
     Instant dayEnd = date.plusDays(1).atStartOfDay(KST).toInstant();
-    given(weatherRepository.findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, dayStart, dayEnd))
-        .willReturn(List.of());
+    WeatherRepository.DailyTemperatureRangeProjection projection =
+        Mockito.mock(WeatherRepository.DailyTemperatureRangeProjection.class);
+    given(projection.getResolvedMin()).willReturn(18.0);
+    given(projection.getResolvedMax()).willReturn(27.0);
+    given(weatherRepository.findDailyTemperatureRange(grid.getId(), dayStart, dayEnd))
+        .willReturn(projection);
 
     // when
-    weatherPersister.reconcileDailyMinMax(grid, date);
+    Optional<WeatherPersister.DailyTemperatureRange> result = weatherPersister.resolveDailyMinMax(grid, date);
 
     // then
-    Mockito.verify(weatherRepository, Mockito.never())
-        .updateDailyTemperatureRange(any(), anyDouble(), anyDouble(), any(), any());
+    assertThat(result).contains(new WeatherPersister.DailyTemperatureRange(18.0, 27.0));
   }
 
   @Test
-  @DisplayName("그 날짜 어딘가에 공식 TMN/TMX가 있으면 그 값을 그대로 신뢰해서 통일한다")
-  void reconcileDailyMinMaxUsesOfficialValuesWhenPresent() {
+  @DisplayName("이 날짜에 유효한 기온 데이터가 하나도 없으면(min/max가 null) 빈 값을 리턴한다")
+  void resolveDailyMinMaxReturnsEmptyWhenNoValidData() {
     // given
     LocalDate date = LocalDate.of(2026, 7, 30);
     Instant dayStart = date.atStartOfDay(KST).toInstant();
     Instant dayEnd = date.plusDays(1).atStartOfDay(KST).toInstant();
-    List<Weather> dayForecasts = List.of(
-        weatherWithTemperature(dayStart.plusSeconds(3600 * 6), 20.0, 18.0, null),
-        weatherWithTemperature(dayStart.plusSeconds(3600 * 15), 26.0, null, 27.0),
-        weatherWithTemperature(dayStart.plusSeconds(3600 * 20), 22.0, null, null)
-    );
-    given(weatherRepository.findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, dayStart, dayEnd))
-        .willReturn(dayForecasts);
+    // getResolvedMin()이 null이면 short-circuit으로 getResolvedMax()는 아예 호출되지 않으므로 스텁 안 함.
+    WeatherRepository.DailyTemperatureRangeProjection projection =
+        Mockito.mock(WeatherRepository.DailyTemperatureRangeProjection.class);
+    given(projection.getResolvedMin()).willReturn(null);
+    given(weatherRepository.findDailyTemperatureRange(grid.getId(), dayStart, dayEnd))
+        .willReturn(projection);
 
     // when
-    weatherPersister.reconcileDailyMinMax(grid, date);
+    Optional<WeatherPersister.DailyTemperatureRange> result = weatherPersister.resolveDailyMinMax(grid, date);
+
+    // then
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  @DisplayName("persistDailyMinMax는 계산된 값을 그대로 updateDailyTemperatureRange에 넘긴다")
+  void persistDailyMinMaxDelegatesToRepository() {
+    // given
+    LocalDate date = LocalDate.of(2026, 7, 30);
+    Instant dayStart = date.atStartOfDay(KST).toInstant();
+    Instant dayEnd = date.plusDays(1).atStartOfDay(KST).toInstant();
+
+    // when
+    weatherPersister.persistDailyMinMax(grid, date, 18.0, 27.0);
 
     // then
     verify(weatherRepository).updateDailyTemperatureRange(grid, 18.0, 27.0, dayStart, dayEnd);
-  }
-
-  @Test
-  @DisplayName("공식 TMN/TMX가 하나도 없으면 그 날짜 전체 temperature 값으로 직접 계산한다")
-  void reconcileDailyMinMaxComputesFromCurrentTemperatureWhenNoOfficialValues() {
-    // given
-    LocalDate date = LocalDate.of(2026, 7, 30);
-    Instant dayStart = date.atStartOfDay(KST).toInstant();
-    Instant dayEnd = date.plusDays(1).atStartOfDay(KST).toInstant();
-    List<Weather> dayForecasts = List.of(
-        weatherWithTemperature(dayStart.plusSeconds(3600 * 6), 15.0, null, null),
-        weatherWithTemperature(dayStart.plusSeconds(3600 * 15), 25.0, null, null),
-        weatherWithTemperature(dayStart.plusSeconds(3600 * 20), 20.0, null, null)
-    );
-    given(weatherRepository.findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, dayStart, dayEnd))
-        .willReturn(dayForecasts);
-
-    // when
-    weatherPersister.reconcileDailyMinMax(grid, date);
-
-    // then
-    verify(weatherRepository).updateDailyTemperatureRange(grid, 15.0, 25.0, dayStart, dayEnd);
-  }
-
-  @Test
-  @DisplayName("min만 공식값이 있으면 min은 공식값을, max는 temperature로 직접 계산해서 따로 채운다")
-  void reconcileDailyMinMaxResolvesMinAndMaxIndependently() {
-    // given
-    LocalDate date = LocalDate.of(2026, 7, 30);
-    Instant dayStart = date.atStartOfDay(KST).toInstant();
-    Instant dayEnd = date.plusDays(1).atStartOfDay(KST).toInstant();
-    List<Weather> dayForecasts = List.of(
-        weatherWithTemperature(dayStart.plusSeconds(3600 * 6), 16.0, 16.0, null),
-        weatherWithTemperature(dayStart.plusSeconds(3600 * 15), 24.0, null, null)
-    );
-    given(weatherRepository.findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, dayStart, dayEnd))
-        .willReturn(dayForecasts);
-
-    // when
-    weatherPersister.reconcileDailyMinMax(grid, date);
-
-    // then
-    verify(weatherRepository).updateDailyTemperatureRange(grid, 16.0, 24.0, dayStart, dayEnd);
-  }
-
-  @Test
-  @DisplayName("유효한 기온 데이터가 하나도 없으면(전부 null) 아무것도 하지 않는다")
-  void reconcileDailyMinMaxDoesNothingWhenNoValidTemperatureData() {
-    // given
-    LocalDate date = LocalDate.of(2026, 7, 30);
-    Instant dayStart = date.atStartOfDay(KST).toInstant();
-    Instant dayEnd = date.plusDays(1).atStartOfDay(KST).toInstant();
-    List<Weather> dayForecasts = List.of(
-        weatherWithTemperature(dayStart.plusSeconds(3600 * 6), null, null, null)
-    );
-    given(weatherRepository.findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, dayStart, dayEnd))
-        .willReturn(dayForecasts);
-
-    // when
-    weatherPersister.reconcileDailyMinMax(grid, date);
-
-    // then
-    Mockito.verify(weatherRepository, Mockito.never())
-        .updateDailyTemperatureRange(any(), anyDouble(), anyDouble(), any(), any());
   }
 }

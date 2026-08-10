@@ -2,6 +2,8 @@ package com.otboo.domain.weather.service;
 
 import com.otboo.domain.weather.cache.WeatherForecastCache;
 import com.otboo.domain.weather.client.KmaWeatherClient;
+import com.otboo.domain.weather.dto.TemperatureDto;
+import com.otboo.domain.weather.dto.VilageFcstItem;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
 import com.otboo.domain.weather.dto.WeatherDto;
 import com.otboo.domain.weather.entity.Grid;
@@ -18,10 +20,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -33,6 +36,8 @@ import reactor.core.scheduler.Schedulers;
 public class WeatherForecastFinder {
 
   private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+  // 항목 저장/날짜별 min-max 계산을 동시에 몇 개까지 처리할지 - 커넥션 풀(기본 10개) 여유를 남겨두려고 보수적으로 잡음.
+  private static final int DB_CONCURRENCY = 5;
 
   private final GridResolver gridResolver;
   private final VilageFcstBaseTimeResolver baseTimeResolver;
@@ -117,20 +122,7 @@ public class WeatherForecastFinder {
     return Mono.defer(() -> kmaWeatherClient.getForecast(location.x(), location.y(), baseTime))
         .doOnNext(forecasts -> log.debug("날씨 조회 - 기상청 API 호출, x={}, y={}, forecastedAt={}",
             weatherGrid.x(), weatherGrid.y(), forecastedAt))
-        .flatMap(forecasts -> Mono.fromCallable(() -> {
-              List<WeatherDto> persisted = forecasts.stream()
-                  .map(item -> weatherPersister.persist(item, grid, location))
-                  .flatMap(Optional::stream)
-                  .toList();
-              // 방금 저장한 항목들이 걸치는 날짜마다 min/max를 확정해서 그 날짜 전체 row에 통일해서 채운다
-              // (이전에 이미 저장돼 있던 row까지 포함해서 재계산됨 - WeatherPersister.reconcileDailyMinMax 참고).
-              forecasts.stream()
-                  .map(item -> item.forecastAt().atZone(KST).toLocalDate())
-                  .distinct()
-                  .forEach(date -> weatherPersister.reconcileDailyMinMax(grid, date));
-              return persisted;
-            })
-            .subscribeOn(Schedulers.boundedElastic()))
+        .flatMap(forecasts -> persistAndResolveDailyRanges(forecasts, grid, location))
         .map(allForecasts -> dailyForecastSelector.select(allForecasts, clock.instant()))
         .flatMap(dailyForecasts -> saveToCache(weatherGrid, forecastedAt, dailyForecasts))
         // 기상청 API에서 응답을 못받았을시 이전 발표로 폴백
@@ -140,6 +132,79 @@ public class WeatherForecastFinder {
           return fallbackToPreviousForecast(weatherGrid, grid, baseTime, location)
               .switchIfEmpty(Mono.error(e));
         });
+  }
+
+  // 항목들을 동시에(최대 DB_CONCURRENCY개씩) 저장한 뒤, 그 항목들이 걸치는 날짜마다 min/max를 동시에
+  // 계산해서 응답용 DTO에 반영한다. min/max를 DB에 실제로 퍼뜨려 쓰는 것은 응답과 무관하므로 기다리지 않는다.
+  private Mono<List<WeatherDto>> persistAndResolveDailyRanges(
+      List<VilageFcstItem> forecasts, Grid grid, WeatherAPILocation location
+  ) {
+    return Flux.fromIterable(forecasts)
+        .flatMap(item -> Mono.fromCallable(() -> weatherPersister.persist(item, grid, location))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(Mono::justOrEmpty),
+            DB_CONCURRENCY)
+        .collectList()
+        .flatMap(persisted -> resolveDailyRanges(forecasts, grid)
+            .doOnNext(resolvedRanges -> persistDailyRangesInBackground(grid, resolvedRanges))
+            .map(resolvedRanges -> applyResolvedRanges(persisted, resolvedRanges)));
+  }
+
+  // 이번 항목들이 걸치는 날짜마다(동시에, 최대 DB_CONCURRENCY개씩) min/max를 계산만 한다(DB에 안 씀).
+  private Mono<Map<LocalDate, WeatherPersister.DailyTemperatureRange>> resolveDailyRanges(
+      List<VilageFcstItem> forecasts, Grid grid
+  ) {
+    List<LocalDate> dates = forecasts.stream()
+        .map(item -> item.forecastAt().atZone(KST).toLocalDate())
+        .distinct()
+        .toList();
+
+    return Flux.fromIterable(dates)
+        .flatMap(date -> Mono.fromCallable(() -> weatherPersister.resolveDailyMinMax(grid, date))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(range -> Mono.justOrEmpty(range.map(r -> Map.entry(date, r)))),
+            DB_CONCURRENCY)
+        .collectMap(Map.Entry::getKey, Map.Entry::getValue);
+  }
+
+  // 계산한 min/max를 그 날짜 모든 row에 실제로 써넣는다 - 이번 응답과는 무관한 뒷정리라 구독만 하고
+  // 기다리지 않는다. 실패해도 다음에 이 날짜가 다시 조회되면 그때 다시 계산되니 응답에 영향 없음.
+  private void persistDailyRangesInBackground(
+      Grid grid, Map<LocalDate, WeatherPersister.DailyTemperatureRange> resolvedRanges
+  ) {
+    resolvedRanges.forEach((date, range) ->
+        Mono.fromRunnable(() -> weatherPersister.persistDailyMinMax(grid, date, range.min(), range.max()))
+            .subscribeOn(Schedulers.boundedElastic())
+            .doOnError(e -> log.error(
+                "일 최저/최고기온 DB 반영 실패 - 다음에 이 날짜가 다시 조회되면 그때 다시 계산됨, grid={}, date={}",
+                grid.getId(), date, e))
+            .onErrorResume(e -> Mono.empty())
+            .subscribe());
+  }
+
+  // 계산된 날짜별 min/max를 그 날짜에 속한 응답 DTO들에 반영한다.
+  private List<WeatherDto> applyResolvedRanges(
+      List<WeatherDto> persisted, Map<LocalDate, WeatherPersister.DailyTemperatureRange> resolvedRanges
+  ) {
+    return persisted.stream()
+        .map(dto -> {
+          WeatherPersister.DailyTemperatureRange range =
+              resolvedRanges.get(dto.forecastAt().atZone(KST).toLocalDate());
+          if (range == null) {
+            return dto;
+          }
+          TemperatureDto updatedTemperature = new TemperatureDto(
+              dto.temperature().current(),
+              dto.temperature().comparedToDayBefore(),
+              range.min(),
+              range.max()
+          );
+          return new WeatherDto(
+              dto.id(), dto.forecastedAt(), dto.forecastAt(), dto.location(),
+              dto.skyStatus(), dto.precipitation(), dto.humidity(), updatedTemperature, dto.windSpeed()
+          );
+        })
+        .toList();
   }
 
   // 날짜별 대표 예보 전체(dailyForecasts, 이미 하루에 하나씩만 있는 상태)를 이 발표 하나의 키에 통째로 씀.

@@ -148,4 +148,77 @@ class WeatherRepositoryTest {
       assertThat(w.getTemperatureMax()).isEqualTo(25.0);
     });
   }
+
+  @Test
+  @DisplayName("공식 TMN/TMX가 있으면 그 값으로 resolvedMin/resolvedMax를 계산한다")
+  void findDailyTemperatureRangeUsesOfficialValuesWhenPresent() {
+    // given
+    Grid grid = persistGrid(60, 127);
+    Instant dayStart = Instant.parse("2026-07-30T00:00:00Z");
+    weatherRepository.upsert(
+        UUID.randomUUID(), grid.getId(), dayStart, dayStart.plusSeconds(3600 * 6),
+        "CLEAR", "NONE", 0.0, 0.0, 45.0, null, 20.0, null, 18.0, null, 2.0
+    ); // temperatureMin=18.0 (TMN)
+    weatherRepository.upsert(
+        UUID.randomUUID(), grid.getId(), dayStart, dayStart.plusSeconds(3600 * 15),
+        "CLEAR", "NONE", 0.0, 0.0, 45.0, null, 26.0, null, null, 27.0, 2.0
+    ); // temperatureMax=27.0 (TMX)
+    entityManager.flush();
+    entityManager.clear();
+
+    Instant dayEnd = dayStart.plusSeconds(3600 * 24);
+
+    // when
+    WeatherRepository.DailyTemperatureRangeProjection result =
+        weatherRepository.findDailyTemperatureRange(grid.getId(), dayStart, dayEnd);
+
+    // then
+    assertThat(result.getResolvedMin()).isEqualTo(18.0);
+    assertThat(result.getResolvedMax()).isEqualTo(27.0);
+  }
+
+  @Test
+  @DisplayName("공식 TMN/TMX가 하나도 없으면 temperature_current로 직접 계산한다")
+  void findDailyTemperatureRangeComputesFromCurrentTemperatureWhenNoOfficialValues() {
+    // given
+    Grid grid = persistGrid(60, 127);
+    Instant dayStart = Instant.parse("2026-07-30T00:00:00Z");
+    weatherRepository.upsert(
+        UUID.randomUUID(), grid.getId(), dayStart, dayStart.plusSeconds(3600 * 6),
+        "CLEAR", "NONE", 0.0, 0.0, 45.0, null, 15.0, null, null, null, 2.0
+    );
+    weatherRepository.upsert(
+        UUID.randomUUID(), grid.getId(), dayStart, dayStart.plusSeconds(3600 * 15),
+        "CLEAR", "NONE", 0.0, 0.0, 45.0, null, 25.0, null, null, null, 2.0
+    );
+    entityManager.flush();
+    entityManager.clear();
+
+    Instant dayEnd = dayStart.plusSeconds(3600 * 24);
+
+    // when
+    WeatherRepository.DailyTemperatureRangeProjection result =
+        weatherRepository.findDailyTemperatureRange(grid.getId(), dayStart, dayEnd);
+
+    // then
+    assertThat(result.getResolvedMin()).isEqualTo(15.0);
+    assertThat(result.getResolvedMax()).isEqualTo(25.0);
+  }
+
+  @Test
+  @DisplayName("그 날짜에 row가 하나도 없으면 resolvedMin/resolvedMax가 null이다")
+  void findDailyTemperatureRangeReturnsNullWhenNoRowsExist() {
+    // given
+    Grid grid = persistGrid(60, 127);
+    Instant dayStart = Instant.parse("2026-07-30T00:00:00Z");
+    Instant dayEnd = dayStart.plusSeconds(3600 * 24);
+
+    // when
+    WeatherRepository.DailyTemperatureRangeProjection result =
+        weatherRepository.findDailyTemperatureRange(grid.getId(), dayStart, dayEnd);
+
+    // then
+    assertThat(result.getResolvedMin()).isNull();
+    assertThat(result.getResolvedMax()).isNull();
+  }
 }

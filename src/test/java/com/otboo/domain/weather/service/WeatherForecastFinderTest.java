@@ -45,6 +45,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
 
@@ -224,10 +225,43 @@ class WeatherForecastFinderTest {
         LocalDateTime.of(2026, 7, 31, 8, 0).atZone(kst).toInstant(),
         LocalDateTime.of(2026, 8, 1, 9, 0).atZone(kst).toInstant()
     );
-    // 저장한 항목들이 걸치는 날짜(7/30, 7/31, 8/1) 각각에 대해 min/max 확정이 한 번씩만 이뤄져야 함
-    verify(weatherPersister).reconcileDailyMinMax(existingGrid, LocalDate.of(2026, 7, 30));
-    verify(weatherPersister).reconcileDailyMinMax(existingGrid, LocalDate.of(2026, 7, 31));
-    verify(weatherPersister).reconcileDailyMinMax(existingGrid, LocalDate.of(2026, 8, 1));
+    // 저장한 항목들이 걸치는 날짜(7/30, 7/31, 8/1) 각각에 대해 min/max 계산이 한 번씩만 이뤄져야 함
+    verify(weatherPersister).resolveDailyMinMax(existingGrid, LocalDate.of(2026, 7, 30));
+    verify(weatherPersister).resolveDailyMinMax(existingGrid, LocalDate.of(2026, 7, 31));
+    verify(weatherPersister).resolveDailyMinMax(existingGrid, LocalDate.of(2026, 8, 1));
+  }
+
+  @Test
+  @DisplayName("계산된 min/max를 응답 DTO에 반영하고, DB 반영은 별도로(백그라운드) 요청한다")
+  void appliesResolvedRangeToResponseAndPersistsInBackground() {
+    // given
+    WeatherAPILocation location = location(37.5665, 126.9780);
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+
+    given(gridResolver.findOrRegister(any())).willReturn(existingGrid);
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+
+    VilageFcstItem item = vilageFcstItem(LocalDateTime.of(2026, 7, 30, 9, 0));
+    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(Mono.just(List.of(item)));
+
+    WeatherPersister.DailyTemperatureRange resolvedRange = new WeatherPersister.DailyTemperatureRange(15.0, 26.0);
+    given(weatherPersister.resolveDailyMinMax(existingGrid, LocalDate.of(2026, 7, 30)))
+        .willReturn(Optional.of(resolvedRange));
+
+    // when
+    List<WeatherDto> result = weatherForecastFinder.find(location).block();
+
+    // then: 응답 DTO의 min/max가 resolveDailyMinMax가 계산해준 값으로 덮어써짐
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).temperature().min()).isEqualTo(15.0);
+    assertThat(result.get(0).temperature().max()).isEqualTo(26.0);
+
+    // then: DB 반영(persistDailyMinMax)은 응답과 별개로 백그라운드에서 실행되므로(구독만 하고 안 기다림),
+    // block() 리턴 시점엔 아직 안 끝났을 수 있어 timeout으로 폴링해서 확인한다.
+    verify(weatherPersister, Mockito.timeout(1000))
+        .persistDailyMinMax(existingGrid, LocalDate.of(2026, 7, 30), 15.0, 26.0);
   }
 
   private VilageFcstItem vilageFcstItem(LocalDateTime forecastAt) {

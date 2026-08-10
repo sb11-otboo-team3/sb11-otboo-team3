@@ -74,7 +74,7 @@ public interface WeatherRepository extends JpaRepository<Weather, UUID> {
       @Param("windSpeed") Double windSpeed
   );
 
-  // 그 날짜(reconcileDailyMinMax가 확정한) 전체 row에 min/max를 통일해서 채운다.
+  // 그 날짜(WeatherPersister.resolveDailyMinMax가 확정한) 전체 row에 min/max를 통일해서 채운다.
   @Modifying
   @Query("UPDATE Weather w SET w.temperatureMin = :min, w.temperatureMax = :max "
       + "WHERE w.grid = :grid AND w.forecastAt >= :start AND w.forecastAt < :end")
@@ -85,4 +85,26 @@ public interface WeatherRepository extends JpaRepository<Weather, UUID> {
       @Param("start") Instant start,
       @Param("end") Instant end
   );
+
+  // 그 날짜 row를 전부 앱으로 끌어와 자바에서 집계하는 대신, DB가 조건부 집계(공식 TMN/TMX가 있으면
+  // 그 값, 없으면 temperature_current)까지 끝내서 값 2개만 돌려준다. WeatherPersister.resolveDailyMinMax
+  // 전용 - 응답을 만드는 동기 경로에서 쓰이므로 왕복을 최소화하기 위함.
+  @Query(value = """
+      SELECT
+          CASE WHEN COUNT(temperature_min) > 0 THEN MIN(temperature_min) ELSE MIN(temperature_current) END AS resolvedMin,
+          CASE WHEN COUNT(temperature_max) > 0 THEN MAX(temperature_max) ELSE MAX(temperature_current) END AS resolvedMax
+      FROM weathers
+      WHERE grid_id = :gridId AND forecast_at >= :start AND forecast_at < :end
+      """, nativeQuery = true)
+  DailyTemperatureRangeProjection findDailyTemperatureRange(
+      @Param("gridId") UUID gridId,
+      @Param("start") Instant start,
+      @Param("end") Instant end
+  );
+
+  interface DailyTemperatureRangeProjection {
+    Double getResolvedMin();
+
+    Double getResolvedMax();
+  }
 }
