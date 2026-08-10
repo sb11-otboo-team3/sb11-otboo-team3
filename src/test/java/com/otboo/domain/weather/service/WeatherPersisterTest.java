@@ -216,6 +216,41 @@ class WeatherPersisterTest {
   }
 
   @Test
+  @DisplayName("위치 정보 없이도(배치용) 저장에 성공하면 저장된 엔티티를 그대로 리턴한다")
+  void persistWithoutLocationReturnsSavedEntityWhenSuccessful() {
+    // given: 배치는 응답 DTO(위치 포함)가 필요 없으니 location 없는 오버로드를 쓴다
+    VilageFcstItem item = item(LocalDateTime.of(2026, 7, 30, 9, 0), SkyStatus.CLEAR, PrecipitationType.NONE);
+    Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 9, 0).atZone(KST).toInstant();
+    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt))
+        .willReturn(Optional.empty());
+    given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
+        .willAnswer(invocation -> invocation.getArgument(0));
+
+    // when
+    Optional<Weather> result = weatherPersister.persist(item, grid);
+
+    // then
+    assertThat(result).isPresent();
+    assertThat(result.get().getSkyStatus()).isEqualTo(SkyStatus.CLEAR);
+    assertThat(result.get().getTemperatureCurrent()).isEqualTo(23.0);
+    verify(weatherSaver).upsertInNewTransaction(any(Weather.class));
+  }
+
+  @Test
+  @DisplayName("위치 정보 없는 오버로드도 매핑 안 되는 코드는 동일하게 건너뛴다")
+  void persistWithoutLocationSkipsUnsupportedCodesLikeLocationOverload() {
+    // given
+    VilageFcstItem unsupportedSky = item(LocalDateTime.of(2026, 7, 30, 9, 0), null, PrecipitationType.NONE);
+
+    // when
+    Optional<Weather> result = weatherPersister.persist(unsupportedSky, grid);
+
+    // then
+    assertThat(result).isEmpty();
+    Mockito.verifyNoInteractions(weatherSaver);
+  }
+
+  @Test
   @DisplayName("persistDailyMinMax는 계산된 값을 그대로 updateDailyTemperatureRange에 넘긴다")
   void persistDailyMinMaxDelegatesToRepository() {
     // given

@@ -56,6 +56,17 @@ class WeatherRepositoryTest {
     return grid;
   }
 
+  // 피드가 이 weather를 들고 있는 상황을 재현하기 위한 최소 feed row. author_id는 nullable이라
+  // User를 따로 안 만들어도 된다 - deleteBatchOlderThan 테스트 전용 헬퍼.
+  private void persistFeedReferencing(UUID weatherId) {
+    entityManager.createNativeQuery(
+            "INSERT INTO feeds (id, weather_id, weather_snapshot, content) "
+                + "VALUES (:id, :weatherId, '{}'::jsonb, 'test')")
+        .setParameter("id", UUID.randomUUID())
+        .setParameter("weatherId", weatherId)
+        .executeUpdate();
+  }
+
   @Test
   @DisplayName("같은 (grid, forecastAt)에 row가 없으면 새로 만든다")
   void upsertInsertsWhenNoExistingRow() {
@@ -283,5 +294,124 @@ class WeatherRepositoryTest {
     assertThat(result).isPresent();
     assertThat(result.get().getSkyStatus()).isEqualTo(SkyStatus.CLEAR);
     assertThat(result.get().getTemperatureCurrent()).isEqualTo(23.0);
+  }
+
+  @Test
+  @DisplayName("forecastAt이 cutoff보다 과거고 피드도 참조하지 않으면 삭제된다")
+  void deleteBatchOlderThanDeletesOldUnreferencedRows() {
+    // given
+    Grid grid = persistGrid(60, 127);
+    Instant forecastAt = Instant.parse("2026-08-01T00:00:00Z");
+    Weather old = weatherRepository.upsert(
+        UUID.randomUUID(), grid.getId(), forecastAt, forecastAt,
+        "CLEAR", "NONE", 0.0, 0.0, 45.0, null, 20.0, null, null, null, 2.0
+    ).orElseThrow();
+    entityManager.flush();
+    entityManager.clear();
+
+    Instant cutoff = Instant.parse("2026-08-05T00:00:00Z");
+
+    // when
+    int deleted = weatherRepository.deleteBatchOlderThan(cutoff, 100);
+    entityManager.flush();
+    entityManager.clear();
+
+    // then
+    assertThat(deleted).isEqualTo(1);
+    assertThat(weatherRepository.findById(old.getId())).isEmpty();
+  }
+
+  @Test
+  @DisplayName("forecastAt이 cutoff 이후면(최근 데이터) 삭제되지 않는다")
+  void deleteBatchOlderThanKeepsRecentRows() {
+    // given
+    Grid grid = persistGrid(60, 127);
+    Instant forecastAt = Instant.parse("2026-08-09T00:00:00Z");
+    Weather recent = weatherRepository.upsert(
+        UUID.randomUUID(), grid.getId(), forecastAt, forecastAt,
+        "CLEAR", "NONE", 0.0, 0.0, 45.0, null, 20.0, null, null, null, 2.0
+    ).orElseThrow();
+    entityManager.flush();
+    entityManager.clear();
+
+    Instant cutoff = Instant.parse("2026-08-05T00:00:00Z");
+
+    // when
+    int deleted = weatherRepository.deleteBatchOlderThan(cutoff, 100);
+    entityManager.flush();
+    entityManager.clear();
+
+    // then
+    assertThat(deleted).isEqualTo(0);
+    assertThat(weatherRepository.findById(recent.getId())).isPresent();
+  }
+
+  @Test
+  @DisplayName("오래된 데이터라도 피드가 들고 있는 weather는 삭제되지 않는다")
+  void deleteBatchOlderThanKeepsRowsReferencedByFeed() {
+    // given
+    Grid grid = persistGrid(60, 127);
+    Instant forecastAt = Instant.parse("2026-08-01T00:00:00Z");
+    Weather heldByFeed = weatherRepository.upsert(
+        UUID.randomUUID(), grid.getId(), forecastAt, forecastAt,
+        "CLEAR", "NONE", 0.0, 0.0, 45.0, null, 20.0, null, null, null, 2.0
+    ).orElseThrow();
+    persistFeedReferencing(heldByFeed.getId());
+    entityManager.flush();
+    entityManager.clear();
+
+    Instant cutoff = Instant.parse("2026-08-05T00:00:00Z");
+
+    // when
+    int deleted = weatherRepository.deleteBatchOlderThan(cutoff, 100);
+    entityManager.flush();
+    entityManager.clear();
+
+    // then
+    assertThat(deleted).isEqualTo(0);
+    assertThat(weatherRepository.findById(heldByFeed.getId())).isPresent();
+  }
+
+  @Test
+  @DisplayName("조건에 맞는 행이 batchSize보다 많으면 batchSize개까지만 지운다")
+  void deleteBatchOlderThanRespectsBatchSizeLimit() {
+    // given: cutoff보다 과거인 서로 다른 시간대 3개
+    Grid grid = persistGrid(60, 127);
+    Instant base = Instant.parse("2026-08-01T00:00:00Z");
+    for (int i = 0; i < 3; i++) {
+      Instant forecastAt = base.plusSeconds(3600L * i);
+      weatherRepository.upsert(
+          UUID.randomUUID(), grid.getId(), forecastAt, forecastAt,
+          "CLEAR", "NONE", 0.0, 0.0, 45.0, null, 20.0, null, null, null, 2.0
+      );
+    }
+    entityManager.flush();
+    entityManager.clear();
+
+    Instant cutoff = Instant.parse("2026-08-05T00:00:00Z");
+
+    // when
+    int deleted = weatherRepository.deleteBatchOlderThan(cutoff, 2);
+    entityManager.flush();
+    entityManager.clear();
+
+    // then: 2개만 지워지고 1개는 다음 호출을 위해 남아있음
+    assertThat(deleted).isEqualTo(2);
+    List<Weather> remaining = weatherRepository.findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(
+        grid, base, base.plusSeconds(3600L * 3));
+    assertThat(remaining).hasSize(1);
+  }
+
+  @Test
+  @DisplayName("조건에 맞는 행이 하나도 없으면 0을 리턴한다(CONTINUABLE 루프 종료 조건)")
+  void deleteBatchOlderThanReturnsZeroWhenNothingMatches() {
+    // given: 삭제 대상이 될 데이터를 아예 안 만듦
+    Instant cutoff = Instant.parse("2026-08-05T00:00:00Z");
+
+    // when
+    int deleted = weatherRepository.deleteBatchOlderThan(cutoff, 100);
+
+    // then
+    assertThat(deleted).isEqualTo(0);
   }
 }
