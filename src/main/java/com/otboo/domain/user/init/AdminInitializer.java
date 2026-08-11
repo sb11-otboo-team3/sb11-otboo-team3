@@ -1,9 +1,5 @@
-package com.otboo.global.config;
+package com.otboo.domain.user.init;
 
-import com.otboo.domain.user.entity.User;
-import com.otboo.domain.user.entity.UserRole;
-import com.otboo.domain.user.repository.UserRepository;
-import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;

@@ -1,4 +1,4 @@
-package com.otboo.global.config;
+package com.otboo.domain.user.init;
 
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;
