@@ -987,6 +987,10 @@ ecs:DescribeTaskDefinition
 ecs:RegisterTaskDefinition
 ecs:DescribeServices
 ecs:UpdateService
+ecs:ListTasks
+ecs:DescribeTasks
+elasticloadbalancing:DescribeTargetHealth
+elasticloadbalancing:DescribeLoadBalancers
 iam:PassRole
 ```
 
@@ -1032,8 +1036,13 @@ concurrency:
   cancel-in-progress: false
 ```
 
-현재 실행 중인 배포는 끝까지 진행시키고,
-후속 실행은 동일한 concurrency group에서 순서를 기다리도록 합니다.
+현재 실행 중인 배포는 새로운 Push로 취소하지 않습니다.
+
+기본 concurrency 정책에서는 동일 Group의 pending 실행을 하나만 유지하므로,
+배포 중 develop Push가 여러 번 발생하면 기존 pending 실행은 취소되고
+가장 최신 pending 실행으로 대체될 수 있습니다.
+
+따라서 실행 중인 배포를 완료한 뒤 가장 최신 Git SHA를 후속 배포하는 정책으로 운영합니다.
 
 ### 자동 배포 검증 기준
 

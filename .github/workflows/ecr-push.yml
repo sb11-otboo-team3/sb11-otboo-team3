@@ -20,6 +20,7 @@ env:
   ECS_CLUSTER: otboo-prod-cluster
   ECS_SERVICE: otboo-prod-backend-service
   ECS_CONTAINER_NAME: otboo-backend
+  ALB_NAME: otboo-prod-alb
 
 jobs:
   build-and-push:
@@ -294,6 +295,257 @@ jobs:
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
+
+      - name: Verify ECS deployment
+        env:
+          TARGET_IMAGE: ${{ steps.ecs-deployment.outputs.target-image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TASKS_JSON="$(mktemp)"
+          TARGET_HEALTH_JSON="$(mktemp)"
+          RUNNING_IPS_FILE="$(mktemp)"
+
+          trap 'rm -f "$TASKS_JSON" "$TARGET_HEALTH_JSON" "$RUNNING_IPS_FILE"' EXIT
+
+          SERVICE_INFO="$(
+            aws ecs describe-services \
+              --cluster "$ECS_CLUSTER" \
+              --services "$ECS_SERVICE" \
+              --region "$AWS_REGION" \
+              --query 'services[0].[taskDefinition,desiredCount,runningCount,pendingCount,loadBalancers[0].targetGroupArn]' \
+              --output text \
+              --no-cli-pager
+          )"
+
+          read -r \
+            SERVICE_TASK_DEFINITION \
+            DESIRED_COUNT \
+            RUNNING_COUNT \
+            PENDING_COUNT \
+            TARGET_GROUP_ARN \
+            <<< "$SERVICE_INFO"
+
+          test -n "$SERVICE_TASK_DEFINITION"
+          test "$SERVICE_TASK_DEFINITION" != "None"
+
+          test "$DESIRED_COUNT" -gt 0
+
+          test "$RUNNING_COUNT" -eq "$DESIRED_COUNT" || {
+            echo "Running task count does not match desired count."
+            echo "Desired: $DESIRED_COUNT"
+            echo "Running: $RUNNING_COUNT"
+            exit 1
+          }
+
+          test "$PENDING_COUNT" -eq 0 || {
+            echo "ECS service still has pending tasks: $PENDING_COUNT"
+            exit 1
+          }
+
+          test -n "$TARGET_GROUP_ARN"
+          test "$TARGET_GROUP_ARN" != "None"
+
+          SERVICE_IMAGE="$(
+            aws ecs describe-task-definition \
+              --task-definition "$SERVICE_TASK_DEFINITION" \
+              --region "$AWS_REGION" \
+              --query "taskDefinition.containerDefinitions[?name=='${ECS_CONTAINER_NAME}'].image | [0]" \
+              --output text \
+              --no-cli-pager
+          )"
+
+          test "$SERVICE_IMAGE" = "$TARGET_IMAGE" || {
+            echo "Service task definition image does not match the target image."
+            echo "Service image: $SERVICE_IMAGE"
+            echo "Target image: $TARGET_IMAGE"
+            exit 1
+          }
+
+          mapfile -t TASK_ARNS < <(
+            aws ecs list-tasks \
+              --cluster "$ECS_CLUSTER" \
+              --service-name "$ECS_SERVICE" \
+              --desired-status RUNNING \
+              --region "$AWS_REGION" \
+              --query 'taskArns[]' \
+              --output text \
+              --no-cli-pager \
+            | tr '\t' '\n' \
+            | sed '/^$/d'
+          )
+
+          test "${#TASK_ARNS[@]}" -eq "$DESIRED_COUNT" || {
+            echo "RUNNING task ARN count does not match desired count."
+            echo "Expected: $DESIRED_COUNT"
+            echo "Found: ${#TASK_ARNS[@]}"
+            exit 1
+          }
+
+          aws ecs describe-tasks \
+            --cluster "$ECS_CLUSTER" \
+            --tasks "${TASK_ARNS[@]}" \
+            --region "$AWS_REGION" \
+            --output json \
+            --no-cli-pager \
+            > "$TASKS_JSON"
+
+          python3 - \
+            "$TASKS_JSON" \
+            "$SERVICE_TASK_DEFINITION" \
+            "$TARGET_IMAGE" \
+            "$ECS_CONTAINER_NAME" \
+            > "$RUNNING_IPS_FILE" <<'PY'
+          import json
+          import sys
+
+          path, expected_task_definition, expected_image, container_name = sys.argv[1:]
+
+          with open(path, encoding="utf-8") as f:
+              payload = json.load(f)
+
+          tasks = payload.get("tasks", [])
+
+          if not tasks:
+              raise SystemExit("No RUNNING ECS tasks were returned.")
+
+          for task in tasks:
+              task_arn = task.get("taskArn")
+
+              if task.get("lastStatus") != "RUNNING":
+                  raise SystemExit(
+                      f"Task is not RUNNING: {task_arn}"
+                  )
+
+              if task.get("taskDefinitionArn") != expected_task_definition:
+                  raise SystemExit(
+                      f"Task definition mismatch: {task_arn}"
+                  )
+
+              containers = [
+                  container
+                  for container in task.get("containers", [])
+                  if container.get("name") == container_name
+              ]
+
+              if len(containers) != 1:
+                  raise SystemExit(
+                      f"Container {container_name} not found exactly once: {task_arn}"
+                  )
+
+              actual_image = containers[0].get("image")
+
+              if actual_image != expected_image:
+                  raise SystemExit(
+                      f"Task image mismatch: {task_arn}\n"
+                      f"Expected: {expected_image}\n"
+                      f"Actual:   {actual_image}"
+                  )
+
+              private_ip = None
+
+              for attachment in task.get("attachments", []):
+                  if attachment.get("type") != "ElasticNetworkInterface":
+                      continue
+
+                  details = {
+                      item.get("name"): item.get("value")
+                      for item in attachment.get("details", [])
+                  }
+
+                  private_ip = details.get("privateIPv4Address")
+
+                  if private_ip:
+                      break
+
+              if not private_ip:
+                  raise SystemExit(
+                      f"Private IPv4 address not found: {task_arn}"
+                  )
+
+              print(private_ip)
+          PY
+
+          aws elbv2 describe-target-health \
+            --target-group-arn "$TARGET_GROUP_ARN" \
+            --region "$AWS_REGION" \
+            --output json \
+            --no-cli-pager \
+            > "$TARGET_HEALTH_JSON"
+
+          python3 - \
+            "$TARGET_HEALTH_JSON" \
+            "$RUNNING_IPS_FILE" <<'PY'
+          import json
+          import sys
+
+          health_path, ips_path = sys.argv[1:]
+
+          with open(health_path, encoding="utf-8") as f:
+              payload = json.load(f)
+
+          with open(ips_path, encoding="utf-8") as f:
+              running_ips = {
+                  line.strip()
+                  for line in f
+                  if line.strip()
+              }
+
+          health_by_target = {
+              item["Target"]["Id"]: item["TargetHealth"]["State"]
+              for item in payload.get("TargetHealthDescriptions", [])
+          }
+
+          for ip in running_ips:
+              state = health_by_target.get(ip)
+
+              if state != "healthy":
+                  raise SystemExit(
+                      f"Target is not healthy: {ip} state={state}"
+                  )
+
+          print("All RUNNING ECS task targets are healthy.")
+          PY
+
+          ALB_DNS="$(
+            aws elbv2 describe-load-balancers \
+              --names "$ALB_NAME" \
+              --region "$AWS_REGION" \
+              --query 'LoadBalancers[0].DNSName' \
+              --output text \
+              --no-cli-pager
+          )"
+
+          test -n "$ALB_DNS"
+          test "$ALB_DNS" != "None"
+
+          HEALTH_RESPONSE="$(
+            curl \
+              --fail \
+              --silent \
+              --show-error \
+              --max-time 20 \
+              "http://${ALB_DNS}/actuator/health"
+          )"
+
+          printf '%s' "$HEALTH_RESPONSE" | python3 -c '
+          import json
+          import sys
+
+          payload = json.load(sys.stdin)
+
+          if payload.get("status") != "UP":
+              raise SystemExit(
+                  f"Application health is not UP: {payload}"
+              )
+
+          print("Application health status: UP")
+          '
+
+          echo "Verified task definition: $SERVICE_TASK_DEFINITION"
+          echo "Verified image: $TARGET_IMAGE"
+          echo "ALB DNS: $ALB_DNS"
 
       - name: Print ECS deployment result
         shell: bash
