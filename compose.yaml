@@ -40,6 +40,7 @@ services:
     image: prom/prometheus:latest
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
     ports:
       - "9090:9090"
     extra_hosts:
@@ -51,8 +52,14 @@ services:
       - "3001:3000" # 프론트엔드 dev 서버(3000)와 안 겹치게
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      # Prometheus 데이터소스 + 대시보드들을 컨테이너 기동 시 자동으로 구성(수동 클릭 불필요)
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
     depends_on:
       - prometheus
 
 volumes:
   postgres-data:
+  prometheus-data:
+  grafana-data:
