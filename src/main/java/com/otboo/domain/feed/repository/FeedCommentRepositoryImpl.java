@@ -35,8 +35,8 @@ public class FeedCommentRepositoryImpl implements FeedCommentRepositoryCustom {
             commentCursorCondition(cursor, idAfter)
         )
         .orderBy(
-            comment.createdAt.desc(),
-            comment.id.desc()
+            comment.createdAt.asc(),
+            comment.id.asc()
         )
         .limit(limit)
         .fetch();

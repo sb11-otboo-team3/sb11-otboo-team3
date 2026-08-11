@@ -381,7 +381,7 @@ public class FeedService {
         hasNext,
         totalCount,
         "createdAt",
-        "DESCENDING"
+        "ASCENDING"
     );
   }
 }
