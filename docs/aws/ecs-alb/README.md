@@ -886,6 +886,190 @@ AWS 예상 비용 산정과 비용 최적화는 별도 이슈에서 진행합니
 - CloudWatch Logs 수집
 - CloudWatch Logs 보존 기간 14일
 
+---
+
+## 20. GitHub Actions ECS 자동 배포
+
+Issue #131에서는 Issue #124에서 구성한 ECR 자동 Push 이후
+Git SHA 이미지를 기준으로 ECS Task Definition Revision을 생성하고
+ECS Service를 자동으로 업데이트하는 배포 흐름을 구성합니다.
+
+### 자동 배포 흐름
+
+```text
+develop Push
+→ GitHub Actions ECR 이미지 Build 및 Push
+→ ECR Push Job 성공
+→ ECS Deploy Job 시작
+→ 현재 ECS Service의 Task Definition 조회
+→ 현재 otboo-backend 컨테이너 이미지 확인
+→ Git SHA 기반 ECR 이미지와 비교
+→ 이미지가 다른 경우 Task Definition 렌더링
+→ 새 Task Definition Revision 등록
+→ ECS Service 업데이트
+→ Service Stable 상태까지 대기
+```
+
+ECR 이미지 Build·Push가 성공한 이후에만
+ECS 배포 Job이 실행되도록 `needs: build-and-push` 의존성을 구성합니다.
+
+ECR Push와 ECS 배포를 별도의 독립적인 Workflow로 동시에 실행하지 않아
+아직 생성되지 않은 이미지를 ECS가 먼저 참조하는 상황을 방지합니다.
+
+### ECS 배포 대상
+
+```text
+AWS Region
+ap-northeast-2
+
+ECS Cluster
+otboo-prod-cluster
+
+ECS Service
+otboo-prod-backend-service
+
+Task Definition Family
+otboo-prod-backend
+
+Container Name
+otboo-backend
+
+Container Port
+8080
+```
+
+자동 배포에서는 현재 ECS Service가 사용 중인 Task Definition을 기준으로
+기존 환경변수, Secret, 로그, CPU·Memory, Task Role 및 Execution Role 설정을 유지하고
+`otboo-backend` 컨테이너의 이미지 URI만 새로운 Git SHA 이미지로 변경합니다.
+
+### GitHub OIDC ECS Deploy Role
+
+ECR Build·Push Role과 ECS Deploy Role을 분리합니다.
+
+```text
+ECR Build / Push
+otboo-github-actions-ecr-role
+
+ECS Deploy
+otboo-github-actions-ecs-deploy-role
+```
+
+ECS Deploy Role 역시 장기 AWS Access Key를 사용하지 않고
+GitHub OIDC를 통해 임시 자격증명을 발급받습니다.
+
+Trust Policy는 다음 조건으로 제한합니다.
+
+```text
+Audience
+sts.amazonaws.com
+
+Repository / Branch
+sb11-otboo-team3/sb11-otboo-team3
+develop
+```
+
+GitHub Repository Variable은 다음 값을 사용합니다.
+
+```text
+AWS_GITHUB_ACTIONS_ECS_DEPLOY_ROLE_ARN
+```
+
+IAM Role ARN은 Secret 값이 아니므로 Repository Variable로 관리하고,
+실제 AWS 인증은 GitHub OIDC Trust Policy를 통해 수행합니다.
+
+### ECS Deploy 최소 권한
+
+`otboo-github-actions-ecs-deploy-role`에는
+자동 배포에 필요한 권한만 부여합니다.
+
+```text
+ecs:DescribeTaskDefinition
+ecs:RegisterTaskDefinition
+ecs:DescribeServices
+ecs:UpdateService
+ecs:ListTasks
+ecs:DescribeTasks
+elasticloadbalancing:DescribeTargetHealth
+elasticloadbalancing:DescribeLoadBalancers
+iam:PassRole
+```
+
+`iam:PassRole`은 다음 두 Role만 허용합니다.
+
+```text
+otboo-prod-ecs-task-role
+otboo-prod-ecs-task-execution-role
+```
+
+또한 ECS Task에 Role을 전달하는 경우로 제한합니다.
+
+```text
+iam:PassedToService = ecs-tasks.amazonaws.com
+```
+
+`ecs:UpdateService`와 `ecs:DescribeServices`는
+`otboo-prod-backend-service`를 대상으로 제한합니다.
+
+### 동일 Git SHA 재실행 처리
+
+현재 ECS Service가 이미 같은 Git SHA 이미지를 사용하고 있는지
+배포 전에 확인합니다.
+
+```text
+현재 ECS Image == Target Git SHA Image
+→ 새 Task Definition Revision 생성하지 않음
+→ ECS Service Update 생략
+→ Workflow 정상 종료
+```
+
+이미 동일한 이미지가 배포된 상황에서
+불필요한 Task Definition Revision과 재배포가 반복되지 않도록 합니다.
+
+### Workflow 동시 실행 기준
+
+ECR Push와 ECS 배포가 하나의 Workflow에서 이어지므로
+배포가 진행 중인 Workflow를 새로운 Push가 강제로 취소하지 않도록 구성합니다.
+
+```yaml
+concurrency:
+  group: ecr-push-${{ github.ref }}
+  cancel-in-progress: false
+```
+
+현재 실행 중인 배포는 새로운 Push로 취소하지 않습니다.
+
+기본 concurrency 정책에서는 동일 Group의 pending 실행을 하나만 유지하므로,
+배포 중 develop Push가 여러 번 발생하면 기존 pending 실행은 취소되고
+가장 최신 pending 실행으로 대체될 수 있습니다.
+
+따라서 실행 중인 배포를 완료한 뒤 가장 최신 Git SHA를 후속 배포하는 정책으로 운영합니다.
+
+### 자동 배포 검증 기준
+
+Issue #131은 `develop` Merge 후 실제 Workflow에서 다음 항목을 검증합니다.
+
+```text
+GitHub OIDC ECS Deploy Role 인증 성공
+ECR Build 및 Push Job 성공 후 ECS Deploy Job 실행
+현재 ECS Service Task Definition 조회 성공
+현재 컨테이너 이미지 조회 성공
+새 Git SHA 이미지 URI 생성 확인
+새 Task Definition Revision 등록
+ECS Service가 새 Revision으로 업데이트
+Service Stable 대기 성공
+Desired Count와 Running Count 일치
+Pending Count 0
+새 Task RUNNING
+ALB Target healthy
+/actuator/health HTTP 200 및 UP
+실행 Task의 이미지가 대상 Git SHA와 일치
+CloudWatch Logs 정상 수집
+동일 Workflow 재실행 시 불필요한 ECS 재배포 생략
+```
+
+Rolling Update 정책 조정, 무중단 배포 보장 및 실패 배포 자동 롤백은
+Issue #131의 범위에 포함하지 않고 별도 운영 안정화 이슈에서 진행합니다.
+
 ### 후속 검증
 
 다음 항목은 팀원 도메인 구현 또는 후속 인프라 이슈에서 진행합니다.
@@ -900,5 +1084,5 @@ AWS 예상 비용 산정과 비용 최적화는 별도 이슈에서 진행합니
 - ECS 다중 Task
 - Rolling Update
 - 무중단 배포
-- GitHub Actions OIDC 자동 배포
+- GitHub Actions OIDC ECS 자동 배포 실제 `develop` 환경 검증
 - 도메인 및 HTTPS
