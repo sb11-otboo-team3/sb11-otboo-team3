@@ -1,8 +1,12 @@
 package com.otboo.domain.weather.entity;
 
+import com.otboo.domain.weather.dto.HumidityDto;
 import com.otboo.domain.weather.dto.PrecipitationDto;
 import com.otboo.domain.weather.dto.TemperatureDto;
+import com.otboo.domain.weather.dto.WeatherAPILocation;
+import com.otboo.domain.weather.dto.WeatherDto;
 import com.otboo.domain.weather.dto.WeatherSummaryDto;
+import com.otboo.domain.weather.dto.WindSpeedDto;
 import com.otboo.global.common.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -21,8 +25,11 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Getter
+// 유니크 키는 (grid_id, forecast_at)만 - 같은 시간대를 여러 배치가 다시 예측하면 새 row를 또 쌓지 않고
+// upsert로 기존 row를 최신 값으로 덮어쓴다(WeatherPersister 참고). forecasted_at은 "이 row를 마지막으로
+// 갱신한 배치가 언제 발표됐는지"를 나타내는 일반 컬럼으로만 남는다.
 @Table(name = "weathers",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"grid_id", "forecast_at", "forecasted_at"}))
+    uniqueConstraints = @UniqueConstraint(columnNames = {"grid_id", "forecast_at"}))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Weather extends BaseEntity {
 
@@ -116,6 +123,30 @@ public class Weather extends BaseEntity {
             dailyTemperatureMin,
             dailyTemperatureMax
         )
+    );
+  }
+
+  // 응답 DTO로 변환하는 정규 변환 지점 - 서비스 쪽에서 필드 하나하나 재조립하지 않도록 여기 한 곳에 모아둠.
+  // location은 요청자의 원본 좌표라 이 row(격자 단위)만으론 알 수 없어 호출부에서 넘겨받는다.
+  public WeatherDto toDto(WeatherAPILocation location) {
+    // speed와 asWord가 서로 다른 값을 보고 계산되면 어긋날 수 있어(예: windSpeed가 null이면
+    // speed=0.0인데 asWord=null) 보정된 값 하나로 둘 다 계산한다.
+    double correctedWindSpeed = orElseZero(windSpeed);
+    return new WeatherDto(
+        getId(),
+        forecastedAt,
+        forecastAt,
+        location,
+        skyStatus,
+        new PrecipitationDto(precipitationType, orElseZero(precipitationAmount), orElseZero(precipitationProbability)),
+        new HumidityDto(orElseZero(humidityCurrent), orElseZero(humidityComparedToDayBefore)),
+        new TemperatureDto(
+            orElseZero(temperatureCurrent),
+            orElseZero(temperatureComparedToDayBefore),
+            orElseZero(temperatureMin != null ? temperatureMin : temperatureCurrent),
+            orElseZero(temperatureMax != null ? temperatureMax : temperatureCurrent)
+        ),
+        new WindSpeedDto(correctedWindSpeed, WindStrength.fromSpeed(correctedWindSpeed))
     );
   }
 

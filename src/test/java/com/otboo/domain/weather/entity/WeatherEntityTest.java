@@ -29,16 +29,16 @@ class WeatherEntityTest {
   }
 
   @Test
-  @DisplayName("같은 격자, 같은 예보대상시각, 같은 예보발표시각은 중복 저장할 수 없다")
-  void throwsExceptionWhenDuplicateForecastIsSaved() {
-    // given
+  @DisplayName("같은 격자, 같은 예보대상시각이면 예보발표시각이 달라도 중복 저장할 수 없다")
+  void throwsExceptionWhenSameGridAndForecastAtEvenWithDifferentForecastedAt() {
+    // given: 유니크 키가 (grid_id, forecast_at)뿐이라 forecasted_at은 달라도 막혀야 한다 -
+    // upsert가 이 상황을 처리하는 전제(WeatherSaver 참고) 그대로.
     Grid grid = persistGrid(60, 127);
-    Instant forecastedAt = Instant.parse("2026-07-30T00:00:00Z");
     Instant forecastAt = Instant.parse("2026-07-30T09:00:00Z");
 
     Weather first = Weather.builder()
         .grid(grid)
-        .forecastedAt(forecastedAt)
+        .forecastedAt(Instant.parse("2026-07-30T00:00:00Z"))
         .forecastAt(forecastAt)
         .skyStatus(SkyStatus.CLEAR)
         .precipitationType(PrecipitationType.NONE)
@@ -48,8 +48,8 @@ class WeatherEntityTest {
 
     Weather duplicate = Weather.builder()
         .grid(grid)
-        .forecastedAt(forecastedAt)
-        .forecastAt(forecastAt)
+        .forecastedAt(Instant.parse("2026-07-30T03:00:00Z")) // 발표시각은 다름
+        .forecastAt(forecastAt) // 대상시각은 같음
         .skyStatus(SkyStatus.CLOUDY)
         .precipitationType(PrecipitationType.RAIN)
         .build();
@@ -62,8 +62,8 @@ class WeatherEntityTest {
   }
 
   @Test
-  @DisplayName("같은 격자라도 예보대상시각이나 예보발표시각이 다르면 함께 저장할 수 있다")
-  void allowsSameGridWithDifferentForecastTimes() {
+  @DisplayName("같은 격자라도 예보대상시각이 다르면 함께 저장할 수 있다")
+  void allowsSameGridWithDifferentForecastAt() {
     // given
     Grid grid = persistGrid(60, 127);
     Weather first = Weather.builder()
@@ -132,5 +132,27 @@ class WeatherEntityTest {
     assertThat(weather.getTemperatureMin()).isEqualTo(18.0);
     assertThat(weather.getTemperatureMax()).isEqualTo(26.0);
     assertThat(weather.getWindSpeed()).isEqualTo(2.3);
+  }
+
+  @Test
+  @DisplayName("windSpeed가 null이면 toDto의 speed는 0.0, asWord는 그 0.0에 대응하는 등급으로 일치한다")
+  void toDtoKeepsSpeedAndAsWordConsistentWhenWindSpeedIsNull() {
+    // given
+    Grid grid = Grid.builder().x(60).y(127).build();
+    Weather weather = Weather.builder()
+        .grid(grid)
+        .forecastedAt(Instant.parse("2026-07-30T00:00:00Z"))
+        .forecastAt(Instant.parse("2026-07-30T09:00:00Z"))
+        .skyStatus(SkyStatus.CLEAR)
+        .precipitationType(PrecipitationType.NONE)
+        .windSpeed(null)
+        .build();
+
+    // when
+    var dto = weather.toDto(null);
+
+    // then
+    assertThat(dto.windSpeed().speed()).isEqualTo(0.0);
+    assertThat(dto.windSpeed().asWord()).isEqualTo(WindStrength.fromSpeed(0.0));
   }
 }
