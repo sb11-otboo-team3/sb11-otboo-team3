@@ -13,6 +13,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.UUID;
 
@@ -27,9 +28,10 @@ public class ClothesController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ClothesResponse> create(
             @AuthenticationPrincipal UUID currentUserId,
-            @RequestPart("request") @Valid ClothesCreateRequest request
+            @RequestPart("request") @Valid ClothesCreateRequest request,
+            @RequestPart(value = "image", required = false) MultipartFile image
     ) {
-        ClothesResponse response = clothesService.create(currentUserId, request);
+        ClothesResponse response = clothesService.create(currentUserId, request, image);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -53,10 +55,10 @@ public class ClothesController {
     public ResponseEntity<ClothesResponse> update(
             @AuthenticationPrincipal UUID currentUserId,
             @PathVariable UUID clothesId,
-            @RequestPart("request") @Valid ClothesUpdateRequest request
+            @RequestPart("request") @Valid ClothesUpdateRequest request,
+            @RequestPart(value = "image", required = false) MultipartFile image
     ) {
-        ClothesResponse response = clothesService.update(currentUserId,
-                clothesId, request);
+        ClothesResponse response = clothesService.update(currentUserId, clothesId, request, image);
         return ResponseEntity.ok(response);
     }
 

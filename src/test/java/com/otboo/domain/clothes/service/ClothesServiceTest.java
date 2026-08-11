@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.otboo.domain.clothes.dto.request.ClothesAttributeRequest;
@@ -29,19 +30,27 @@ import com.otboo.domain.clothes.repository.ClothesRepository;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.exception.UserNotFoundException;
 import com.otboo.domain.user.repository.UserRepository;
+import com.otboo.global.infrastructure.storage.FileStorage;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.otboo.global.infrastructure.storage.StorageDirectory;
+import com.otboo.global.infrastructure.storage.StoredFile;
+import com.otboo.global.infrastructure.storage.event.FileReplacementEvent;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 @ExtendWith(MockitoExtension.class)
 class ClothesServiceTest {
@@ -64,8 +73,26 @@ class ClothesServiceTest {
     @Mock
     private ClothesMapper clothesMapper;
 
-    @InjectMocks
+    @Mock
+    private FileStorage fileStorage;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private ClothesService service;
+
+
+    @BeforeEach
+    void setUp() {
+        ClothesWriteTransactionalService writeService = new ClothesWriteTransactionalService(
+                clothesRepository, clothesAttributeRepository, definitionRepository,
+                selectableValueRepository, userRepository, clothesMapper, eventPublisher
+        );
+        service = new ClothesService(
+                clothesRepository, clothesAttributeRepository, selectableValueRepository,
+                clothesMapper, writeService, fileStorage
+        );
+    }
 
     @Test
     void 정상_등록하면_의상이_생성된다() {
@@ -80,7 +107,7 @@ class ClothesServiceTest {
                 .willReturn(new ClothesResponse(UUID.randomUUID(), userId, "티셔츠", null, ClothesType.TOP, List.of()));
 
         //when
-        ClothesResponse response = service.create(userId, request);
+        ClothesResponse response = service.create(userId, request, null);
 
         //then
         assertThat(response.name()).isEqualTo("티셔츠");
@@ -94,7 +121,7 @@ class ClothesServiceTest {
         ClothesCreateRequest request = new ClothesCreateRequest(otherOwnerId, "티셔츠", ClothesType.TOP, List.of());
 
         //when & then
-        assertThatThrownBy(() -> service.create(currentUserId, request))
+        assertThatThrownBy(() -> service.create(currentUserId, request, null))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
@@ -107,7 +134,7 @@ class ClothesServiceTest {
         given(userRepository.findById(userId)).willReturn(Optional.empty());
 
         //when & then
-        assertThatThrownBy(() -> service.create(userId, request))
+        assertThatThrownBy(() -> service.create(userId, request, null))
                 .isInstanceOf(UserNotFoundException.class);
     }
 
@@ -129,7 +156,7 @@ class ClothesServiceTest {
         given(clothesRepository.save(any(Clothes.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         //when & then
-        assertThatThrownBy(() -> service.create(userId, request))
+        assertThatThrownBy(() -> service.create(userId, request, null))
                 .isInstanceOf(DuplicateClothesAttributeException.class);
     }
 
@@ -150,7 +177,7 @@ class ClothesServiceTest {
                 .willReturn(List.of());
 
         //when & then
-        assertThatThrownBy(() -> service.create(userId, request))
+        assertThatThrownBy(() -> service.create(userId, request, null))
                 .isInstanceOf(ClothesAttributeDefinitionNotFoundException.class);
     }
 
@@ -174,7 +201,7 @@ class ClothesServiceTest {
                 .willReturn(List.of());
 
         //when & then
-        assertThatThrownBy(() -> service.create(userId, request))
+        assertThatThrownBy(() -> service.create(userId, request, null))
                 .isInstanceOf(InvalidClothesAttributeValueException.class);
     }
 
@@ -203,7 +230,7 @@ class ClothesServiceTest {
                 .willReturn(new ClothesResponse(UUID.randomUUID(), userId, "티셔츠", null, ClothesType.TOP, List.of()));
 
         //when
-        service.create(userId, request);
+        service.create(userId, request, null);
 
         //then
         verify(clothesAttributeRepository).save(any(ClothesAttribute.class));
@@ -225,7 +252,7 @@ class ClothesServiceTest {
                 .willReturn(new ClothesResponse(clothesId, userId, "새이름", null, ClothesType.BOTTOM, List.of()));
 
         //when
-        ClothesResponse response = service.update(userId, clothesId, request);
+        ClothesResponse response = service.update(userId, clothesId, request, null);
 
         //then
         assertThat(response.name()).isEqualTo("새이름");
@@ -244,7 +271,7 @@ class ClothesServiceTest {
         given(clothesRepository.findById(clothesId)).willReturn(Optional.empty());
 
         //when & then
-        assertThatThrownBy(() -> service.update(userId, clothesId, request))
+        assertThatThrownBy(() -> service.update(userId, clothesId, request, null))
                 .isInstanceOf(ClothesNotFoundException.class);
     }
 
@@ -263,7 +290,7 @@ class ClothesServiceTest {
         given(clothesRepository.findById(clothesId)).willReturn(Optional.of(clothes));
 
         //when & then
-        assertThatThrownBy(() -> service.update(currentUserId, clothesId, request))
+        assertThatThrownBy(() -> service.update(currentUserId, clothesId, request, null))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
@@ -290,7 +317,7 @@ class ClothesServiceTest {
                 .willReturn(List.of());
 
         //when & then
-        assertThatThrownBy(() -> service.update(userId, clothesId, request))
+        assertThatThrownBy(() -> service.update(userId, clothesId, request, null))
                 .isInstanceOf(InvalidClothesAttributeValueException.class);
     }
 
@@ -427,4 +454,166 @@ class ClothesServiceTest {
         assertThat(response.nextIdAfter()).isEqualTo(clothes1.getId());
         assertThat(response.nextCursor()).isEqualTo(clothes1.getCreatedAt().toString());
     }
+
+    @Test
+    void 이미지와_함께_등록하면_업로드_후_imageKey가_저장된다() {
+        //given
+        UUID userId = UUID.randomUUID();
+        User owner = User.create("test@Otbbo.id", "테스트", "encoded-password");
+        ClothesCreateRequest request = new ClothesCreateRequest(userId, "티셔츠", ClothesType.TOP, List.of());
+        MultipartFile image = new MockMultipartFile("image", "shirt.png", "image/png", "dummy".getBytes());
+        StoredFile storedFile = new StoredFile("clothes/" + userId + "/key.png", "image/png", 5L);
+
+        given(fileStorage.upload(StorageDirectory.CLOTHES, userId, image)).willReturn(storedFile);
+        given(userRepository.findById(userId)).willReturn(Optional.of(owner));
+        given(clothesRepository.save(any(Clothes.class))).willAnswer(
+                invocation -> invocation.getArgument(0));
+        given(clothesMapper.toResponse(any(), any(), any()))
+                .willReturn(new ClothesResponse(UUID.randomUUID(), userId,
+                        "티셔츠", null, ClothesType.TOP, List.of()));
+
+        //when
+        service.create(userId, request, image);
+
+        //then
+        ArgumentCaptor<Clothes> captor = ArgumentCaptor.forClass(Clothes.class);
+        verify(clothesRepository).save(captor.capture());
+
+        assertThat(captor.getValue().getImageKey()).isEqualTo("clothes/" + userId + "/key.png");
+    }
+
+    @Test
+    void 새_이미지로_수정하면_교체되고_이벤트가_발행된다() {
+        //given
+        UUID userId = UUID.randomUUID();
+        UUID clothesId = UUID.randomUUID();
+        User owner = User.create("test@otboo.io", "테스트", "encoded-password");
+        ReflectionTestUtils.setField(owner, "id", userId);
+        Clothes clothes = new Clothes(owner, "기존이름", "clothes/" + userId + "/old.png", ClothesType.TOP);
+
+        ClothesUpdateRequest request = new ClothesUpdateRequest("새이름", ClothesType.TOP, List.of(), null);
+        MultipartFile image = new MockMultipartFile("image","new.png", "image/png", "dummy".getBytes());
+        StoredFile storedFile = new StoredFile("clothes/" + userId + "/new.png", "image/png", 5L);
+
+        given(fileStorage.upload(StorageDirectory.CLOTHES, userId, image)).willReturn(storedFile);
+        given(clothesRepository.findById(clothesId)).willReturn(Optional.of(clothes));
+        given(clothesMapper.toResponse(any(), any(), any()))
+                .willReturn(new ClothesResponse(clothesId, userId,
+                        "새이름", null, ClothesType.TOP, List.of()));
+
+        //when
+        service.update(userId, clothesId, request, image);
+
+        //then
+        assertThat(clothes.getImageKey()).isEqualTo("clothes/" + userId + "/new.png");
+        verify(eventPublisher).publishEvent(
+                new FileReplacementEvent("clothes/" + userId +
+                        "/old.png","clothes/" + userId + "/new.png")
+        );
+    }
+
+    @Test
+    void deleteImage가_true면_이미지가_삭제되고_이벤트가_발행된다() {
+        //given
+        UUID userId = UUID.randomUUID();
+        UUID clothesId = UUID.randomUUID();
+        User owner = User.create("test@otboo.io", "테스트",
+                "encoded-password");
+        ReflectionTestUtils.setField(owner, "id", userId);
+        Clothes clothes = new Clothes(owner, "기존이름", "clothes/" +
+                userId + "/old.png", ClothesType.TOP);
+
+        ClothesUpdateRequest request = new
+                ClothesUpdateRequest("새이름", ClothesType.TOP, List.of(), true);
+
+        given(clothesRepository.findById(clothesId)).willReturn(Optional.of(clothes));
+        given(clothesMapper.toResponse(any(), any(), any()))
+                .willReturn(new ClothesResponse(clothesId, userId,
+                        "새이름", null, ClothesType.TOP, List.of()));
+
+        //when
+        service.update(userId, clothesId, request, null);
+
+        //then
+        assertThat(clothes.getImageKey()).isNull();
+        verify(eventPublisher).publishEvent(
+                new FileReplacementEvent("clothes/" + userId +"/old.png", null)
+        );
+    }
+
+    @Test
+    void 이미지_변경_없이_수정하면_이벤트가_발행되지_않는다() {
+        //given
+        UUID userId = UUID.randomUUID();
+        UUID clothesId = UUID.randomUUID();
+        User owner = User.create("test@otboo.io", "테스트","encoded-password");
+        ReflectionTestUtils.setField(owner, "id", userId);
+        Clothes clothes = new Clothes(owner, "기존이름", "clothes/" + userId + "/old.png", ClothesType.TOP);
+
+        ClothesUpdateRequest request = new
+                ClothesUpdateRequest("새이름", ClothesType.TOP, List.of(), null);
+
+        given(clothesRepository.findById(clothesId)).willReturn(Optional.of(clothes));
+        given(clothesMapper.toResponse(any(), any(), any()))
+                .willReturn(new ClothesResponse(clothesId, userId,
+                        "새이름", null, ClothesType.TOP, List.of()));
+
+        //when
+        service.update(userId, clothesId, request, null);
+
+        //then
+        assertThat(clothes.getImageKey()).isEqualTo("clothes/" + userId + "/old.png");
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void 본인_소유가_아닌_의상을_이미지와_함께_수정하면_업로드하지_않는다() {
+        //given
+        UUID currentUserId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID clothesId = UUID.randomUUID();
+        User owner = User.create("test@otboo.io", "테스트", "encoded-password");
+        ReflectionTestUtils.setField(owner, "id", ownerId);
+        Clothes clothes = new Clothes(owner, "기존이름", null, ClothesType.TOP);
+
+        ClothesUpdateRequest request = new ClothesUpdateRequest("새이름", ClothesType.TOP, List.of(), null);
+        MultipartFile image = new MockMultipartFile("image", "new.png", "image/png", "dummy".getBytes());
+
+        given(clothesRepository.findById(clothesId)).willReturn(Optional.of(clothes));
+
+        //when & then
+        assertThatThrownBy(() -> service.update(currentUserId, clothesId, request, image))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(fileStorage, never()).upload(any(), any(), any());
+    }
+
+    @Test
+    void 이미지와_함께_등록했는데_속성_검증에_실패하면_새_키_정리_이벤트가_발행된다() {
+        //given
+        UUID userId = UUID.randomUUID();
+        User owner = User.create("test@otboo.io", "테스트", "encoded-password");
+        UUID definitionId = UUID.randomUUID();
+        ClothesCreateRequest request = new ClothesCreateRequest(userId, "티셔츠", ClothesType.TOP, List.of(
+                new ClothesAttributeRequest(definitionId,"보라"))
+        );
+        MultipartFile image = new MockMultipartFile("image", "shirt.png", "image/png", "dummy".getBytes());
+        ClothesAttributeDefinition definition = new ClothesAttributeDefinition("색상");
+        ReflectionTestUtils.setField(definition, "id", definitionId);
+        StoredFile storedFile = new StoredFile("clothes/" + userId + "/key.png", "image/png", 5L);
+
+        given(fileStorage.upload(StorageDirectory.CLOTHES, userId, image)).willReturn(storedFile);
+        given(userRepository.findById(userId)).willReturn(Optional.of(owner));
+        given(clothesRepository.save(any(Clothes.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        given(definitionRepository.findAllById(List.of(definitionId))).willReturn(List.of(definition));
+        given(selectableValueRepository.findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(List.of(definition)))
+                .willReturn(List.of());
+
+        //when & then
+        assertThatThrownBy(() -> service.create(userId, request, image))
+                .isInstanceOf(InvalidClothesAttributeValueException.class);
+        verify(eventPublisher).publishEvent(new FileReplacementEvent(
+                null, "clothes/" + userId + "/key.png"));
+    }
+
 }
