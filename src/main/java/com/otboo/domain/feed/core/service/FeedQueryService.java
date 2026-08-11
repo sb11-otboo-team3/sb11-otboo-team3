@@ -15,6 +15,7 @@ import com.otboo.domain.feed.core.dto.request.SortDirection;
 import com.otboo.domain.feed.core.dto.response.FeedDto;
 import com.otboo.domain.feed.core.dto.response.FeedDtoCursorResponse;
 import com.otboo.domain.feed.core.entity.Feed;
+import com.otboo.domain.feed.core.exception.InvalidFeedCursorException;
 import com.otboo.domain.feed.core.mapper.FeedMapper;
 import com.otboo.domain.feed.core.repository.FeedRepository;
 import com.otboo.domain.feed.like.repository.FeedLikeRepository;
@@ -56,7 +57,7 @@ public class FeedQueryService {
       UUID authorIdEqual,
       UUID currentUserId
   ) {
-    validateCursor(cursor, idAfter);
+    validateCursor(cursor, idAfter, sortBy);
 
     List<Feed> feeds = feedRepository.findFeeds(
         cursor,
@@ -114,20 +115,32 @@ public class FeedQueryService {
   }
 
   // cursor와 idAfter는 둘 다 있거나 둘 다 없어야 함
-  private void validateCursor(String cursor, UUID idAfter) {
+  private void validateCursor(String cursor, UUID idAfter, SortBy sortBy) {
     boolean hasCursor = cursor != null && !cursor.isBlank();
     boolean hasIdAfter = idAfter != null;
 
     if (hasCursor != hasIdAfter) {
-      throw new InvalidFeedCommentCursorException();
+      throw new InvalidFeedCursorException();
     }
 
-    if (hasCursor) {
-      try {
+    if (!hasCursor) {
+      return;
+    }
+
+    try {
+      if (sortBy == SortBy.createdAt) {
         Instant.parse(cursor);
-      } catch (DateTimeParseException exception) {
-        throw new InvalidFeedCommentCursorException();
+        return;
       }
+
+      if (sortBy == SortBy.likeCount) {
+        Long.parseLong(cursor);
+        return;
+      }
+
+      throw new InvalidFeedCursorException();
+    } catch (DateTimeParseException | NumberFormatException exception) {
+      throw new InvalidFeedCursorException();
     }
   }
 
