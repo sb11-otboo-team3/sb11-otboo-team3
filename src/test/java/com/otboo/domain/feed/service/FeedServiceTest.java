@@ -401,20 +401,20 @@ class FeedServiceTest {
     Feed feed = Feed.create(
         author,
         mock(Weather.class),
-        objectMapper.createObjectNode(),
-        "댓글 조회 대상 피드"
+        objectMapper.valueToTree(mock(WeatherSummaryDto.class)),
+        "피드 내용"
     );
     ReflectionTestUtils.setField(feed, "id", feedId);
 
     Comment comment1 = Comment.create(feed, author, "첫 번째 댓글");
     UUID comment1Id = UUID.randomUUID();
-    Instant comment1CreatedAt = Instant.parse("2026-08-11T01:00:00Z");
+    Instant comment1CreatedAt = Instant.parse("2026-08-11T00:00:00Z");
     ReflectionTestUtils.setField(comment1, "id", comment1Id);
     ReflectionTestUtils.setField(comment1, "createdAt", comment1CreatedAt);
 
     Comment comment2 = Comment.create(feed, author, "두 번째 댓글");
     ReflectionTestUtils.setField(comment2, "id", UUID.randomUUID());
-    ReflectionTestUtils.setField(comment2, "createdAt", Instant.parse("2026-08-11T00:00:00Z"));
+    ReflectionTestUtils.setField(comment2, "createdAt", Instant.parse("2026-08-11T01:00:00Z"));
 
     FeedCommentDto feedCommentDto = mock(FeedCommentDto.class);
 
@@ -444,6 +444,7 @@ class FeedServiceTest {
 
     verify(feedRepository).findByIdAndDeletedAtIsNull(feedId);
     verify(feedCommentRepository).findComments(feedId, null, null, 2);
+    verify(feedCommentMapper).toDto(comment1);
     verify(feedCommentRepository).countComments(feedId);
   }
 }

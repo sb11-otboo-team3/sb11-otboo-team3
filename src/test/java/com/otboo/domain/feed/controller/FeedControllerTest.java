@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 import com.otboo.domain.feed.dto.response.FeedCommentDtoCursorResponse;
 import com.otboo.domain.feed.dto.response.FeedDtoCursorResponse;
@@ -193,7 +194,7 @@ class FeedControllerTest {
   }
 
   @Test
-  @DisplayName("피드 목록 조회 API 성공")
+  @DisplayName("피드 목록 조회 API 성공 테스트")
   void getFeeds_success() throws Exception {
     UUID currentUserId = UUID.randomUUID();
 
@@ -253,7 +254,7 @@ class FeedControllerTest {
         false,
         0L,
         "createdAt",
-        "DESCENDING"
+        "ASCENDING"
     );
 
     given(feedService.getComment(
@@ -266,7 +267,9 @@ class FeedControllerTest {
     mockMvc.perform(get("/api/feeds/{feedId}/comments", feedId)
             .with(authentication(mockAuthentication(UUID.randomUUID())))
             .param("limit", "20"))
-        .andExpect(status().isOk());
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.sortBy").value("createdAt"))
+        .andExpect(jsonPath("$.sortDirection").value("ASCENDING"));
 
     verify(feedService).getComment(
         eq(feedId),
