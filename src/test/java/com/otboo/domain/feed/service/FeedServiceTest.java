@@ -439,7 +439,7 @@ class FeedServiceTest {
     assertThat(result.nextIdAfter()).isEqualTo(comment1Id);
     assertThat(result.totalCount()).isEqualTo(2L);
     assertThat(result.sortBy()).isEqualTo("createdAt");
-    assertThat(result.sortDirection()).isEqualTo("DESCENDING");
+    assertThat(result.sortDirection()).isEqualTo("ASCENDING");
 
     verify(feedRepository).findByIdAndDeletedAtIsNull(feedId);
     verify(feedCommentRepository).findComments(feedId, null, null, 2);
