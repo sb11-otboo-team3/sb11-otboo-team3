@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapsId;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -56,6 +57,10 @@ public class Profile {
 
   @Column(name = "temp_sensitivity")
   private Integer temperatureSensitivity;
+
+  @Version
+  @Column(name = "version", nullable = false)
+  private Long version;
 
   @LastModifiedDate
   @Column(name = "updated_at", nullable = false)
