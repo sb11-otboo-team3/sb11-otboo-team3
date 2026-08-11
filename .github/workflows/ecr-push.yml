@@ -12,11 +12,14 @@ permissions:
 
 concurrency:
   group: ecr-push-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   AWS_REGION: ap-northeast-2
   ECR_REPOSITORY: otboo/backend
+  ECS_CLUSTER: otboo-prod-cluster
+  ECS_SERVICE: otboo-prod-backend-service
+  ECS_CONTAINER_NAME: otboo-backend
 
 jobs:
   build-and-push:
@@ -203,3 +206,102 @@ jobs:
         run: |
           echo "Image URI: ${REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
           echo "Image Digest: ${IMAGE_DIGEST}"
+
+  deploy-to-ecs:
+    name: Deploy to Amazon ECS
+    needs: build-and-push
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Configure AWS credentials for ECS deployment
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_ECS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve current ECS deployment
+        id: ecs-deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TASK_DEFINITION_ARN="$(
+            aws ecs describe-services \
+              --cluster "$ECS_CLUSTER" \
+              --services "$ECS_SERVICE" \
+              --region "$AWS_REGION" \
+              --query 'services[0].taskDefinition' \
+              --output text \
+              --no-cli-pager
+          )"
+
+          test -n "$TASK_DEFINITION_ARN"
+          test "$TASK_DEFINITION_ARN" != "None"
+
+          CURRENT_IMAGE="$(
+            aws ecs describe-task-definition \
+              --task-definition "$TASK_DEFINITION_ARN" \
+              --region "$AWS_REGION" \
+              --query "taskDefinition.containerDefinitions[?name=='${ECS_CONTAINER_NAME}'].image | [0]" \
+              --output text \
+              --no-cli-pager
+          )"
+
+          test -n "$CURRENT_IMAGE"
+          test "$CURRENT_IMAGE" != "None"
+
+          AWS_ACCOUNT_ID="$(
+            aws sts get-caller-identity \
+              --query 'Account' \
+              --output text \
+              --no-cli-pager
+          )"
+
+          TARGET_IMAGE="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${GITHUB_SHA}"
+
+          echo "task-definition-arn=$TASK_DEFINITION_ARN" >> "$GITHUB_OUTPUT"
+          echo "current-image=$CURRENT_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "target-image=$TARGET_IMAGE" >> "$GITHUB_OUTPUT"
+
+          if [ "$CURRENT_IMAGE" = "$TARGET_IMAGE" ]; then
+            echo "deploy-required=false" >> "$GITHUB_OUTPUT"
+            echo "ECS service already uses the requested Git SHA image."
+          else
+            echo "deploy-required=true" >> "$GITHUB_OUTPUT"
+            echo "A new ECS deployment is required."
+          fi
+
+          echo "Current task definition: $TASK_DEFINITION_ARN"
+          echo "Current image: $CURRENT_IMAGE"
+          echo "Target image: $TARGET_IMAGE"
+
+      - name: Render Amazon ECS task definition
+        id: task-def
+        if: steps.ecs-deployment.outputs.deploy-required == 'true'
+        uses: aws-actions/amazon-ecs-render-task-definition@138c24f321fdbdf7edee4a685519d253cae2cdea # v1.9.0
+        with:
+          task-definition-arn: ${{ steps.ecs-deployment.outputs.task-definition-arn }}
+          container-name: ${{ env.ECS_CONTAINER_NAME }}
+          image: ${{ steps.ecs-deployment.outputs.target-image }}
+
+      - name: Deploy Amazon ECS task definition
+        if: steps.ecs-deployment.outputs.deploy-required == 'true'
+        uses: aws-actions/amazon-ecs-deploy-task-definition@c465972ecbd160473f22e683363b422a5412a3de # v2.6.3
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Print ECS deployment result
+        shell: bash
+        run: |
+          echo "Target image: ${{ steps.ecs-deployment.outputs.target-image }}"
+
+          if [ "${{ steps.ecs-deployment.outputs.deploy-required }}" = "true" ]; then
+            echo "ECS deployment completed successfully."
+          else
+            echo "Deployment skipped because ECS already uses this Git SHA image."
+          fi

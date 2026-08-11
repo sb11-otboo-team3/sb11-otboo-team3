@@ -1579,8 +1579,8 @@ Git Commit SHA와 OCI revision Label 일치
 최종 Workflow 정상 실행 확인
 ```
 
-자동 ECR Push까지 완료한 뒤
-ECS 자동 배포는 후속 Issue에서 진행합니다.
+자동 ECR Push까지 Issue #124에서 완료했으며,
+ECS Task Definition Revision 생성과 Service 자동 배포는 Issue #131에서 구성합니다.
 
 ## 16. 후속 작업
 
@@ -1588,7 +1588,7 @@ ECS 자동 배포는 후속 Issue에서 진행합니다.
 * 별도 이슈: 운영 Redis 또는 ElastiCache 구성
 * Issue #22: ECS Cluster, Task Definition, Service 및 ALB 구성
 * Issue #124: GitHub Actions OIDC 기반 이미지 빌드 및 ECR Push 구성
-* 후속 배포 이슈: ECR 이미지 기반 ECS Task Definition 갱신 및 Service 자동 배포
+* Issue #131: ECR Git SHA 이미지 기반 ECS Task Definition 갱신 및 Service 자동 배포
 * 후속 보안 점검: MEDIUM 및 UNDEFINED 취약점 영향 분석
 * 후속 운영 점검: 베이스 이미지 Digest 갱신
 * 후속 공급망 보안 점검: Provenance 및 SBOM 적용
@@ -1596,5 +1596,5 @@ ECS 자동 배포는 후속 Issue에서 진행합니다.
 GitHub Actions에서는 사람용 IAM 사용자의 Access Key를 사용하지 않습니다.
 
 GitHub Actions 기반 ECR 자동 Push는 Issue #124에서 구성했습니다.
-후속 배포 Issue에서는 ECR에 Push된 Git SHA 이미지를 기준으로
+Issue #131에서는 ECR에 Push된 Git SHA 이미지를 기준으로
 ECS Task Definition Revision 등록과 ECS Service 자동 배포를 구성합니다.
