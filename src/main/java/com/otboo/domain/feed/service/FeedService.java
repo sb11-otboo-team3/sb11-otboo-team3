@@ -15,6 +15,7 @@ import com.otboo.domain.feed.dto.request.FeedUpdateRequest;
 import com.otboo.domain.feed.dto.request.SortBy;
 import com.otboo.domain.feed.dto.request.SortDirection;
 import com.otboo.domain.feed.dto.response.FeedCommentDto;
+import com.otboo.domain.feed.dto.response.FeedCommentDtoCursorResponse;
 import com.otboo.domain.feed.dto.response.FeedDto;
 import com.otboo.domain.feed.dto.response.FeedDtoCursorResponse;
 import com.otboo.domain.feed.entity.Comment;
@@ -29,6 +30,7 @@ import com.otboo.domain.feed.exception.FeedLikeNotFoundException;
 import com.otboo.domain.feed.exception.FeedNotFoundException;
 import com.otboo.domain.feed.exception.FeedUserNotFoundException;
 import com.otboo.domain.feed.exception.FeedWeatherNotFoundException;
+import com.otboo.domain.feed.exception.InvalidFeedCommentCursorException;
 import com.otboo.domain.feed.exception.InvalidFeedCommentRequestException;
 import com.otboo.domain.feed.mapper.FeedCommentMapper;
 import com.otboo.domain.feed.mapper.FeedMapper;
@@ -218,20 +220,24 @@ public class FeedService {
   }
 
   @Transactional
-  public FeedCommentDto createFeedComment(UUID feedId, FeedCommentCreateRequest request,
-      UUID currentUserId) {
-    if (!request.authorId().equals(currentUserId)) {
-      throw new FeedCommentForbiddenException();
-    }
-    if (!request.feedId().equals(feedId)) {
-      throw new InvalidFeedCommentRequestException();
-    }
-
+  public FeedCommentDto createFeedComment(
+      UUID feedId,
+      FeedCommentCreateRequest request,
+      UUID currentUserId
+  ) {
     User user = userRepository.findById(currentUserId)
         .orElseThrow(() -> new FeedUserNotFoundException(currentUserId));
 
     Feed feed = feedRepository.findByIdAndDeletedAtIsNull(feedId)
         .orElseThrow(() -> new FeedNotFoundException(feedId));
+
+    if (!feedId.equals(request.feedId())) {
+      throw new InvalidFeedCommentRequestException();
+    }
+
+    if (!currentUserId.equals(request.authorId())) {
+      throw new FeedCommentForbiddenException();
+    }
 
     Comment comment = Comment.create(feed, user, request.content());
     Comment savedComment = feedCommentRepository.save(comment);
@@ -325,8 +331,57 @@ public class FeedService {
     boolean hasIdAfter = idAfter != null;
 
     if (hasCursor != hasIdAfter) {
-      throw new InvalidFollowCursorException();
+      throw new InvalidFeedCommentCursorException();
     }
   }
 
+  public FeedCommentDtoCursorResponse getComment(
+      UUID feedId,
+      String cursor,
+      UUID idAfter,
+      int limit
+  ) {
+    validateCursor(cursor, idAfter);
+
+    feedRepository.findByIdAndDeletedAtIsNull(feedId)
+        .orElseThrow(() -> new FeedNotFoundException(feedId));
+
+    List<Comment> comments = feedCommentRepository.findComments(
+        feedId,
+        cursor,
+        idAfter,
+        limit + 1
+    );
+
+    boolean hasNext = comments.size() > limit;
+
+    if (hasNext) {
+      comments = comments.subList(0, limit);
+    }
+
+    List<FeedCommentDto> data = comments.stream()
+        .map(feedCommentMapper::toDto)
+        .toList();
+
+    String nextCursor = null;
+    UUID nextIdAfter = null;
+
+    if (hasNext) {
+      Comment last = comments.get(comments.size() - 1);
+      nextCursor = last.getCreatedAt().toString();
+      nextIdAfter = last.getId();
+    }
+
+    long totalCount = feedCommentRepository.countComments(feedId);
+
+    return new FeedCommentDtoCursorResponse(
+        data,
+        nextCursor,
+        nextIdAfter,
+        hasNext,
+        totalCount,
+        "createdAt",
+        "DESCENDING"
+    );
+  }
 }

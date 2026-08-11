@@ -13,6 +13,7 @@ import com.otboo.domain.feed.dto.request.SortBy;
 import com.otboo.domain.feed.dto.request.FeedUpdateRequest;
 import com.otboo.domain.feed.dto.request.SortDirection;
 import com.otboo.domain.feed.dto.response.FeedCommentDto;
+import com.otboo.domain.feed.dto.response.FeedCommentDtoCursorResponse;
 import com.otboo.domain.feed.dto.response.FeedDto;
 import com.otboo.domain.feed.dto.response.FeedDtoCursorResponse;
 import com.otboo.domain.feed.service.FeedService;
@@ -108,7 +109,9 @@ public class FeedController {
       Authentication authentication
   ) {
     UUID currentUserId = (UUID) authentication.getPrincipal();
-    FeedCommentDto response = feedService.createFeedComment(feedId, request, currentUserId);
+    FeedCommentDto response = feedService.createFeedComment(
+        feedId, request, currentUserId
+    );
     return ResponseEntity.ok(response);
   }
 
@@ -127,8 +130,23 @@ public class FeedController {
   ) {
     UUID currentUserId = (UUID) authentication.getPrincipal();
     FeedDtoCursorResponse response = feedService.getFeeds(
-        cursor, idAfter, limit, sortBy, sortDirection, keywordLike, skyStatusEqual, precipitationTypeEqual, authorIdEqual, currentUserId
+        cursor, idAfter, limit, sortBy, sortDirection, keywordLike, skyStatusEqual,
+        precipitationTypeEqual, authorIdEqual, currentUserId
     );
-      return ResponseEntity.ok(response);
+    return ResponseEntity.ok(response);
+  }
+
+  @GetMapping("/{feedId}/comments")
+  public ResponseEntity<FeedCommentDtoCursorResponse> getComment(
+      @PathVariable UUID feedId,
+      @RequestParam(required = false) String cursor,
+      @RequestParam(required = false) UUID idAfter,
+      @RequestParam @Min(value = 1, message = "limit는 1 이상이어야 합니다.") @Max(value = 100, message = "limit는 100 이하여야 합니다.") int limit
+  ) {
+    FeedCommentDtoCursorResponse response = feedService.getComment(
+        feedId, cursor, idAfter, limit
+    );
+
+    return ResponseEntity.ok(response);
   }
 }

@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
+import com.otboo.domain.feed.dto.response.FeedCommentDtoCursorResponse;
 import com.otboo.domain.feed.dto.response.FeedDtoCursorResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.feed.dto.request.FeedCommentCreateRequest;
@@ -237,6 +238,41 @@ class FeedControllerTest {
         eq(null),
         eq(null),
         eq(currentUserId)
+    );
+  }
+
+  @Test
+  @DisplayName("피드 댓글 목록 조회 API 성공 테스트")
+  void getComment_success() throws Exception {
+    UUID feedId = UUID.randomUUID();
+
+    FeedCommentDtoCursorResponse response = new FeedCommentDtoCursorResponse(
+        List.of(),
+        null,
+        null,
+        false,
+        0L,
+        "createdAt",
+        "DESCENDING"
+    );
+
+    given(feedService.getComment(
+        eq(feedId),
+        eq(null),
+        eq(null),
+        eq(20)
+    )).willReturn(response);
+
+    mockMvc.perform(get("/api/feeds/{feedId}/comments", feedId)
+            .with(authentication(mockAuthentication(UUID.randomUUID())))
+            .param("limit", "20"))
+        .andExpect(status().isOk());
+
+    verify(feedService).getComment(
+        eq(feedId),
+        eq(null),
+        eq(null),
+        eq(20)
     );
   }
 }
