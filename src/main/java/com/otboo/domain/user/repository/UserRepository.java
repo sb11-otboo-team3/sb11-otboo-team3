@@ -13,4 +13,8 @@ public interface UserRepository extends JpaRepository<User, UUID>, UserRepositor
   Optional<User> findByEmail(String email);
 
   boolean existsByEmail(String email);
+
+  @Modifying
+  @Query("UPDATE User u SET u.tokenVersion = u.tokenVersion + 1 WHERE u.id = :userId")
+  int incrementTokenVersion(@Param("userId") UUID userId);
 }
