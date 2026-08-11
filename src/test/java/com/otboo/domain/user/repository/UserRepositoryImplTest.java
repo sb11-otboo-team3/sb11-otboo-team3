@@ -76,4 +76,21 @@ class UserRepositoryImplTest {
         "not-a-valid-instant", UUID.randomUUID(), 10, "createdAt", "DESCENDING", null, null, null
     )).isInstanceOf(InvalidUserCursorException.class);
   }
+
+  @Test
+  @DisplayName("incrementTokenVersion 호출 시 DB에서 tokenVersion이 원자적으로 1 증가한다")
+  void incrementTokenVersionIncreasesValueInDatabase() {
+    // given
+    User user = saveUser("tokentest@otboo.io", "토큰테스트");
+    long before = user.getTokenVersion();
+
+    // when
+    userRepository.incrementTokenVersion(user.getId());
+    entityManager.flush();
+    entityManager.clear();
+
+    // then
+    User reloaded = userRepository.findById(user.getId()).orElseThrow();
+    assertThat(reloaded.getTokenVersion()).isEqualTo(before + 1);
+  }
 }

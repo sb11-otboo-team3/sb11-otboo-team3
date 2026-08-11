@@ -12,6 +12,7 @@ import com.otboo.domain.user.dto.UserDto;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.exception.UserNotFoundException;
 import com.otboo.domain.user.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,8 +21,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.otboo.domain.auth.dto.ResetPasswordRequest;
-import com.otboo.domain.auth.token.PasswordResetService;
 
 @Slf4j
 @Service
@@ -37,6 +36,7 @@ public class AuthService {
   private final JwtProvider jwtProvider;
   private final RefreshTokenService refreshTokenService;
   private final PasswordResetService passwordResetService;
+  private final EntityManager entityManager;
 
   @Transactional
   public SignInResult signIn(SignInRequest request) {
@@ -67,7 +67,8 @@ public class AuthService {
     }
 
     User user = userOptional.get();
-    user.refreshSession();
+    userRepository.incrementTokenVersion(user.getId());  // DB에서 원자적으로 +1
+    entityManager.refresh(user);                          // 방금 DB에 반영된 최신 값을 user 객체에 다시 채워넣음
 
     String accessToken = jwtProvider.createAccessToken(
         user.getId(), user.getRole().name(), user.getTokenVersion()
