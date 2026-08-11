@@ -39,6 +39,8 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -81,6 +83,9 @@ class WeatherPrefetchJobIntegrationTest {
   @Autowired
   private EntityManager entityManager;
 
+  @Autowired
+  private PlatformTransactionManager transactionManager;
+
   @MockitoBean
   private KmaWeatherClient kmaWeatherClient;
 
@@ -90,20 +95,21 @@ class WeatherPrefetchJobIntegrationTest {
     gridRepository.deleteAll();
   }
 
+  // gridRepository.saveAndFlush(...)는 리포지토리 프록시 자체가 트랜잭션을 걸어주므로 별도 트랜잭션
+  // 없이 호출 가능(테스트 클래스 자체엔 @Transactional을 안 붙였음 - 배치의 자체 트랜잭션과 안 겹치게).
   private Grid persistGrid(int x, int y) {
-    Grid grid = Grid.builder().x(x).y(y).build();
-    entityManager.persist(grid);
-    entityManager.flush();
-    return grid;
+    return gridRepository.saveAndFlush(Grid.builder().x(x).y(y).build());
   }
 
   // Grid.lastRequestedAt은 생성 시 Instant.now()로 고정돼서 빌더로 과거 값을 못 넣는다 - 비활성 격자를
-  // 재현하려면 저장 후 직접 과거로 되돌려야 한다.
+  // 재현하려면 저장 후 직접 과거로 되돌려야 한다. EntityManager native 쿼리는 리포지토리 프록시와 달리
+  // 자체 트랜잭션이 없어서 직접 짧은 트랜잭션으로 감싼다.
   private void backdateLastRequestedAt(Grid grid, Instant timestamp) {
-    entityManager.createNativeQuery("UPDATE weather_grid SET last_requested_at = :ts WHERE id = :id")
-        .setParameter("ts", timestamp)
-        .setParameter("id", grid.getId())
-        .executeUpdate();
+    new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+        entityManager.createNativeQuery("UPDATE weather_grid SET last_requested_at = :ts WHERE id = :id")
+            .setParameter("ts", timestamp)
+            .setParameter("id", grid.getId())
+            .executeUpdate());
     entityManager.clear();
   }
 

@@ -76,6 +76,10 @@ dependencies {
 	// Spring Batch
 	implementation 'org.springframework.boot:spring-boot-starter-batch'
 
+	// ShedLock (서버 여러 대에서 같은 @Scheduled 배치가 동시에 중복 실행되는 것 방지)
+	implementation 'net.javacrumbs.shedlock:shedlock-spring:7.7.0'
+	implementation 'net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.7.0'
+
 	// Configuration metadata
 	annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 

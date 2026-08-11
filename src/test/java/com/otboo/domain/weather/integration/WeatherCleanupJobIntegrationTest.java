@@ -23,6 +23,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -62,35 +64,38 @@ class WeatherCleanupJobIntegrationTest {
   @Autowired
   private EntityManager entityManager;
 
+  @Autowired
+  private PlatformTransactionManager transactionManager;
+
   @AfterEach
   void tearDown() {
     weatherRepository.deleteAll();
     gridRepository.deleteAll();
   }
 
+  // gridRepository.save(...)는 리포지토리 프록시 자체가 트랜잭션을 걸어주므로 별도 트랜잭션 없이 호출 가능.
   private Grid persistGrid(int x, int y) {
-    Grid grid = Grid.builder().x(x).y(y).build();
-    entityManager.persist(grid);
-    entityManager.flush();
-    return grid;
+    return gridRepository.saveAndFlush(Grid.builder().x(x).y(y).build());
   }
 
+  // weatherRepository.upsert(...)도 마찬가지로 리포지토리 프록시가 자체 트랜잭션을 걸어준다.
   private Weather persistWeather(Grid grid, Instant forecastAt) {
-    Weather weather = weatherRepository.upsert(
+    return weatherRepository.upsert(
         UUID.randomUUID(), grid.getId(), forecastAt, forecastAt,
         "CLEAR", "NONE", 0.0, 0.0, 45.0, null, 20.0, null, null, null, 2.0
     ).orElseThrow();
-    entityManager.flush();
-    return weather;
   }
 
+  // 반면 이건 EntityManager로 직접 쏘는 native 쿼리라, 배치의 트랜잭션과 안 겹치는 별도의 짧은
+  // 트랜잭션으로 직접 감싸줘야 한다(테스트 클래스 자체엔 @Transactional을 안 붙였으므로).
   private void persistFeedReferencing(UUID weatherId) {
-    entityManager.createNativeQuery(
-            "INSERT INTO feeds (id, weather_id, weather_snapshot, content) "
-                + "VALUES (:id, :weatherId, '{}'::jsonb, 'test')")
-        .setParameter("id", UUID.randomUUID())
-        .setParameter("weatherId", weatherId)
-        .executeUpdate();
+    new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+        entityManager.createNativeQuery(
+                "INSERT INTO feeds (id, weather_id, weather_snapshot, content) "
+                    + "VALUES (:id, :weatherId, '{}'::jsonb, 'test')")
+            .setParameter("id", UUID.randomUUID())
+            .setParameter("weatherId", weatherId)
+            .executeUpdate());
   }
 
   private JobParameters uniqueJobParameters() {
@@ -107,7 +112,9 @@ class WeatherCleanupJobIntegrationTest {
     Instant now = Instant.now();
     Weather old = persistWeather(grid, now.minusSeconds(3600L * 24 * 10)); // 10일 전 - 확실히 cutoff(3일) 이전
     Weather recent = persistWeather(grid, now.minusSeconds(3600)); // 1시간 전 - retention 기간 내
-    Weather oldButHeldByFeed = persistWeather(grid, now.minusSeconds(3600L * 24 * 10));
+    // old와 forecastAt이 겹치면 upsert가 같은 (grid, forecastAt) 행으로 합쳐버려서(같은 id) 별개
+    // 검증이 안 되므로 다른 시각을 씀 - 그래도 cutoff(3일) 이전인 건 동일.
+    Weather oldButHeldByFeed = persistWeather(grid, now.minusSeconds(3600L * 24 * 9));
     persistFeedReferencing(oldButHeldByFeed.getId());
     entityManager.clear();
 

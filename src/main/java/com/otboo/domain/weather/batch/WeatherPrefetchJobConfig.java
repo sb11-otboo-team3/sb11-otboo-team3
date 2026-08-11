@@ -19,6 +19,8 @@ import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.item.support.ListItemReader;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.retry.backoff.BackOffPolicy;
+import org.springframework.retry.backoff.ExponentialBackOffPolicy;
 import org.springframework.transaction.PlatformTransactionManager;
 
 // 활성 격자(최근에 실제로 요청된 격자)의 날씨를 기상청 발표 직후 미리 조회해서 저장해둔다.
@@ -32,6 +34,10 @@ public class WeatherPrefetchJobConfig {
 
   private static final Duration ACTIVE_WINDOW = Duration.ofDays(3);
   private static final int CHUNK_SIZE = 10;
+  private static final int RETRY_LIMIT = 3;
+  private static final long BACKOFF_INITIAL_INTERVAL_MS = 200;
+  private static final long BACKOFF_MAX_INTERVAL_MS = 2000;
+  private static final double BACKOFF_MULTIPLIER = 2.0;
 
   private final GridRepository gridRepository;
   private final Clock clock;
@@ -68,6 +74,11 @@ public class WeatherPrefetchJobConfig {
         .processor(gridForecastProcessor)
         .writer(gridForecastWriter)
         .faultTolerant()
+        // 기상청 호출이 일시적으로 삐끗한 걸 수도 있으니, 바로 포기하지 않고 지수 백오프로 몇 번 더
+        // 찔러본다(200ms -> 400ms -> ... 최대 2초, 최대 3번 시도). 그래도 계속 실패하면 아래 skip으로 넘어감.
+        .retry(KmaApiException.class)
+        .retryLimit(RETRY_LIMIT)
+        .backOffPolicy(retryBackOffPolicy())
         .skip(KmaApiException.class)
         // 격자 하나 실패로 배치 전체가 죽으면 안 되므로 사실상 무제한 허용 - 실패한 격자는 다음 발표
         // 시각(3시간 뒤)에 다시 시도된다.
@@ -75,9 +86,18 @@ public class WeatherPrefetchJobConfig {
         .listener(new SkipListener<Grid, GridForecast>() {
           @Override
           public void onSkipInProcess(Grid item, Throwable t) {
-            log.error("날씨 프리패치 - 격자 처리 스킵, grid=({},{})", item.getX(), item.getY(), t);
+            log.error("날씨 프리패치 - 격자 처리 스킵(재시도 {}번 다 실패), grid=({},{})",
+                RETRY_LIMIT, item.getX(), item.getY(), t);
           }
         })
         .build();
+  }
+
+  private BackOffPolicy retryBackOffPolicy() {
+    ExponentialBackOffPolicy policy = new ExponentialBackOffPolicy();
+    policy.setInitialInterval(BACKOFF_INITIAL_INTERVAL_MS);
+    policy.setMaxInterval(BACKOFF_MAX_INTERVAL_MS);
+    policy.setMultiplier(BACKOFF_MULTIPLIER);
+    return policy;
   }
 }
