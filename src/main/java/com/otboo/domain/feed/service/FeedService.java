@@ -38,7 +38,6 @@ import com.otboo.domain.feed.repository.FeedClothesRepository;
 import com.otboo.domain.feed.repository.FeedCommentRepository;
 import com.otboo.domain.feed.repository.FeedLikeRepository;
 import com.otboo.domain.feed.repository.FeedRepository;
-import com.otboo.domain.follow.exception.InvalidFollowCursorException;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.domain.weather.dto.WeatherSummaryDto;
@@ -279,16 +278,7 @@ public class FeedService {
       feeds = feeds.subList(0, limit);
     }
 
-    List<FeedDto> data = feeds.stream()
-        .map(feed -> {
-          boolean likedByMe = feedLikeRepository.existsByFeedIdAndUserId(
-              feed.getId(),
-              currentUserId
-          );
-
-          return toFeedDto(feed, likedByMe);
-        })
-        .toList();
+    List<FeedDto> data = toFeedDtos(feeds, currentUserId);
 
     String nextCursor = null;
     UUID nextIdAfter = null;
@@ -383,5 +373,63 @@ public class FeedService {
         "createdAt",
         "ASCENDING"
     );
+  }
+
+  private List<FeedDto> toFeedDtos(List<Feed> feeds, UUID currentUserId) {
+    if (feeds.isEmpty()) {
+      return List.of();
+    }
+
+    List<UUID> feedIds = feeds.stream()
+        .map(Feed::getId)
+        .toList();
+
+    List<UUID> likedFeedIds = feedLikeRepository
+        .findByFeedIdInAndUserId(feedIds, currentUserId)
+        .stream()
+        .map(feedLike -> feedLike.getFeed().getId())
+        .toList();
+
+    List<FeedClothes> allFeedClothes =
+        feedClothesRepository.findByFeedInAndClothesDeletedAtIsNull(feeds);
+
+    Map<UUID, List<FeedClothes>> feedClothesByFeedId = allFeedClothes.stream()
+        .collect(Collectors.groupingBy(feedClothes -> feedClothes.getFeed().getId()));
+
+    List<Clothes> clothes = allFeedClothes.stream()
+        .map(FeedClothes::getClothes)
+        .distinct()
+        .toList();
+
+    List<ClothesAttribute> attributes = clothesAttributeRepository.findByClothesIn(clothes);
+
+    Map<UUID, List<ClothesAttribute>> attributesByClothesId = attributes.stream()
+        .collect(Collectors.groupingBy(attribute -> attribute.getClothes().getId()));
+
+    List<ClothesAttributeDefinition> definitions = attributes.stream()
+        .map(ClothesAttribute::getDefinition)
+        .distinct()
+        .toList();
+
+    List<AttributeSelectableValue> selectableValues =
+        attributeSelectableValueRepository
+            .findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(definitions);
+
+    Map<UUID, List<String>> selectableValuesByDefinitionId = selectableValues.stream()
+        .collect(Collectors.groupingBy(
+            value -> value.getDefinition().getId(),
+            Collectors.mapping(AttributeSelectableValue::getValue, Collectors.toList())
+        ));
+
+    return feeds.stream()
+        .map(feed -> feedMapper.toDto(
+            feed,
+            objectMapper.convertValue(feed.getWeatherSnapshot(), WeatherSummaryDto.class),
+            feedClothesByFeedId.getOrDefault(feed.getId(), List.of()),
+            attributesByClothesId,
+            selectableValuesByDefinitionId,
+            likedFeedIds.contains(feed.getId())
+        ))
+        .toList();
   }
 }

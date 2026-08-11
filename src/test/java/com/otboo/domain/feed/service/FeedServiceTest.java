@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.eq;
 
 import com.otboo.domain.feed.dto.request.SortBy;
 import com.otboo.domain.feed.dto.request.SortDirection;
@@ -340,9 +341,9 @@ class FeedServiceTest {
         null
     )).willReturn(List.of(feed1, feed2));
 
-    given(feedLikeRepository.existsByFeedIdAndUserId(feed1Id, currentUserId))
-        .willReturn(false);
-    given(feedClothesRepository.findByFeedAndClothesDeletedAtIsNull(feed1))
+    given(feedLikeRepository.findByFeedIdInAndUserId(anyList(), eq(currentUserId)))
+        .willReturn(List.of());
+    given(feedClothesRepository.findByFeedInAndClothesDeletedAtIsNull(anyList()))
         .willReturn(List.of());
     given(clothesAttributeRepository.findByClothesIn(anyList()))
         .willReturn(List.of());
