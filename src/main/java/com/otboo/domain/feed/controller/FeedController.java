@@ -6,6 +6,8 @@ import com.otboo.domain.feed.controller.docs.CreateFeedLikeApi;
 import com.otboo.domain.feed.controller.docs.DeleteFeedApi;
 import com.otboo.domain.feed.controller.docs.DeleteFeedLikeApi;
 import com.otboo.domain.feed.controller.docs.FeedApi;
+import com.otboo.domain.feed.controller.docs.GetFeedApi;
+import com.otboo.domain.feed.controller.docs.GetFeedCommentApi;
 import com.otboo.domain.feed.controller.docs.UpdateFeedApi;
 import com.otboo.domain.feed.dto.request.FeedCommentCreateRequest;
 import com.otboo.domain.feed.dto.request.FeedCreateRequest;
@@ -115,6 +117,7 @@ public class FeedController {
     return ResponseEntity.ok(response);
   }
 
+  @GetFeedApi
   @GetMapping
   public ResponseEntity<FeedDtoCursorResponse> getFeeds(
       @RequestParam(required = false) String cursor,
@@ -136,6 +139,7 @@ public class FeedController {
     return ResponseEntity.ok(response);
   }
 
+  @GetFeedCommentApi
   @GetMapping("/{feedId}/comments")
   public ResponseEntity<FeedCommentDtoCursorResponse> getComment(
       @PathVariable UUID feedId,
