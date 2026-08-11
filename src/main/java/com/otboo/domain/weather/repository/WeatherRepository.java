@@ -110,4 +110,22 @@ public interface WeatherRepository extends JpaRepository<Weather, UUID> {
 
     Double getResolvedMax();
   }
+
+  // 오래된 예보(forecast_at < cutoff)를 지운다. 단, 피드가 들고 있는 weather는 제외한다 -
+  // feeds.weather_id가 ON DELETE SET NULL이라 지워도 에러는 안 나지만, 피드가 조용히 날씨를 잃어버리게 된다.
+  // 한 번에 batchSize개까지만 지우고, 호출부(WeatherCleanupJobConfig)가 리턴값이 0이 될 때까지 반복 호출하는
+  // 것을 전제로 한다 - OFFSET 페이징 없이 매번 "지금 기준 조건에 맞는 다음 N개"를 새로 찾기 때문에, 삭제로
+  // 인해 뒤 페이지 행들이 앞으로 밀려서 일부가 스킵되는 문제(OFFSET 기반 페이징 + 삭제 조합의 전형적인 버그)가 없다.
+  @Modifying
+  @Query(value = """
+      DELETE FROM weathers
+      WHERE id IN (
+          SELECT id FROM weathers
+          WHERE forecast_at < :cutoff
+            AND id NOT IN (SELECT weather_id FROM feeds WHERE weather_id IS NOT NULL)
+          ORDER BY id
+          LIMIT :batchSize
+      )
+      """, nativeQuery = true)
+  int deleteBatchOlderThan(@Param("cutoff") Instant cutoff, @Param("batchSize") int batchSize);
 }

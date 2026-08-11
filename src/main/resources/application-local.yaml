@@ -44,3 +44,8 @@ kma:
   vilage-fcst:
     api-key: ${KMA_API_KEY:kma-api-key}
     base-url: https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0
+
+weather:
+  cleanup:
+    # TODO: 로컬 테스트용 임시 오버라이드 - 확인 끝나면 이 3줄 지울 것 (운영은 새벽 4시 그대로, WeatherCleanupScheduler 기본값 참고)
+    cron: "0 * * * * *"
