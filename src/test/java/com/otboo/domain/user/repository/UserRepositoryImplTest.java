@@ -5,11 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.entity.UserRole;
+import com.otboo.domain.user.exception.InvalidUserCursorException;
 import com.otboo.domain.user.exception.InvalidUserFilterException;
 import com.otboo.global.config.JpaAuditingConfig;
 import com.otboo.global.config.QuerydslConfig;
 import jakarta.persistence.EntityManager;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -61,5 +63,17 @@ class UserRepositoryImplTest {
   private User saveUser(String email, String name) {
     User user = User.create(email, name, "encoded-password");
     return userRepository.saveAndFlush(user);
+  }
+
+  @Test
+  @DisplayName("cursor가 잘못된 날짜 형식이면 InvalidUserCursorException이 발생한다")
+  void findUsersWithInvalidCursorFormatThrowsInvalidUserCursorException() {
+    // given
+    saveUser("cursortest@otboo.io", "커서테스트");
+
+    // when & then
+    assertThatThrownBy(() -> userRepository.findUsers(
+        "not-a-valid-instant", UUID.randomUUID(), 10, "createdAt", "DESCENDING", null, null, null
+    )).isInstanceOf(InvalidUserCursorException.class);
   }
 }
