@@ -2,20 +2,24 @@ package com.otboo.domain.auth.token;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 @SpringBootTest
 public class RefreshTokenRedisIntegrationTest {
 
     private static final String KEY_PREFIX = "refresh:";
+
+    private final Set<String> createdKeys = new HashSet<>();
 
     @Autowired
     private RefreshTokenService refreshTokenService;
@@ -25,7 +29,16 @@ public class RefreshTokenRedisIntegrationTest {
 
     @AfterEach
     void tearDown() {
-        redisTemplate.delete(redisTemplate.keys(KEY_PREFIX + "*"));
+        if (!createdKeys.isEmpty()) {
+            redisTemplate.delete(createdKeys);
+            createdKeys.clear();
+        }
+    }
+
+    private String issueRefreshToken(UUID userId, long tokenVersion) {
+        String refreshToken = refreshTokenService.issue(userId, tokenVersion);
+        createdKeys.add(KEY_PREFIX + refreshToken);
+        return refreshToken;
     }
 
     @Test
@@ -50,7 +63,7 @@ public class RefreshTokenRedisIntegrationTest {
     void consumeTokenInfoReturnsInfoAndDeletesTokenFromRedis() {
         // given
         UUID userId = UUID.randomUUID();
-        long tokenVersion = 1L;
+        long tokenVersion = 2L;
 
         String refreshToken = refreshTokenService.issue(userId, tokenVersion);
 
