@@ -22,10 +22,6 @@ public class AdminInitializationService {
 
   @Transactional
   public void initializeAdmin() {
-    if (userRepository.existsByRole(UserRole.ADMIN)) {
-      log.info("이미 ADMIN 계정이 존재하여 초기화를 건너뜁니다.");
-      return;
-    }
 
     String normalizedEmail = adminProperties.initEmail().toLowerCase(Locale.ROOT);
 

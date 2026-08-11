@@ -29,19 +29,24 @@ class AdminInitializationServiceTest {
   private PasswordEncoder passwordEncoder;
 
   private final AdminProperties adminProperties = new AdminProperties(
-      "admin@otboo.io", "admin", "admin1234!"
+          "admin@otboo.io",
+          "admin",
+          "admin1234!"
   );
 
   @Test
-  @DisplayName("ADMIN 계정이 없으면 초기 어드민 계정을 생성한다")
-  void createsAdminWhenNoneExists() throws Exception {
+  @DisplayName("설정된 초기 어드민 이메일이 없으면 초기 어드민 계정을 생성한다")
+  void createsAdminWhenInitEmailDoesNotExist() {
     // given
-    given(userRepository.existsByRole(UserRole.ADMIN)).willReturn(false);
     given(userRepository.existsByEmail("admin@otboo.io")).willReturn(false);
     given(passwordEncoder.encode("admin1234!")).willReturn("encoded-password");
 
     AdminInitializationService service =
-        new AdminInitializationService(userRepository, passwordEncoder, adminProperties);
+            new AdminInitializationService(
+                    userRepository,
+                    passwordEncoder,
+                    adminProperties
+            );
 
     // when
     service.initializeAdmin();
@@ -56,53 +61,44 @@ class AdminInitializationServiceTest {
   }
 
   @Test
-  @DisplayName("이미 ADMIN 계정이 존재하면 초기화를 건너뛴다")
-  void skipsWhenAdminAlreadyExists() throws Exception {
+  @DisplayName("초기 어드민 이메일이 이미 등록되어 있으면 초기화를 건너뛴다")
+  void skipsWhenInitEmailAlreadyTaken() {
     // given
-    given(userRepository.existsByRole(UserRole.ADMIN)).willReturn(true);
-
-    AdminInitializationService service =
-        new AdminInitializationService(userRepository, passwordEncoder, adminProperties);
-
-    // when
-    service.initializeAdmin();
-
-    // then
-    verify(userRepository, never()).save(any());
-  }
-
-  @Test
-  @DisplayName("초기 이메일이 이미 다른 계정으로 등록되어 있으면 초기화를 건너뛴다")
-  void skipsWhenInitEmailAlreadyTaken() throws Exception {
-    // given
-    given(userRepository.existsByRole(UserRole.ADMIN)).willReturn(false);
     given(userRepository.existsByEmail("admin@otboo.io")).willReturn(true);
 
     AdminInitializationService service =
-        new AdminInitializationService(userRepository, passwordEncoder, adminProperties);
+            new AdminInitializationService(
+                    userRepository,
+                    passwordEncoder,
+                    adminProperties
+            );
 
     // when
     service.initializeAdmin();
 
     // then
     verify(userRepository, never()).save(any());
+    verify(passwordEncoder, never()).encode(any());
   }
 
   @Test
   @DisplayName("동시 생성 시도로 저장이 실패하면 예외를 삼키고 정상 종료한다")
-  void skipsWhenSaveThrowsDataIntegrityViolationException() throws Exception {
+  void skipsWhenSaveThrowsDataIntegrityViolationException() {
     // given
-    given(userRepository.existsByRole(UserRole.ADMIN)).willReturn(false);
     given(userRepository.existsByEmail("admin@otboo.io")).willReturn(false);
     given(passwordEncoder.encode("admin1234!")).willReturn("encoded-password");
     given(userRepository.save(any()))
-        .willThrow(new DataIntegrityViolationException("duplicate key"));
+            .willThrow(new DataIntegrityViolationException("duplicate key"));
 
     AdminInitializationService service =
-        new AdminInitializationService(userRepository, passwordEncoder, adminProperties);
+            new AdminInitializationService(
+                    userRepository,
+                    passwordEncoder,
+                    adminProperties
+            );
 
     // when & then
-    assertThatCode(() -> service.initializeAdmin())
-        .doesNotThrowAnyException();
+    assertThatCode(service::initializeAdmin)
+            .doesNotThrowAnyException();
   }
 }
