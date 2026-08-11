@@ -39,7 +39,7 @@ import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.domain.weather.dto.WeatherSummaryDto;
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.repository.WeatherRepository;
-import com.otboo.domain.weather.service.WeatherService;
+import com.otboo.domain.weather.service.WeatherSummaryFinder;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -57,7 +57,7 @@ public class FeedService {
   private final FeedClothesRepository feedClothesRepository;
   private final UserRepository userRepository;
   private final ClothesRepository clothesRepository;
-  private final WeatherService weatherService;
+  private final WeatherSummaryFinder weatherSummaryFinder;
   private final WeatherRepository weatherRepository;
   private final ClothesAttributeRepository clothesAttributeRepository;
   private final AttributeSelectableValueRepository attributeSelectableValueRepository;
@@ -93,7 +93,7 @@ public class FeedService {
       throw new FeedForbiddenException();
     }
 
-    WeatherSummaryDto weatherSummary = weatherService.getWeatherSummary(request.weatherId());
+    WeatherSummaryDto weatherSummary = weatherSummaryFinder.find(request.weatherId());
     JsonNode weatherSnapshot = objectMapper.valueToTree(weatherSummary);
 
     Feed feed = Feed.create(author, weather, weatherSnapshot, request.content());

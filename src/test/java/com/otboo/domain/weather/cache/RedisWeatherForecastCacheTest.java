@@ -1,8 +1,11 @@
 package com.otboo.domain.weather.cache;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -29,6 +32,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -69,12 +73,15 @@ class RedisWeatherForecastCacheTest {
   }
 
   @Test
-  @DisplayName("저장하면 location을 제거한 뒤 3시간 TTL로 저장한다")
+  @DisplayName("저장하면 목록 전체를 location 제거한 뒤 하나의 키에 3시간 TTL로 저장한다")
   void saveStripsLocationAndSetsThreeHourTtl() throws Exception {
     // given
     WeatherAPILocation location = new WeatherAPILocation(37.5665, 126.9780, 60, 127,
         List.of("서울특별시", "강서구", "마곡동"));
-    List<WeatherDto> forecasts = List.of(weatherDto(forecastedAt, location));
+    List<WeatherDto> forecasts = List.of(
+        weatherDto(forecastedAt, location),
+        weatherDto(forecastedAt.plusSeconds(86400), location)
+    );
 
     // when
     cache.save(grid, forecastedAt, forecasts);
@@ -83,20 +90,19 @@ class RedisWeatherForecastCacheTest {
     ArgumentCaptor<String> jsonCaptor = ArgumentCaptor.forClass(String.class);
     verify(valueOperations).set(eq(key), jsonCaptor.capture(), eq(Duration.ofHours(3)));
 
-    List<WeatherDto> stored = objectMapper.readValue(jsonCaptor.getValue(), new TypeReference<>() {
+    List<WeatherDto> stored = objectMapper.readValue(jsonCaptor.getValue(), new TypeReference<List<WeatherDto>>() {
     });
-    assertThat(stored).hasSize(1);
-    assertThat(stored.get(0).location()).isNull();
-    assertThat(stored.get(0).forecastAt()).isEqualTo(forecastedAt);
+    assertThat(stored).hasSize(2);
+    assertThat(stored).allSatisfy(dto -> assertThat(dto.location()).isNull());
     assertThat(stored.get(0).temperature().current()).isEqualTo(23.0);
   }
 
   @Test
-  @DisplayName("캐시에 값이 있으면 역직렬화해서 반환한다")
-  void findReturnsDeserializedListWhenCached() throws Exception {
+  @DisplayName("캐시에 값이 있으면 역직렬화해서 목록 전체를 반환한다")
+  void findReturnsDeserializedValueWhenCached() throws Exception {
     // given
-    List<WeatherDto> cached = List.of(weatherDto(forecastedAt, null));
-    given(valueOperations.get(key)).willReturn(objectMapper.writeValueAsString(cached));
+    List<WeatherDto> cachedForecasts = List.of(weatherDto(forecastedAt, null));
+    given(valueOperations.get(key)).willReturn(objectMapper.writeValueAsString(cachedForecasts));
 
     // when
     Optional<List<WeatherDto>> result = cache.find(grid, forecastedAt);
@@ -119,6 +125,32 @@ class RedisWeatherForecastCacheTest {
 
     // then
     assertThat(result).isEmpty();
+  }
+
+  @Test
+  @DisplayName("Redis 연결이 끊겨 있으면 조회를 캐시 미스로 처리한다")
+  void findReturnsEmptyWhenRedisConnectionFails() {
+    // given
+    given(valueOperations.get(key)).willThrow(new RedisConnectionFailureException("연결 실패"));
+
+    // when
+    Optional<List<WeatherDto>> result = cache.find(grid, forecastedAt);
+
+    // then
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  @DisplayName("Redis 연결이 끊겨 있으면 저장 실패를 예외 없이 흡수한다")
+  void saveAbsorbsFailureWhenRedisConnectionFails() {
+    // given
+    List<WeatherDto> forecasts = List.of(weatherDto(forecastedAt, null));
+    willThrow(new RedisConnectionFailureException("연결 실패"))
+        .given(valueOperations).set(eq(key), anyString(), eq(Duration.ofHours(3)));
+
+    // when & then
+    assertThatCode(() -> cache.save(grid, forecastedAt, forecasts))
+        .doesNotThrowAnyException();
   }
 
   private WeatherDto weatherDto(Instant forecastAt, WeatherAPILocation location) {

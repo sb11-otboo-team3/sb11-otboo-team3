@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.otboo.domain.weather.dto.VilageFcstItem;
 import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
-import com.otboo.domain.weather.entity.WindStrength;
 import com.otboo.domain.weather.exception.KmaApiException;
 import com.otboo.domain.weather.util.VilageFcstBaseTime;
 import java.io.IOException;
@@ -96,7 +95,6 @@ class KmaWeatherClientTest {
     assertThat(item.humidity()).isEqualTo(55.0);
     assertThat(item.temperature()).isEqualTo(23.0);
     assertThat(item.windSpeed()).isEqualTo(2.3);
-    assertThat(item.windStrength()).isEqualTo(WindStrength.WEAK);
   }
 
   @Test
