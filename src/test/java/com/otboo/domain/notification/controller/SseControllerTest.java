@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.otboo.domain.auth.jwt.JwtProvider;
 import com.otboo.domain.notification.service.NotificationService;
+import com.otboo.domain.notification.sse.SseController;
 import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.global.security.SecurityConfig;
 import java.util.List;

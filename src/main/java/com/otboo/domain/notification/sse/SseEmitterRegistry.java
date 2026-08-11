@@ -1,4 +1,4 @@
-package com.otboo.domain.notification.service;
+package com.otboo.domain.notification.sse;
 
 import java.time.Instant;
 import java.util.Collection;

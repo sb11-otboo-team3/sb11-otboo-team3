@@ -1,4 +1,4 @@
-package com.otboo.domain.notification.controller;
+package com.otboo.domain.notification.sse;
 
 import com.otboo.domain.notification.service.NotificationService;
 import java.util.UUID;
