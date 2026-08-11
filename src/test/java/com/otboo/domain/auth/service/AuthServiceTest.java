@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.mockito.BDDMockito.willAnswer;
+import static org.mockito.ArgumentMatchers.eq;
 
 import com.otboo.domain.auth.dto.SignInRequest;
 import com.otboo.domain.auth.exception.InvalidCredentialsException;
@@ -29,6 +31,7 @@ import com.otboo.domain.auth.dto.ResetPasswordRequest;
 import com.otboo.domain.user.dto.ChangePasswordRequest;
 import com.otboo.domain.user.exception.UserNotFoundException;
 import com.otboo.domain.auth.token.RefreshTokenService.TokenInfo;
+
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -126,13 +129,24 @@ class AuthServiceTest {
     User user = User.create("test@otboo.io", "테스트유저", "encoded-password");
     UUID userId = UUID.randomUUID();
     ReflectionTestUtils.setField(user, "id", userId);
+    long versionBeforeLogin = user.getTokenVersion();
 
     SignInRequest request = new SignInRequest("test@otboo.io", "password1234");
 
     given(userRepository.findByEmail("test@otboo.io")).willReturn(Optional.of(user));
     given(passwordEncoder.matches("password1234", "encoded-password")).willReturn(true);
-    given(jwtProvider.createAccessToken(any(), any(), anyLong())).willReturn("access-token");
-    given(refreshTokenService.issue(any(), anyLong())).willReturn("refresh-token-value");
+
+    // entityManager.refresh(user) 호출 시, 실제 DB 원자적 증가를 흉내내어
+    // 메모리상 tokenVersion도 +1 시킨다.
+    willAnswer(invocation -> {
+      ReflectionTestUtils.setField(user, "tokenVersion", versionBeforeLogin + 1);
+      return null;
+    }).given(entityManager).refresh(user);
+
+    given(jwtProvider.createAccessToken(any(), any(), eq(versionBeforeLogin + 1)))
+        .willReturn("access-token");
+    given(refreshTokenService.issue(any(), eq(versionBeforeLogin + 1)))
+        .willReturn("refresh-token-value");
 
     // when
     authService.signIn(request);
@@ -140,6 +154,8 @@ class AuthServiceTest {
     // then
     verify(userRepository).incrementTokenVersion(userId);
     verify(entityManager).refresh(user);
+    verify(jwtProvider).createAccessToken(any(), any(), eq(versionBeforeLogin + 1));
+    verify(refreshTokenService).issue(any(), eq(versionBeforeLogin + 1));
   }
 
   @Test
