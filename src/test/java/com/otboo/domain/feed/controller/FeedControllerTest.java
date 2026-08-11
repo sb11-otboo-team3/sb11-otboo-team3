@@ -14,14 +14,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
-import com.otboo.domain.feed.dto.response.FeedCommentDtoCursorResponse;
-import com.otboo.domain.feed.dto.response.FeedDtoCursorResponse;
+import com.otboo.domain.feed.comment.dto.response.FeedCommentDtoCursorResponse;
+import com.otboo.domain.feed.core.controller.FeedController;
+import com.otboo.domain.feed.core.dto.request.SortBy;
+import com.otboo.domain.feed.core.dto.request.SortDirection;
+import com.otboo.domain.feed.core.dto.response.FeedDtoCursorResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.otboo.domain.feed.dto.request.FeedCommentCreateRequest;
-import com.otboo.domain.feed.dto.request.FeedCreateRequest;
-import com.otboo.domain.feed.dto.request.FeedUpdateRequest;
-import com.otboo.domain.feed.dto.response.FeedCommentDto;
-import com.otboo.domain.feed.dto.response.FeedDto;
+import com.otboo.domain.feed.comment.dto.request.FeedCommentCreateRequest;
+import com.otboo.domain.feed.core.dto.request.FeedCreateRequest;
+import com.otboo.domain.feed.core.dto.request.FeedUpdateRequest;
+import com.otboo.domain.feed.comment.dto.response.FeedCommentDto;
+import com.otboo.domain.feed.core.dto.response.FeedDto;
 import com.otboo.domain.feed.service.FeedService;
 import java.util.List;
 import java.util.UUID;
@@ -212,8 +215,8 @@ class FeedControllerTest {
         eq(null),
         eq(null),
         eq(20),
-        eq(com.otboo.domain.feed.dto.request.SortBy.createdAt),
-        eq(com.otboo.domain.feed.dto.request.SortDirection.DESCENDING),
+        eq(SortBy.createdAt),
+        eq(SortDirection.DESCENDING),
         eq(null),
         eq(null),
         eq(null),
@@ -232,8 +235,8 @@ class FeedControllerTest {
         eq(null),
         eq(null),
         eq(20),
-        eq(com.otboo.domain.feed.dto.request.SortBy.createdAt),
-        eq(com.otboo.domain.feed.dto.request.SortDirection.DESCENDING),
+        eq(SortBy.createdAt),
+        eq(SortDirection.DESCENDING),
         eq(null),
         eq(null),
         eq(null),

@@ -1,0 +1,162 @@
+package com.otboo.domain.feed.core.controller;
+
+import com.otboo.domain.feed.comment.service.FeedCommentService;
+import com.otboo.domain.feed.core.controller.docs.CreateFeedApi;
+import com.otboo.domain.feed.comment.docs.CreateFeedCommentApi;
+import com.otboo.domain.feed.core.service.FeedCommandService;
+import com.otboo.domain.feed.core.service.FeedQueryService;
+import com.otboo.domain.feed.like.docs.CreateFeedLikeApi;
+import com.otboo.domain.feed.core.controller.docs.DeleteFeedApi;
+import com.otboo.domain.feed.like.docs.DeleteFeedLikeApi;
+import com.otboo.domain.feed.core.controller.docs.FeedApi;
+import com.otboo.domain.feed.core.controller.docs.GetFeedApi;
+import com.otboo.domain.feed.comment.docs.GetFeedCommentApi;
+import com.otboo.domain.feed.core.controller.docs.UpdateFeedApi;
+import com.otboo.domain.feed.comment.dto.request.FeedCommentCreateRequest;
+import com.otboo.domain.feed.core.dto.request.FeedCreateRequest;
+import com.otboo.domain.feed.core.dto.request.SortBy;
+import com.otboo.domain.feed.core.dto.request.FeedUpdateRequest;
+import com.otboo.domain.feed.core.dto.request.SortDirection;
+import com.otboo.domain.feed.comment.dto.response.FeedCommentDto;
+import com.otboo.domain.feed.comment.dto.response.FeedCommentDtoCursorResponse;
+import com.otboo.domain.feed.core.dto.response.FeedDto;
+import com.otboo.domain.feed.core.dto.response.FeedDtoCursorResponse;
+import com.otboo.domain.feed.like.service.FeedLikeService;
+import com.otboo.domain.weather.entity.PrecipitationType;
+import com.otboo.domain.weather.entity.SkyStatus;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@FeedApi
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api/feeds")
+public class FeedController {
+
+  private final FeedCommentService feedCommentService;
+  private final FeedQueryService feedQueryService;
+  private final FeedLikeService feedLikeService;
+  private final FeedCommandService feedCommandService;
+
+  @CreateFeedApi
+  @PostMapping
+  public ResponseEntity<FeedDto> createFeed(
+      @Valid @RequestBody FeedCreateRequest request,
+      Authentication authentication
+  ) {
+    UUID currentUserId = (UUID) authentication.getPrincipal();
+    FeedDto response = feedCommandService.createFeed(request, currentUserId);
+    return ResponseEntity.status(HttpStatus.CREATED).body(response);
+  }
+
+  @UpdateFeedApi
+  @PatchMapping("/{feedId}")
+  public ResponseEntity<FeedDto> updateFeed(
+      @PathVariable UUID feedId,
+      @Valid @RequestBody FeedUpdateRequest request,
+      Authentication authentication
+  ) {
+    UUID currentUserId = (UUID) authentication.getPrincipal();
+    FeedDto response = feedCommandService.updateFeed(feedId, request, currentUserId);
+    return ResponseEntity.ok(response);
+  }
+
+  @DeleteFeedApi
+  @DeleteMapping("/{feedId}")
+  public ResponseEntity<Void> deleteFeed(
+      @PathVariable UUID feedId,
+      Authentication authentication
+  ) {
+    UUID currentUserId = (UUID) authentication.getPrincipal();
+    feedCommandService.deleteFeed(feedId, currentUserId);
+    return ResponseEntity.noContent().build();
+  }
+
+  @CreateFeedLikeApi
+  @PostMapping("/{feedId}/like")
+  public ResponseEntity<Void> createFeedLike(
+      @PathVariable UUID feedId,
+      Authentication authentication
+  ) {
+    UUID currentUserId = (UUID) authentication.getPrincipal();
+    feedLikeService.createFeedLike(feedId, currentUserId);
+    return ResponseEntity.noContent().build();
+  }
+
+  @DeleteFeedLikeApi
+  @DeleteMapping("/{feedId}/like")
+  public ResponseEntity<Void> deleteFeedLike(
+      @PathVariable UUID feedId,
+      Authentication authentication
+  ) {
+    UUID currentUserId = (UUID) authentication.getPrincipal();
+    feedLikeService.deleteFeedLike(feedId, currentUserId);
+    return ResponseEntity.noContent().build();
+  }
+
+  @CreateFeedCommentApi
+  @PostMapping("/{feedId}/comments")
+  public ResponseEntity<FeedCommentDto> createComment(
+      @PathVariable UUID feedId,
+      @Valid @RequestBody FeedCommentCreateRequest request,
+      Authentication authentication
+  ) {
+    UUID currentUserId = (UUID) authentication.getPrincipal();
+    FeedCommentDto response = feedCommentService.createFeedComment(
+        feedId, request, currentUserId
+    );
+    return ResponseEntity.ok(response);
+  }
+
+  @GetFeedApi
+  @GetMapping
+  public ResponseEntity<FeedDtoCursorResponse> getFeeds(
+      @RequestParam(required = false) String cursor,
+      @RequestParam(required = false) UUID idAfter,
+      @RequestParam @Min(value = 1, message = "limit는 1 이상이어야 합니다.") @Max(value = 100, message = "limit는 100 이하여야 합니다.") int limit,
+      @RequestParam SortBy sortBy,
+      @RequestParam SortDirection sortDirection,
+      @RequestParam(required = false) String keywordLike,
+      @RequestParam(required = false) SkyStatus skyStatusEqual,
+      @RequestParam(required = false) PrecipitationType precipitationTypeEqual,
+      @RequestParam(required = false) UUID authorIdEqual,
+      Authentication authentication
+  ) {
+    UUID currentUserId = (UUID) authentication.getPrincipal();
+    FeedDtoCursorResponse response = feedQueryService.getFeeds(
+        cursor, idAfter, limit, sortBy, sortDirection, keywordLike, skyStatusEqual,
+        precipitationTypeEqual, authorIdEqual, currentUserId
+    );
+    return ResponseEntity.ok(response);
+  }
+
+  @GetFeedCommentApi
+  @GetMapping("/{feedId}/comments")
+  public ResponseEntity<FeedCommentDtoCursorResponse> getComment(
+      @PathVariable UUID feedId,
+      @RequestParam(required = false) String cursor,
+      @RequestParam(required = false) UUID idAfter,
+      @RequestParam @Min(value = 1, message = "limit는 1 이상이어야 합니다.") @Max(value = 100, message = "limit는 100 이하여야 합니다.") int limit
+  ) {
+    FeedCommentDtoCursorResponse response = feedCommentService.getComment(
+        feedId, cursor, idAfter, limit
+    );
+
+    return ResponseEntity.ok(response);
+  }
+}
