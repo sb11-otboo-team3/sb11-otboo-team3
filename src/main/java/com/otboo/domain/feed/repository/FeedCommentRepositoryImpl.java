@@ -49,10 +49,10 @@ public class FeedCommentRepositoryImpl implements FeedCommentRepositoryCustom {
 
     Instant cursorCreatedAt = Instant.parse(cursor);
 
-    return comment.createdAt.lt(cursorCreatedAt)
+    return comment.createdAt.gt(cursorCreatedAt)
         .or(
             comment.createdAt.eq(cursorCreatedAt)
-                .and(comment.id.lt(idAfter))
+                .and(comment.id.gt(idAfter))
         );
   }
 
