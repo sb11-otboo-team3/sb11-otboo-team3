@@ -1,4 +1,4 @@
-package com.otboo.domain.feed.controller;
+package com.otboo.domain.feed.core.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -8,24 +8,26 @@ import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.otboo.domain.feed.comment.dto.response.FeedCommentDtoCursorResponse;
-import com.otboo.domain.feed.core.controller.FeedController;
-import com.otboo.domain.feed.core.dto.request.SortBy;
-import com.otboo.domain.feed.core.dto.request.SortDirection;
-import com.otboo.domain.feed.core.dto.response.FeedDtoCursorResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.feed.comment.dto.request.FeedCommentCreateRequest;
+import com.otboo.domain.feed.comment.dto.response.FeedCommentDto;
+import com.otboo.domain.feed.comment.dto.response.FeedCommentDtoCursorResponse;
+import com.otboo.domain.feed.comment.service.FeedCommentService;
 import com.otboo.domain.feed.core.dto.request.FeedCreateRequest;
 import com.otboo.domain.feed.core.dto.request.FeedUpdateRequest;
-import com.otboo.domain.feed.comment.dto.response.FeedCommentDto;
+import com.otboo.domain.feed.core.dto.request.SortBy;
+import com.otboo.domain.feed.core.dto.request.SortDirection;
 import com.otboo.domain.feed.core.dto.response.FeedDto;
-import com.otboo.domain.feed.service.FeedService;
+import com.otboo.domain.feed.core.dto.response.FeedDtoCursorResponse;
+import com.otboo.domain.feed.core.service.FeedCommandService;
+import com.otboo.domain.feed.core.service.FeedQueryService;
+import com.otboo.domain.feed.like.service.FeedLikeService;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -47,7 +49,16 @@ class FeedControllerTest {
   private ObjectMapper objectMapper;
 
   @MockitoBean
-  private FeedService feedService;
+  private FeedCommandService feedCommandService;
+
+  @MockitoBean
+  private FeedQueryService feedQueryService;
+
+  @MockitoBean
+  private FeedLikeService feedLikeService;
+
+  @MockitoBean
+  private FeedCommentService feedCommentService;
 
   @Test
   @DisplayName("피드 생성 API 성공")
@@ -65,7 +76,7 @@ class FeedControllerTest {
 
     FeedDto response = mockFeedDto();
 
-    given(feedService.createFeed(any(FeedCreateRequest.class), eq(currentUserId)))
+    given(feedCommandService.createFeed(any(FeedCreateRequest.class), eq(currentUserId)))
         .willReturn(response);
 
     mockMvc.perform(post("/api/feeds")
@@ -75,7 +86,7 @@ class FeedControllerTest {
             .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isCreated());
 
-    verify(feedService).createFeed(any(FeedCreateRequest.class), eq(currentUserId));
+    verify(feedCommandService).createFeed(any(FeedCreateRequest.class), eq(currentUserId));
   }
 
   @Test
@@ -88,7 +99,7 @@ class FeedControllerTest {
 
     FeedDto response = mockFeedDto();
 
-    given(feedService.updateFeed(eq(feedId), any(FeedUpdateRequest.class), eq(currentUserId)))
+    given(feedCommandService.updateFeed(eq(feedId), any(FeedUpdateRequest.class), eq(currentUserId)))
         .willReturn(response);
 
     mockMvc.perform(patch("/api/feeds/{feedId}", feedId)
@@ -98,7 +109,11 @@ class FeedControllerTest {
             .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isOk());
 
-    verify(feedService).updateFeed(eq(feedId), any(FeedUpdateRequest.class), eq(currentUserId));
+    verify(feedCommandService).updateFeed(
+        eq(feedId),
+        any(FeedUpdateRequest.class),
+        eq(currentUserId)
+    );
   }
 
   @Test
@@ -112,26 +127,7 @@ class FeedControllerTest {
             .with(csrf()))
         .andExpect(status().isNoContent());
 
-    verify(feedService).deleteFeed(feedId, currentUserId);
-  }
-
-  private Authentication mockAuthentication(UUID userId) {
-    return new UsernamePasswordAuthenticationToken(userId, null, List.of());
-  }
-
-  private FeedDto mockFeedDto() {
-    return new FeedDto(
-        UUID.randomUUID(),
-        null,
-        null,
-        null,
-        null,
-        List.of(),
-        "피드 내용",
-        0L,
-        0,
-        false
-    );
+    verify(feedCommandService).deleteFeed(feedId, currentUserId);
   }
 
   @Test
@@ -145,7 +141,7 @@ class FeedControllerTest {
             .with(csrf()))
         .andExpect(status().isNoContent());
 
-    verify(feedService).createFeedLike(feedId, currentUserId);
+    verify(feedLikeService).createFeedLike(feedId, currentUserId);
   }
 
   @Test
@@ -159,7 +155,7 @@ class FeedControllerTest {
             .with(csrf()))
         .andExpect(status().isNoContent());
 
-    verify(feedService).deleteFeedLike(feedId, currentUserId);
+    verify(feedLikeService).deleteFeedLike(feedId, currentUserId);
   }
 
   @Test
@@ -176,7 +172,7 @@ class FeedControllerTest {
 
     FeedCommentDto response = mock(FeedCommentDto.class);
 
-    given(feedService.createFeedComment(
+    given(feedCommentService.createFeedComment(
         eq(feedId),
         any(FeedCommentCreateRequest.class),
         eq(currentUserId)
@@ -189,7 +185,7 @@ class FeedControllerTest {
             .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isOk());
 
-    verify(feedService).createFeedComment(
+    verify(feedCommentService).createFeedComment(
         eq(feedId),
         any(FeedCommentCreateRequest.class),
         eq(currentUserId)
@@ -211,7 +207,7 @@ class FeedControllerTest {
         "DESCENDING"
     );
 
-    given(feedService.getFeeds(
+    given(feedQueryService.getFeeds(
         eq(null),
         eq(null),
         eq(20),
@@ -231,7 +227,7 @@ class FeedControllerTest {
             .param("sortDirection", "DESCENDING"))
         .andExpect(status().isOk());
 
-    verify(feedService).getFeeds(
+    verify(feedQueryService).getFeeds(
         eq(null),
         eq(null),
         eq(20),
@@ -260,7 +256,7 @@ class FeedControllerTest {
         "ASCENDING"
     );
 
-    given(feedService.getComment(
+    given(feedCommentService.getComment(
         eq(feedId),
         eq(null),
         eq(null),
@@ -274,11 +270,30 @@ class FeedControllerTest {
         .andExpect(jsonPath("$.sortBy").value("createdAt"))
         .andExpect(jsonPath("$.sortDirection").value("ASCENDING"));
 
-    verify(feedService).getComment(
+    verify(feedCommentService).getComment(
         eq(feedId),
         eq(null),
         eq(null),
         eq(20)
+    );
+  }
+
+  private Authentication mockAuthentication(UUID userId) {
+    return new UsernamePasswordAuthenticationToken(userId, null, List.of());
+  }
+
+  private FeedDto mockFeedDto() {
+    return new FeedDto(
+        UUID.randomUUID(),
+        null,
+        null,
+        null,
+        null,
+        List.of(),
+        "피드 내용",
+        0L,
+        0,
+        false
     );
   }
 }
