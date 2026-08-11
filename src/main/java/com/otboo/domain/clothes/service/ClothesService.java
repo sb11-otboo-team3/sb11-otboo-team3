@@ -52,8 +52,13 @@ public class ClothesService {
         return clothesWriteTransactionalService.create(request, imageKey);
     }
 
-    public ClothesResponse update(UUID currentUserId, UUID clothesId, ClothesUpdateRequest request) {
-        return clothesWriteTransactionalService.update(currentUserId, clothesId, request);
+    public ClothesResponse update(UUID currentUserId, UUID clothesId, ClothesUpdateRequest request, MultipartFile image) {
+        String newImageKey = null;
+        if (image != null && !image.isEmpty()){
+            StoredFile storedFile = fileStorage.upload(StorageDirectory.CLOTHES, currentUserId, image);
+            newImageKey = storedFile.objectKey();
+        }
+        return clothesWriteTransactionalService.update(currentUserId, clothesId, request, newImageKey);
     }
 
     private Map<UUID, List<String>> resolveActiveValues(Collection<ClothesAttributeDefinition> definitions) {

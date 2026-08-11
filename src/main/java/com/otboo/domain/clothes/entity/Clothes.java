@@ -59,4 +59,8 @@ public class Clothes extends SoftDeletableEntity {
         this.name = name;
         this.type = type;
     }
+
+    public void updateImageKey(String imageKey) {
+        this.imageKey = imageKey;
+    }
 }

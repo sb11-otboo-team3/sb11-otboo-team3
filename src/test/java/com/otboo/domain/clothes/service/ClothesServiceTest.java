@@ -41,6 +41,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -68,13 +69,17 @@ class ClothesServiceTest {
     @Mock
     private FileStorage fileStorage;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private ClothesService service;
+
 
     @BeforeEach
     void setUp() {
         ClothesWriteTransactionalService writeService = new ClothesWriteTransactionalService(
                 clothesRepository, clothesAttributeRepository, definitionRepository,
-                selectableValueRepository, userRepository, clothesMapper
+                selectableValueRepository, userRepository, clothesMapper, eventPublisher
         );
         service = new ClothesService(
                 clothesRepository, clothesAttributeRepository, selectableValueRepository,
@@ -240,7 +245,7 @@ class ClothesServiceTest {
                 .willReturn(new ClothesResponse(clothesId, userId, "새이름", null, ClothesType.BOTTOM, List.of()));
 
         //when
-        ClothesResponse response = service.update(userId, clothesId, request);
+        ClothesResponse response = service.update(userId, clothesId, request, null);
 
         //then
         assertThat(response.name()).isEqualTo("새이름");
@@ -259,7 +264,7 @@ class ClothesServiceTest {
         given(clothesRepository.findById(clothesId)).willReturn(Optional.empty());
 
         //when & then
-        assertThatThrownBy(() -> service.update(userId, clothesId, request))
+        assertThatThrownBy(() -> service.update(userId, clothesId, request, null))
                 .isInstanceOf(ClothesNotFoundException.class);
     }
 
@@ -278,7 +283,7 @@ class ClothesServiceTest {
         given(clothesRepository.findById(clothesId)).willReturn(Optional.of(clothes));
 
         //when & then
-        assertThatThrownBy(() -> service.update(currentUserId, clothesId, request))
+        assertThatThrownBy(() -> service.update(currentUserId, clothesId, request, null))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
@@ -305,7 +310,7 @@ class ClothesServiceTest {
                 .willReturn(List.of());
 
         //when & then
-        assertThatThrownBy(() -> service.update(userId, clothesId, request))
+        assertThatThrownBy(() -> service.update(userId, clothesId, request, null))
                 .isInstanceOf(InvalidClothesAttributeValueException.class);
     }
 

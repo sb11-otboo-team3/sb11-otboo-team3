@@ -55,10 +55,10 @@ public class ClothesController {
     public ResponseEntity<ClothesResponse> update(
             @AuthenticationPrincipal UUID currentUserId,
             @PathVariable UUID clothesId,
-            @RequestPart("request") @Valid ClothesUpdateRequest request
+            @RequestPart("request") @Valid ClothesUpdateRequest request,
+            @RequestPart(value = "image", required = false) MultipartFile image
     ) {
-        ClothesResponse response = clothesService.update(currentUserId,
-                clothesId, request);
+        ClothesResponse response = clothesService.update(currentUserId, clothesId, request, image);
         return ResponseEntity.ok(response);
     }
 

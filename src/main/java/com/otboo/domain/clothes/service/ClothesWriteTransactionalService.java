@@ -14,8 +14,10 @@ import com.otboo.domain.clothes.repository.ClothesRepository;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.exception.UserNotFoundException;
 import com.otboo.domain.user.repository.UserRepository;
+import com.otboo.global.infrastructure.storage.event.FileReplacementEvent;
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +38,7 @@ public class ClothesWriteTransactionalService {
     private final AttributeSelectableValueRepository selectableValueRepository;
     private final UserRepository userRepository;
     private final ClothesMapper clothesMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public ClothesResponse create(ClothesCreateRequest request, String imageKey) {
@@ -58,13 +61,23 @@ public class ClothesWriteTransactionalService {
     }
 
     @Transactional
-    public ClothesResponse update(UUID currentUserId, UUID clothesId, ClothesUpdateRequest request) {
+    public ClothesResponse update(UUID currentUserId, UUID clothesId, ClothesUpdateRequest request, String newImageKey) {
         Clothes clothes = clothesRepository.findById(clothesId)
                 .filter(found -> found.getDeletedAt() == null)
                 .orElseThrow(() -> new ClothesNotFoundException(clothesId));
 
         if (!clothes.getOwner().getId().equals(currentUserId)) {
             throw new AccessDeniedException("본인 의상만 수정할 수 있습니다.");
+        }
+        
+        String oldImageKey = clothes.getImageKey();
+        if (newImageKey != null) {
+            clothes.updateImageKey(newImageKey);
+            eventPublisher.publishEvent(new FileReplacementEvent(oldImageKey, newImageKey));
+        } else if (Boolean.TRUE.equals(request.deleteImage())) {
+            clothes.updateImageKey(null);
+            eventPublisher.publishEvent(new FileReplacementEvent(oldImageKey, null));
+            
         }
 
         clothes.update(request.name().trim(), request.type());
