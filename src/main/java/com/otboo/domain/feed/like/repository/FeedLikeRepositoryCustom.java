@@ -1,4 +1,8 @@
 package com.otboo.domain.feed.like.repository;
 
-public class FeedLikeRepositoryCustom {
+import java.util.UUID;
+
+public interface FeedLikeRepositoryCustom {
+
+  long deleteByFeedIdAndUserId(UUID feedId, UUID userId);
 }

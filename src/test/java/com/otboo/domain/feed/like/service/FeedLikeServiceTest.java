@@ -59,11 +59,10 @@ class FeedLikeServiceTest {
 
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
     given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
-    given(feedLikeRepository.existsByFeedIdAndUserId(feedId, userId)).willReturn(false);
 
     feedLikeService.createFeedLike(feedId, userId);
 
-    verify(feedLikeRepository).save(any(FeedLike.class));
+    verify(feedLikeRepository).saveAndFlush(any(FeedLike.class));
     verify(feedRepository).increaseLikeCount(feedId);
   }
 
@@ -82,16 +81,15 @@ class FeedLikeServiceTest {
         objectMapper.createObjectNode(),
         "좋아요 취소 대상 피드"
     );
-    FeedLike feedLike = FeedLike.create(feed, user);
 
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
     given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
-    given(feedLikeRepository.findByFeedIdAndUserId(feedId, userId))
-        .willReturn(Optional.of(feedLike));
+    given(feedLikeRepository.deleteByFeedIdAndUserId(feedId, userId))
+        .willReturn(1L);
 
     feedLikeService.deleteFeedLike(feedId, userId);
 
-    verify(feedLikeRepository).delete(feedLike);
+    verify(feedLikeRepository).deleteByFeedIdAndUserId(feedId, userId);
     verify(feedRepository).decreaseLikeCount(feedId);
   }
 }
