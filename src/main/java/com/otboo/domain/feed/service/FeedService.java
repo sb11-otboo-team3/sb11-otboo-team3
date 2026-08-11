@@ -46,6 +46,8 @@ import com.otboo.domain.weather.entity.SkyStatus;
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.repository.WeatherRepository;
 import com.otboo.domain.weather.service.WeatherSummaryFinder;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -322,6 +324,14 @@ public class FeedService {
 
     if (hasCursor != hasIdAfter) {
       throw new InvalidFeedCommentCursorException();
+    }
+
+    if (hasCursor) {
+      try {
+        Instant.parse(cursor);
+      } catch (DateTimeParseException exception) {
+        throw new InvalidFeedCommentCursorException();
+      }
     }
   }
 
