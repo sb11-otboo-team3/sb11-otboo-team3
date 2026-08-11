@@ -5,6 +5,7 @@ import com.otboo.domain.auth.jwt.JwtProvider;
 import com.otboo.domain.user.repository.UserRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -33,7 +34,8 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             JwtProvider jwtProvider,
-            UserRepository userRepository
+            UserRepository userRepository,
+            Environment environment
     ) throws Exception {
         // XSRF-TOKEN 쿠키는 프론트엔드 JS가 값을 읽어 X-XSRF-TOKEN 헤더에
         // 실어 보내야 하는 Double Submit Cookie 패턴이라,
@@ -56,7 +58,8 @@ public class SecurityConfig {
                                 response.sendError(HttpStatus.UNAUTHORIZED.value()))
                         .accessDeniedHandler((request, response, accessDeniedException) ->
                                 response.sendError(HttpStatus.FORBIDDEN.value())))
-                .authorizeHttpRequests(auth -> auth
+                .authorizeHttpRequests(auth -> {
+                        auth
                         // 프론트엔드 정적 리소스 접근 허용
                         .requestMatchers(
                                 "/",
@@ -79,9 +82,16 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**"
-                        ).permitAll()
-                        .anyRequest().authenticated()
-                )
+                        ).permitAll();
+
+                        // local 프로필에서만 인증 없이 /actuator/prometheus 접근 허용 - 로컬 부하테스트 시
+                        // Prometheus가 로그인 없이 긁어갈 수 있게 함
+                        if (environment.matchesProfiles("local")) {
+                            auth.requestMatchers(HttpMethod.GET, "/actuator/prometheus").permitAll();
+                        }
+
+                        auth.anyRequest().authenticated();
+                })
                 .addFilterBefore(
                         new JwtAuthenticationFilter(jwtProvider, userRepository),
                         UsernamePasswordAuthenticationFilter.class

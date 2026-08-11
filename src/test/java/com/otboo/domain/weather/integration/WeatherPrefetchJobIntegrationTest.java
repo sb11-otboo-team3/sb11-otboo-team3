@@ -7,6 +7,8 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.otboo.domain.weather.client.KmaWeatherClient;
 import com.otboo.domain.weather.dto.VilageFcstItem;
@@ -36,9 +38,13 @@ import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -61,11 +67,16 @@ import reactor.core.publisher.Mono;
     "spring.jpa.hibernate.ddl-auto=validate",
     "spring.batch.jdbc.initialize-schema=never"
 })
+@AutoConfigureMockMvc
+@AutoConfigureObservability // 기본적으로 꺼져있는 메트릭 익스포트를 다시 켬(ActuatorEndpointTest 참고)
 class WeatherPrefetchJobIntegrationTest {
 
   @Container
   @ServiceConnection
   static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:18-alpine");
+
+  @Autowired
+  private MockMvc mockMvc;
 
   @Autowired
   private JobLauncher jobLauncher;
@@ -207,5 +218,32 @@ class WeatherPrefetchJobIntegrationTest {
         .getForecast(eq(recoveringGrid.getX()), eq(recoveringGrid.getY()), any(VilageFcstBaseTime.class));
     assertThat(weatherRepository.findAll())
         .anySatisfy(w -> assertThat(w.getGrid().getId()).isEqualTo(recoveringGrid.getId()));
+  }
+
+  @Test
+  @WithMockUser
+  @DisplayName("배치 실행 후 /actuator/prometheus에 수집 건수·실패율 메트릭이 실제 값과 함께 노출된다")
+  void publishesPrometheusMetricsAfterJobRun() throws Exception {
+    // given: 성공 1개 + 실패 1개 -> 실패율 0.5가 나오는 걸 확인하기 쉬운 조합
+    Grid okGrid = persistGrid(64, 131);
+    Grid failingGrid = persistGrid(65, 132);
+    given(kmaWeatherClient.getForecast(eq(okGrid.getX()), eq(okGrid.getY()), any(VilageFcstBaseTime.class)))
+        .willReturn(Mono.just(List.of(item())));
+    given(kmaWeatherClient.getForecast(eq(failingGrid.getX()), eq(failingGrid.getY()), any(VilageFcstBaseTime.class)))
+        .willReturn(Mono.error(new KmaApiException(failingGrid.getX(), failingGrid.getY(), null, null)));
+
+    // when
+    jobLauncher.run(weatherPrefetchJob, uniqueJobParameters());
+
+    // then
+    mockMvc.perform(get("/actuator/prometheus"))
+        .andExpect(status().isOk())
+        .andExpect(result -> {
+          String body = result.getResponse().getContentAsString();
+          assertThat(body).contains("weather_prefetch_grid_collected");
+          assertThat(body).contains("weather_prefetch_grid_failed");
+          assertThat(body).contains("weather_prefetch_failure_rate");
+          assertThat(body).contains("weather_prefetch_job_duration");
+        });
   }
 }

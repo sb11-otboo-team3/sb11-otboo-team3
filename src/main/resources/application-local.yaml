@@ -47,5 +47,8 @@ kma:
 
 weather:
   cleanup:
-    # TODO: 로컬 테스트용 임시 오버라이드 - 확인 끝나면 이 3줄 지울 것 (운영은 새벽 4시 그대로, WeatherCleanupScheduler 기본값 참고)
+    # TODO: 로컬 테스트용 임시 오버라이드 - 확인 끝나면 이 줄 지울 것 (운영은 새벽 4시 그대로, WeatherCleanupScheduler 기본값 참고)
     cron: "0 * * * * *"
+  prefetch:
+    # TODO: 로컬 테스트용 임시 오버라이드 - 확인 끝나면 이 줄 지울 것 (운영은 발표시각+15분 그대로, WeatherPrefetchScheduler 기본값 참고)
+    cron: "0 */10 * * * *"

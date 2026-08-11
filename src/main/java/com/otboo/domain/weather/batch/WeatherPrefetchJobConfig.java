@@ -43,8 +43,13 @@ public class WeatherPrefetchJobConfig {
   private final Clock clock;
 
   @Bean
-  public Job weatherPrefetchJob(JobRepository jobRepository, Step weatherPrefetchStep) {
+  public Job weatherPrefetchJob(
+      JobRepository jobRepository,
+      Step weatherPrefetchStep,
+      WeatherPrefetchMetricsListener weatherPrefetchMetricsListener
+  ) {
     return new JobBuilder("weatherPrefetchJob", jobRepository)
+        .listener(weatherPrefetchMetricsListener)
         .start(weatherPrefetchStep)
         .build();
   }

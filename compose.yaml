@@ -34,5 +34,25 @@ services:
       retries: 10
       start_period: 5s
 
+  # 로컬 부하테스트용. 앱 자체는 여기 안 담겨있고, 이미 로컬에서 ./gradlew bootRun(local 프로필)으로
+  # 떠 있는 앱의 /actuator/prometheus를 스크래핑하는 용도.
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000" # 프론트엔드 dev 서버(3000)와 안 겹치게
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+
 volumes:
   postgres-data:
