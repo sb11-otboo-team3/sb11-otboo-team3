@@ -6,7 +6,7 @@ import java.util.UUID;
 
 public record FeedCommentDto(
     UUID id,
-    Instant createAt,
+    Instant createdAt,
     UUID feedId,
     UserSummary author,
     String content

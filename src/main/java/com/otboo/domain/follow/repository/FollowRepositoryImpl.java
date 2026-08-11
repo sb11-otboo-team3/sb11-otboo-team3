@@ -139,5 +139,4 @@ public class FollowRepositoryImpl implements FollowRepositoryCustom {
                 .and(follow.id.gt(idAfter))
         );
   }
-
 }

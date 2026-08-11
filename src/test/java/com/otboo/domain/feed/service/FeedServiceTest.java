@@ -8,7 +8,17 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.eq;
 
+import com.otboo.domain.feed.dto.request.SortBy;
+import com.otboo.domain.feed.dto.request.SortDirection;
+import com.otboo.domain.feed.dto.response.FeedCommentDtoCursorResponse;
+import com.otboo.domain.feed.dto.response.FeedDtoCursorResponse;
+import com.otboo.domain.weather.dto.PrecipitationDto;
+import com.otboo.domain.weather.dto.TemperatureDto;
+import com.otboo.domain.weather.entity.PrecipitationType;
+import com.otboo.domain.weather.entity.SkyStatus;
+import java.time.Instant;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.clothes.entity.Clothes;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
@@ -282,4 +292,159 @@ class FeedServiceTest {
     verify(feedRepository).increaseCommentCount(feedId);
   }
 
+  @Test
+  @DisplayName("피드 목록 조회 성공")
+  void getFeeds_success() {
+    UUID currentUserId = UUID.randomUUID();
+
+    User author = User.create("author@test.com", "author", "password");
+    ReflectionTestUtils.setField(author, "id", currentUserId);
+
+    WeatherSummaryDto weatherSummary = new WeatherSummaryDto(
+        UUID.randomUUID(),
+        SkyStatus.CLEAR,
+        new PrecipitationDto(PrecipitationType.NONE, 0.0, 0.0),
+        new TemperatureDto(20.0, 0.0, 18.0, 25.0)
+    );
+
+    Feed feed1 = Feed.create(
+        author,
+        mock(Weather.class),
+        objectMapper.valueToTree(weatherSummary),
+        "첫 번째 피드"
+    );
+    UUID feed1Id = UUID.randomUUID();
+    Instant feed1CreatedAt = Instant.parse("2026-08-10T09:00:00Z");
+    ReflectionTestUtils.setField(feed1, "id", feed1Id);
+    ReflectionTestUtils.setField(feed1, "createdAt", feed1CreatedAt);
+
+    Feed feed2 = Feed.create(
+        author,
+        mock(Weather.class),
+        objectMapper.valueToTree(weatherSummary),
+        "두 번째 피드"
+    );
+    ReflectionTestUtils.setField(feed2, "id", UUID.randomUUID());
+    ReflectionTestUtils.setField(feed2, "createdAt", Instant.parse("2026-08-10T08:00:00Z"));
+
+    FeedDto feedDto = mock(FeedDto.class);
+
+    given(feedRepository.findFeeds(
+        null,
+        null,
+        2,
+        SortBy.createdAt,
+        SortDirection.DESCENDING,
+        null,
+        null,
+        null,
+        null
+    )).willReturn(List.of(feed1, feed2));
+
+    given(feedLikeRepository.findByFeedIdInAndUserId(anyList(), eq(currentUserId)))
+        .willReturn(List.of());
+    given(feedClothesRepository.findByFeedInAndClothesDeletedAtIsNull(anyList()))
+        .willReturn(List.of());
+    given(clothesAttributeRepository.findByClothesIn(anyList()))
+        .willReturn(List.of());
+    given(attributeSelectableValueRepository
+        .findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(anyList()))
+        .willReturn(List.of());
+    given(feedMapper.toDto(any(), any(), anyList(), anyMap(), anyMap(), anyBoolean()))
+        .willReturn(feedDto);
+    given(feedRepository.countFeeds(null, null, null, null))
+        .willReturn(2L);
+
+    FeedDtoCursorResponse result = feedService.getFeeds(
+        null,
+        null,
+        1,
+        SortBy.createdAt,
+        SortDirection.DESCENDING,
+        null,
+        null,
+        null,
+        null,
+        currentUserId
+    );
+
+    assertThat(result.data()).containsExactly(feedDto);
+    assertThat(result.hasNext()).isTrue();
+    assertThat(result.nextCursor()).isEqualTo(feed1CreatedAt.toString());
+    assertThat(result.nextIdAfter()).isEqualTo(feed1Id);
+    assertThat(result.totalCount()).isEqualTo(2L);
+    assertThat(result.sortBy()).isEqualTo("createdAt");
+    assertThat(result.sortDirection()).isEqualTo("DESCENDING");
+
+    verify(feedRepository).findFeeds(
+        null,
+        null,
+        2,
+        SortBy.createdAt,
+        SortDirection.DESCENDING,
+        null,
+        null,
+        null,
+        null
+    );
+  }
+
+  @Test
+  @DisplayName("피드 댓글 목록 조회 성공 테스트")
+  void getComment_success() {
+    UUID feedId = UUID.randomUUID();
+    UUID authorId = UUID.randomUUID();
+
+    User author = User.create("author@test.com", "author", "password");
+    ReflectionTestUtils.setField(author, "id", authorId);
+
+    Feed feed = Feed.create(
+        author,
+        mock(Weather.class),
+        objectMapper.valueToTree(mock(WeatherSummaryDto.class)),
+        "피드 내용"
+    );
+    ReflectionTestUtils.setField(feed, "id", feedId);
+
+    Comment comment1 = Comment.create(feed, author, "첫 번째 댓글");
+    UUID comment1Id = UUID.randomUUID();
+    Instant comment1CreatedAt = Instant.parse("2026-08-11T00:00:00Z");
+    ReflectionTestUtils.setField(comment1, "id", comment1Id);
+    ReflectionTestUtils.setField(comment1, "createdAt", comment1CreatedAt);
+
+    Comment comment2 = Comment.create(feed, author, "두 번째 댓글");
+    ReflectionTestUtils.setField(comment2, "id", UUID.randomUUID());
+    ReflectionTestUtils.setField(comment2, "createdAt", Instant.parse("2026-08-11T01:00:00Z"));
+
+    FeedCommentDto feedCommentDto = mock(FeedCommentDto.class);
+
+    given(feedRepository.findByIdAndDeletedAtIsNull(feedId))
+        .willReturn(Optional.of(feed));
+    given(feedCommentRepository.findComments(feedId, null, null, 2))
+        .willReturn(List.of(comment1, comment2));
+    given(feedCommentMapper.toDto(comment1))
+        .willReturn(feedCommentDto);
+    given(feedCommentRepository.countComments(feedId))
+        .willReturn(2L);
+
+    FeedCommentDtoCursorResponse result = feedService.getComment(
+        feedId,
+        null,
+        null,
+        1
+    );
+
+    assertThat(result.data()).containsExactly(feedCommentDto);
+    assertThat(result.hasNext()).isTrue();
+    assertThat(result.nextCursor()).isEqualTo(comment1CreatedAt.toString());
+    assertThat(result.nextIdAfter()).isEqualTo(comment1Id);
+    assertThat(result.totalCount()).isEqualTo(2L);
+    assertThat(result.sortBy()).isEqualTo("createdAt");
+    assertThat(result.sortDirection()).isEqualTo("ASCENDING");
+
+    verify(feedRepository).findByIdAndDeletedAtIsNull(feedId);
+    verify(feedCommentRepository).findComments(feedId, null, null, 2);
+    verify(feedCommentMapper).toDto(comment1);
+    verify(feedCommentRepository).countComments(feedId);
+  }
 }
