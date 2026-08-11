@@ -36,8 +36,8 @@ public class Profile {
   @JoinColumn(name = "user_id")
   private User user;
 
-  @Column(name = "image_url")
-  private String imageUrl;
+  @Column(name = "image_key")
+  private String imageKey;
 
   @Enumerated(EnumType.STRING)
   @Column(length = 20)
@@ -113,7 +113,7 @@ public class Profile {
     }
   }
 
-  public void updateImageUrl(String imageUrl) {
-    this.imageUrl = imageUrl;
+  public void updateImageKey(String imageKey) {
+    this.imageKey = imageKey;
   }
 }

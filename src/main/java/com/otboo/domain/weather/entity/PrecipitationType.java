@@ -5,5 +5,5 @@ public enum PrecipitationType {
   RAIN,
   RAIN_SNOW,
   SNOW,
-  SHOWER
+  SHOWER // 소나기
 }

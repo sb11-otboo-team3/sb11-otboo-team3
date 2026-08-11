@@ -67,7 +67,7 @@ public class FeedMapper {
     return new FeedOotdDto(
         clothes.getId(),
         clothes.getName(),
-        clothes.getImageUrl(),
+        clothes.getImageKey(),
         clothes.getType(),
         toAttributeResponses(
             attributesByClothesId.getOrDefault(clothes.getId(), List.of()),

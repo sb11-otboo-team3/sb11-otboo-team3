@@ -27,6 +27,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.otboo.domain.auth.dto.ResetPasswordRequest;
 import com.otboo.domain.user.dto.ChangePasswordRequest;
 import com.otboo.domain.user.exception.UserNotFoundException;
+import com.otboo.domain.auth.token.RefreshTokenService.TokenInfo;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -219,20 +220,21 @@ class AuthServiceTest {
   }
 
   @Test
-  @DisplayName("유효한 Refresh Token으로 로그아웃하면 Redis에서 삭제된다")
-  void signOutDeletesRefreshToken() throws Exception {
+  @DisplayName("유효한 Refresh Token으로 로그아웃하면 원자적으로 소비된다")
+  void signOutConsumesRefreshToken() throws Exception {
     // given
-    given(refreshTokenService.exists("some-refresh-token")).willReturn(true);
+    given(refreshTokenService.consumeTokenInfo("some-refresh-token"))
+        .willReturn(Optional.of(new TokenInfo(UUID.randomUUID(), 1L)));
 
     // when
     authService.signOut("some-refresh-token");
 
     // then
-    verify(refreshTokenService).delete("some-refresh-token");
+    verify(refreshTokenService).consumeTokenInfo("some-refresh-token");
   }
 
   @Test
-  @DisplayName("Refresh Token 없이 로그아웃하면 예외가 발생한다")
+  @DisplayName("Refresh Token이 null이면 예외가 발생한다")
   void signOutWithNullTokenThrowsException() throws Exception {
     // when & then
     assertThatThrownBy(() -> authService.signOut(null))
@@ -240,10 +242,11 @@ class AuthServiceTest {
   }
 
   @Test
-  @DisplayName("존재하지 않는 Refresh Token으로 로그아웃하면 예외가 발생한다")
+  @DisplayName("존재하지 않거나 이미 소비된 Refresh Token으로 로그아웃하면 예외가 발생한다")
   void signOutWithNonExistentTokenThrowsException() throws Exception {
     // given
-    given(refreshTokenService.exists("invalid-token")).willReturn(false);
+    given(refreshTokenService.consumeTokenInfo("invalid-token"))
+        .willReturn(Optional.empty());
 
     // when & then
     assertThatThrownBy(() -> authService.signOut("invalid-token"))

@@ -32,7 +32,7 @@ public class ClothesMapper {
                 clothes.getId(),
                 clothes.getOwner().getId(),
                 clothes.getName(),
-                clothes.getImageUrl(),
+                clothes.getImageKey(),
                 clothes.getType(),
                 attributeResponses
         );

@@ -1,5 +1,7 @@
 package com.otboo.domain.weather.dto;
 
+import java.util.List;
+
 public record WeatherAPILocation (
 
     //위도
@@ -12,8 +14,8 @@ public record WeatherAPILocation (
     int x,
     int y,
 
-    // 행정 구역 이름
-    String[] locationNames
+    // 행정구역
+    List<String> locationNames
 
 ){
 

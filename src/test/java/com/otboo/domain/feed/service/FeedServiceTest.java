@@ -42,7 +42,7 @@ import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.domain.weather.dto.WeatherSummaryDto;
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.repository.WeatherRepository;
-import com.otboo.domain.weather.service.WeatherService;
+import com.otboo.domain.weather.service.WeatherSummaryFinder;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -71,7 +71,7 @@ class FeedServiceTest {
   private ClothesRepository clothesRepository;
 
   @Mock
-  private WeatherService weatherService;
+  private WeatherSummaryFinder weatherSummaryFinder;
 
   @Mock
   private WeatherRepository weatherRepository;
@@ -120,7 +120,7 @@ class FeedServiceTest {
     given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
     given(clothesRepository.findByIdInAndDeletedAtIsNull(List.of(clothesId)))
         .willReturn(List.of(clothes));
-    given(weatherService.getWeatherSummary(weatherId)).willReturn(weatherSummary);
+    given(weatherSummaryFinder.find(weatherId)).willReturn(weatherSummary);
     given(feedRepository.save(any(Feed.class))).willAnswer(invocation -> invocation.getArgument(0));
     given(feedClothesRepository.findByFeedAndClothesDeletedAtIsNull(any(Feed.class)))
         .willReturn(List.of());

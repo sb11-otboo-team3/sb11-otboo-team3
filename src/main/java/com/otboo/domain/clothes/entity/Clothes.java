@@ -22,8 +22,8 @@ public class Clothes extends SoftDeletableEntity {
     @Column(nullable = false, length = 100)
     private String name;
 
-    @Column(name = "image_url", length = 500)
-    private String imageUrl;
+    @Column(name = "image_key", length = 500)
+    private String imageKey;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -32,10 +32,10 @@ public class Clothes extends SoftDeletableEntity {
     protected Clothes() {
     }
 
-    public Clothes(User owner, String name, String imageUrl, ClothesType type) {
+    public Clothes(User owner, String name, String imageKey, ClothesType type) {
         this.owner = owner;
         this.name = name;
-        this.imageUrl = imageUrl;
+        this.imageKey = imageKey;
         this.type = type;
     }
 
@@ -47,8 +47,8 @@ public class Clothes extends SoftDeletableEntity {
         return name;
     }
 
-    public String getImageUrl() {
-        return imageUrl;
+    public String getImageKey() {
+        return imageKey;
     }
 
     public ClothesType getType() {

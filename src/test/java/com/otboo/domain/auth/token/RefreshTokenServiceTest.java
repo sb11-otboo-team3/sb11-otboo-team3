@@ -34,7 +34,8 @@ class RefreshTokenServiceTest {
     JwtProperties jwtProperties = new JwtProperties(
         "test-secret-key-for-refresh-token-test-minimum-256-bits",
         900000L,
-        604800000L
+        604800000L,
+        300000L
     );
     refreshTokenService = new RefreshTokenService(redisTemplate, jwtProperties);
   }
@@ -82,39 +83,6 @@ class RefreshTokenServiceTest {
         refreshTokenService.consumeTokenInfo("invalid-token");
     // then
     assertThat(result).isEmpty();
-  }
-
-  @Test
-  @DisplayName("존재하는 토큰이면 true를 반환한다")
-  void existsReturnsTrueWhenTokenExists() throws Exception {
-    // given
-    given(redisTemplate.hasKey("refresh:valid-token")).willReturn(true);
-
-    // when & then
-    assertThat(refreshTokenService.exists("valid-token")).isTrue();
-  }
-
-  @Test
-  @DisplayName("존재하지 않는 토큰이면 false를 반환한다")
-  void existsReturnsFalseWhenTokenNotExists() throws Exception {
-    // given
-    given(redisTemplate.hasKey("refresh:invalid-token")).willReturn(false);
-
-    // when & then
-    assertThat(refreshTokenService.exists("invalid-token")).isFalse();
-  }
-
-  @Test
-  @DisplayName("삭제하면 해당 키가 제거된다")
-  void deleteRemovesTheKey() throws Exception {
-    // given
-    String token = "token-to-delete";
-
-    // when
-    refreshTokenService.delete(token);
-
-    // then
-    verify(redisTemplate).delete("refresh:" + token);
   }
 
   @Test
