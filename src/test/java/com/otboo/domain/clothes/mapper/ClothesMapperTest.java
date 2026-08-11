@@ -20,7 +20,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.testcontainers.shaded.org.checkerframework.checker.units.qual.C;
 
 @ExtendWith(MockitoExtension.class)
 class ClothesMapperTest {
@@ -56,7 +55,7 @@ class ClothesMapperTest {
         ClothesResponse response = mapper.toResponse(clothes, List.of(), Map.of());
 
         //then
-        assertThat(response.imageUrl()).isNull();;
+        assertThat(response.imageUrl()).isNull();
         verify(fileStorage, never()).generateReadUrl(any());
     }
 }

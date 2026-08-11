@@ -42,6 +42,10 @@ public class ClothesWriteTransactionalService {
 
     @Transactional
     public ClothesResponse create(ClothesCreateRequest request, String imageKey) {
+        if (imageKey != null) {
+            eventPublisher.publishEvent(new FileReplacementEvent(null, imageKey));
+        }
+
         User owner = userRepository.findById(request.ownerId())
                 .orElseThrow(() -> new UserNotFoundException(request.ownerId()));
 

@@ -53,6 +53,14 @@ public class ClothesService {
     }
 
     public ClothesResponse update(UUID currentUserId, UUID clothesId, ClothesUpdateRequest request, MultipartFile image) {
+        Clothes clothes = clothesRepository.findById(clothesId)
+                .filter(found -> found.getDeletedAt() == null)
+                .orElseThrow(() -> new ClothesNotFoundException(clothesId));
+
+        if (!clothes.getOwner().getId().equals(currentUserId)) {
+            throw new AccessDeniedException("본인 의상만 수정할 수 있습니다.");
+        }
+
         String newImageKey = null;
         if (image != null && !image.isEmpty()){
             StoredFile storedFile = fileStorage.upload(StorageDirectory.CLOTHES, currentUserId, image);
