@@ -12,7 +12,6 @@ import com.otboo.domain.clothes.repository.ClothesRepository;
 import com.otboo.domain.feed.clothes.entity.FeedClothes;
 import com.otboo.domain.feed.clothes.exception.FeedClothesNotFoundException;
 import com.otboo.domain.feed.clothes.repository.FeedClothesRepository;
-import com.otboo.domain.feed.comment.repository.FeedCommentRepository;
 import com.otboo.domain.feed.core.dto.request.FeedCreateRequest;
 import com.otboo.domain.feed.core.dto.request.FeedUpdateRequest;
 import com.otboo.domain.feed.core.dto.response.FeedDto;

@@ -11,6 +11,7 @@ import com.otboo.domain.clothes.mapper.ClothesAttributeDefinitionMapper;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeDefinitionRepository;
 
+import com.otboo.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -21,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -38,6 +40,12 @@ public class ClothesAttributeDefinitionServiceTest {
 
     @Mock
     private ClothesAttributeDefinitionMapper mapper;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private ClothesAttributeDefinitionService service;
@@ -59,6 +67,8 @@ public class ClothesAttributeDefinitionServiceTest {
                 .willReturn(new ClothesAttributeDefinitionResponse(
                         UUID.randomUUID(), "색상", List.of("빨강", "파랑"), null
                 ));
+
+        given(userRepository.findAll()).willReturn(List.of());
 
         //when
         ClothesAttributeDefinitionResponse response = service.create(request);
@@ -92,6 +102,8 @@ public class ClothesAttributeDefinitionServiceTest {
                 .willReturn(new ClothesAttributeDefinitionResponse(
                         UUID.randomUUID(), "색상", List.of(), null
                 ));
+
+        given(userRepository.findAll()).willReturn(List.of());
 
         //when
         service.create(request);
@@ -278,6 +290,8 @@ public class ClothesAttributeDefinitionServiceTest {
                 .willReturn(Optional.of(red));
         given(mapper.toResponse(any(), any()))
                 .willReturn(new ClothesAttributeDefinitionResponse(definition.getId(), "색상", List.of("빨강"),null));
+
+        given(userRepository.findAll()).willReturn(List.of());
 
         //when
         service.create(request);

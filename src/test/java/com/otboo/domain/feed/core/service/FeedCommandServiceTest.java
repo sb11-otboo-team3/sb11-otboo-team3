@@ -22,6 +22,7 @@ import com.otboo.domain.feed.core.entity.Feed;
 import com.otboo.domain.feed.core.mapper.FeedMapper;
 import com.otboo.domain.feed.core.repository.FeedRepository;
 import com.otboo.domain.feed.like.repository.FeedLikeRepository;
+import com.otboo.domain.follow.repository.FollowRepository;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.domain.weather.dto.WeatherSummaryDto;
@@ -38,6 +39,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -69,6 +71,12 @@ class FeedCommandServiceTest {
 
   @Mock
   private FeedLikeRepository feedLikeRepository;
+
+  @Mock
+  private FollowRepository followRepository;
+
+  @Mock
+  private ApplicationEventPublisher eventPublisher;
 
   @Mock
   private FeedMapper feedMapper;
@@ -109,6 +117,8 @@ class FeedCommandServiceTest {
         .willReturn(List.of());
     given(feedMapper.toDto(any(), any(), anyList(), anyMap(), anyMap(), anyBoolean()))
         .willReturn(feedDto);
+    given(followRepository.findFollowerIdsByFolloweeId(authorId))
+        .willReturn(List.of());
 
     FeedCreateRequest request = new FeedCreateRequest(
         authorId,
@@ -142,6 +152,7 @@ class FeedCommandServiceTest {
     FeedDto feedDto = mock(FeedDto.class);
 
     given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
+    given(feedLikeRepository.existsByFeedIdAndUserId(feedId, authorId)).willReturn(false);
     given(feedClothesRepository.findByFeedAndClothesDeletedAtIsNull(feed)).willReturn(List.of());
     given(clothesAttributeRepository.findByClothesIn(anyList())).willReturn(List.of());
     given(attributeSelectableValueRepository
@@ -150,7 +161,11 @@ class FeedCommandServiceTest {
     given(feedMapper.toDto(any(), any(), anyList(), anyMap(), anyMap(), anyBoolean()))
         .willReturn(feedDto);
 
-    FeedDto result = feedCommandService.updateFeed(feedId, new FeedUpdateRequest("수정 후"), authorId);
+    FeedDto result = feedCommandService.updateFeed(
+        feedId,
+        new FeedUpdateRequest("수정 후"),
+        authorId
+    );
 
     assertThat(result).isEqualTo(feedDto);
     assertThat(feed.getContent()).isEqualTo("수정 후");
