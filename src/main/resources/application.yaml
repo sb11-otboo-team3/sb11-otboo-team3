@@ -8,6 +8,12 @@ spring:
       request-timeout: 3600000
   jpa:
     open-in-view: false
+  datasource:
+    hikari:
+      # 기본값(10)보다 늘림 - 날씨 프리패치 배치가 동시성 10(WeatherPrefetchJobConfig.CONCURRENCY)으로
+      # 격자를 병렬 처리하는데, 기본 풀이면 배치가 커넥션을 거의 다 차지해서 그 순간 일반 API 요청이
+      # 밀릴 수 있음. RDS(db.t4g.micro) 쪽 max_connections는 약 112개라 이 정도는 여유 있음.
+      maximum-pool-size: 15
   batch:
     job:
       enabled: false
@@ -18,7 +24,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus
   endpoint:
     health:
       show-details: never

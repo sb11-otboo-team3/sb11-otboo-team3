@@ -14,6 +14,7 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 // 기상청 응답 항목 하나를 저장하고 응답 DTO로 변환한다. 온디맨드 조회 흐름(WeatherForecastFinder)과
@@ -29,6 +30,16 @@ public class WeatherPersister {
   private final WeatherSaver weatherSaver;
 
   public Optional<WeatherDto> persist(VilageFcstItem item, Grid grid, WeatherAPILocation location) {
+    return persistEntity(item, grid).map(saved -> saved.toDto(location));
+  }
+
+  // 배치(WeatherPrefetch 등)처럼 응답 DTO가 필요 없는 호출부를 위한 오버로드. 위치 정보를 지어낼 필요 없이
+  // 저장된 엔티티만 그대로 돌려준다.
+  public Optional<Weather> persist(VilageFcstItem item, Grid grid) {
+    return persistEntity(item, grid);
+  }
+
+  private Optional<Weather> persistEntity(VilageFcstItem item, Grid grid) {
     Instant forecastAt = item.forecastAt().atZone(KST).toInstant();
     Instant forecastedAt = item.forecastedAt().atZone(KST).toInstant();
 
@@ -76,7 +87,7 @@ public class WeatherPersister {
     // 같은 (grid, forecastAt)에 이미 row가 있으면(예: 예전 배치가 이미 이 시간대를 예측해놨으면) upsert가
     // 알아서 최신 값으로 덮어쓴다 - 유니크 위반을 신경 쓸 필요가 없어짐(WeatherSaver 참고).
     Weather saved = weatherSaver.upsertInNewTransaction(weather);
-    return Optional.of(saved.toDto(location));
+    return Optional.of(saved);
   }
 
   // 그 날짜(grid+date)의 min/max를 "계산만" 한다(쓰지 않음). 기상청이 그 날짜 어딘가에 실제 TMN/TMX를
@@ -105,7 +116,10 @@ public class WeatherPersister {
   // resolveDailyMinMax가 확정한 값을 그 날짜에 속한 모든 row에 통일해서 써넣는다. 이번 응답 자체엔
   // 이미 위에서 값을 확보해서 반영했으니 영향이 없는, "나중에 다른 요청이 DB를 읽을 때를 위한" 정리
   // 작업이다 - 그래서 호출부(WeatherForecastFinder)가 응답을 기다리지 않고 백그라운드로 실행한다.
-  @Transactional
+  // REQUIRES_NEW인 이유: WeatherPrefetch 배치의 tasklet처럼 바깥에 이미 트랜잭션이 열려있는 호출부에서도,
+  // 이 정리 작업 하나 때문에 바깥 트랜잭션(여러 격자를 순회하는 동안 열려있을 수 있음)에 얹혀 커넥션을
+  // 오래 붙들지 않고 독립적으로 커밋되게 하려는 것 - WeatherSaver.upsertInNewTransaction과 같은 이유.
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void persistDailyMinMax(Grid grid, LocalDate date, double min, double max) {
     Instant dayStart = date.atStartOfDay(KST).toInstant();
     Instant dayEnd = date.plusDays(1).atStartOfDay(KST).toInstant();

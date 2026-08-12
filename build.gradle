@@ -76,6 +76,14 @@ dependencies {
 	// Spring Batch
 	implementation 'org.springframework.boot:spring-boot-starter-batch'
 
+	// ShedLock (서버 여러 대에서 같은 @Scheduled 배치가 동시에 중복 실행되는 것 방지)
+	implementation 'net.javacrumbs.shedlock:shedlock-spring:7.7.0'
+	implementation 'net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.7.0'
+
+	// Prometheus 메트릭 노출 (날씨 프리페치 배치 커스텀 메트릭용) - Actuator가 이미 micrometer-core를
+	// 가져오므로 레지스트리 구현체만 추가하면 /actuator/prometheus에서 Prometheus 텍스트 포맷으로 노출됨
+	implementation 'io.micrometer:micrometer-registry-prometheus'
+
 	// Configuration metadata
 	annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
