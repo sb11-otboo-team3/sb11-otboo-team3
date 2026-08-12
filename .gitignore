@@ -87,3 +87,8 @@ cookies.txt
 ### md 파일 ###
 /CLAUDE.md
 notes/
+
+# 로컬 curl 테스트용 임시 파일
+cookies*.txt
+request.json
+server*.log
