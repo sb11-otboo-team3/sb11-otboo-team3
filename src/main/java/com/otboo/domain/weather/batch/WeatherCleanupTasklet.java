@@ -42,7 +42,10 @@ public class WeatherCleanupTasklet implements Tasklet {
     int iteration = executionContext.getInt(ITERATION_KEY, 0) + 1;
     executionContext.putInt(ITERATION_KEY, iteration);
 
-    Instant cutoff = LocalDate.now(clock).minusDays(RETENTION_DAYS).atStartOfDay(KST).toInstant();
+    // LocalDate.now(clock)은 clock 자신의 zone으로 "오늘 날짜"를 판단한다 - clock이 KST가 아닌 다른
+    // zone이면(예: UTC) 자정~9시 KST 구간에서 하루 이른 날짜가 나올 수 있다. clock.withZone(KST)로
+    // KST 기준 날짜를 명시적으로 못박아서, clock 빈의 zone 설정과 무관하게 항상 정확하게 만든다.
+    Instant cutoff = LocalDate.now(clock.withZone(KST)).minusDays(RETENTION_DAYS).atStartOfDay(KST).toInstant();
     int deleted = weatherRepository.deleteBatchOlderThan(cutoff, DELETE_BATCH_SIZE);
     contribution.incrementWriteCount(deleted);
     log.info("삭제된 날씨 데이터 수: {}, cutoff={}, iteration={}", deleted, cutoff, iteration);

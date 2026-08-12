@@ -9,8 +9,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -113,6 +115,27 @@ class WeatherCleanupTaskletTest {
     tasklet.execute(contribution, newChunkContext());
 
     // then: 2026-08-12 KST 자정 - 3일 = 2026-08-09 KST 자정
+    var expectedCutoff = LocalDateTime.of(2026, 8, 9, 0, 0).atZone(KST).toInstant();
+    verify(weatherRepository).deleteBatchOlderThan(eq(expectedCutoff), anyInt());
+  }
+
+  // clock.zone이 KST가 아니면 LocalDate.now(clock)이 clock 자신의 존으로 "오늘 날짜"를 판단해버려서,
+  // 자정~9시 KST(=그 전날 15~24시 UTC) 구간에는 KST 기준 날짜보다 하루 이른 날짜가 나올 수 있다 -
+  // cutoff가 하루 밀리는 버그. 여기선 그 구간에 정확히 걸치는 시각(2026-08-12 04:00 KST)을 UTC로
+  // 표현한 clock으로 같은 순간을 넘겨서, clock의 존과 무관하게 KST 기준으로 정확히 계산되는지 확인한다.
+  @Test
+  @DisplayName("clock의 zone이 KST가 아니어도(UTC) cutoff는 KST 기준 날짜로 정확히 계산된다")
+  void computesCutoffCorrectlyEvenWhenClockZoneIsNotKst() throws Exception {
+    // given
+    Instant sameInstant = LocalDateTime.of(2026, 8, 12, 4, 0).atZone(KST).toInstant();
+    Clock utcClock = Clock.fixed(sameInstant, ZoneOffset.UTC);
+    WeatherCleanupTasklet utcTasklet = new WeatherCleanupTasklet(weatherRepository, utcClock);
+    given(weatherRepository.deleteBatchOlderThan(any(), anyInt())).willReturn(0);
+
+    // when
+    utcTasklet.execute(contribution, newChunkContext());
+
+    // then: KST 기준 2026-08-12 자정 - 3일 = 2026-08-09 KST 자정 (clock의 존과 무관하게 동일해야 함)
     var expectedCutoff = LocalDateTime.of(2026, 8, 9, 0, 0).atZone(KST).toInstant();
     verify(weatherRepository).deleteBatchOlderThan(eq(expectedCutoff), anyInt());
   }

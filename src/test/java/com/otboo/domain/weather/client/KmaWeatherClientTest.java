@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -260,8 +261,12 @@ class KmaWeatherClientTest {
   // responseTimeout(연결 후 read 사이 간격)은 응답이 끊기지 않고 계속(느리게) 오면 안 걸린다 - 그래서
   // 전체 호출에 대한 절대 시간제한을 별도로 둔다. 여기선 짧은 타임아웃(200ms)을 가진 별도 클라이언트로,
   // 응답이 그보다 훨씬 오래 걸리게(2초) 만들어서 실제로 그 안에 끊기는지 확인한다.
+  // 응답 바디는 (빈 값 "{}" 이 아니라) 정상적으로 파싱되는 유효한 KMA 응답으로 지연시킨다 - "{}"를 쓰면
+  // 설령 타임아웃이 전혀 안 걸리는 버그가 있어도 2초 뒤 "response 필드 없음" 경로로 어차피 같은
+  // KmaApiException이 나와버려서, 정말 타임아웃 때문에 끊긴 건지 증명이 안 된다. 원인 체인에
+  // TimeoutException이 실제로 들어있는지까지 확인해야 타임아웃 자체가 동작한 걸 증명할 수 있다.
   @Test
-  @DisplayName("응답이 지정된 시간 안에 끝나지 않으면 KmaApiException을 던지고, 그 시점에서 바로 끊긴다")
+  @DisplayName("응답이 지정된 시간 안에 끝나지 않으면 TimeoutException을 원인으로 한 KmaApiException을 던지고, 그 시점에서 바로 끊긴다")
   void throwsKmaApiExceptionWhenOverallTimeoutExceeded() {
     // given
     WebClient webClient = WebClient.builder()
@@ -270,8 +275,24 @@ class KmaWeatherClientTest {
     KmaWeatherClient shortTimeoutClient = new KmaWeatherClient(webClient, "test-api-key", Duration.ofMillis(200));
 
     VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    String validResponseBody = """
+        {
+          "response": {
+            "header": { "resultCode": "00", "resultMsg": "NORMAL_SERVICE" },
+            "body": {
+              "dataType": "JSON",
+              "items": {
+                "item": [
+                  { "baseDate": "20260730", "baseTime": "0500", "category": "TMP", "fcstDate": "20260730", "fcstTime": "0900", "fcstValue": "23", "nx": 60, "ny": 127 }
+                ]
+              },
+              "pageNo": 1, "numOfRows": 1000, "totalCount": 1
+            }
+          }
+        }
+        """;
     mockWebServer.enqueue(new MockResponse()
-        .setBody("{}")
+        .setBody(validResponseBody)
         .setBodyDelay(2, TimeUnit.SECONDS)
         .addHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE));
 
@@ -280,7 +301,8 @@ class KmaWeatherClientTest {
 
     // then
     assertThatThrownBy(() -> shortTimeoutClient.getForecast(60, 127, baseTime).block())
-        .isInstanceOf(KmaApiException.class);
+        .isInstanceOf(KmaApiException.class)
+        .cause().isInstanceOf(TimeoutException.class);
     long elapsed = System.currentTimeMillis() - start;
     assertThat(elapsed).isLessThan(1500); // 2초 다 안 기다리고 200ms 근처에서 끊겼는지
   }

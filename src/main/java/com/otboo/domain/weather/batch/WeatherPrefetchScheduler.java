@@ -23,9 +23,10 @@ public class WeatherPrefetchScheduler {
   // (application-local.yaml의 weather.prefetch.cron 참고) - 기본값은 운영과 동일.
   @Scheduled(cron = "${weather.prefetch.cron:0 15 2,5,8,11,14,17,20,23 * * *}", zone = "Asia/Seoul")
   // 서버 2대라 cron이 두 인스턴스에서 동시에 발화할 수 있음 - ShedLock으로 한 인스턴스만 실제로 돌게 함.
-  // lockAtMostFor를 넉넉히 잡은 이유: 재시도+백오프(WeatherPrefetchJobConfig)가 붙어서 격자별로 실패 시
-  // 최대 몇 초씩 더 걸릴 수 있음.
-  @SchedulerLock(name = "weatherPrefetchJob", lockAtMostFor = "PT15M", lockAtLeastFor = "PT30S")
+  // lockAtMostFor(30분) 근거: 격자 하나가 재시도까지 다 실패하는 최악의 경우 ~30초, 동시성 10(
+  // WeatherPrefetchJobConfig.CONCURRENCY)으로 나눠 처리하면 활성 격자 500개까지도 약 25분 안에
+  // 끝난다는 계산 - 그보다 넉넉하게 30분으로 잡음.
+  @SchedulerLock(name = "weatherPrefetchJob", lockAtMostFor = "PT30M", lockAtLeastFor = "PT30S")
   public void runWeatherPrefetchJob() throws Exception {
     JobParameters jobParameters = new JobParametersBuilder()
         .addLocalDateTime("runAt", LocalDateTime.now())
