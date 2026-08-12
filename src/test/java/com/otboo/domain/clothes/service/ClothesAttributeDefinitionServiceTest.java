@@ -30,6 +30,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -308,7 +309,9 @@ public class ClothesAttributeDefinitionServiceTest {
     @Test
     void 의상_속성_생성시_전체_사용자에게_알림을_발행한다() {
         // given
-        UUID userId = UUID.randomUUID();
+        UUID userId1 = UUID.randomUUID();
+        UUID userId2 = UUID.randomUUID();
+        List<UUID> userIds = List.of(userId1, userId2);
 
         ClothesAttributeDefinitionRequest request =
             new ClothesAttributeDefinitionRequest("색상", List.of("빨강", "파랑"));
@@ -326,7 +329,7 @@ public class ClothesAttributeDefinitionServiceTest {
             .willAnswer(invocation -> invocation.getArgument(0));
 
         given(userRepository.findAllUserIds())
-            .willReturn(List.of(userId));
+            .willReturn(userIds);
 
         given(mapper.toResponse(any(), any()))
             .willReturn(new ClothesAttributeDefinitionResponse(
@@ -342,14 +345,23 @@ public class ClothesAttributeDefinitionServiceTest {
         // then
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
 
-        verify(eventPublisher).publishEvent(captor.capture());
+        verify(eventPublisher, times(userIds.size()))
+            .publishEvent(captor.capture());
 
-        NotificationEvent notificationEvent = (NotificationEvent) captor.getValue();
+        List<NotificationEvent> events = captor.getAllValues().stream()
+            .map(value -> (NotificationEvent) value)
+            .toList();
 
-        assertThat(notificationEvent.receiverId()).isEqualTo(userId);
-        assertThat(notificationEvent.title()).isEqualTo("새 의상 속성이 추가되었습니다.");
-        assertThat(notificationEvent.content()).isEqualTo("'색상' 의상 속성이 추가되었습니다.");
-        assertThat(notificationEvent.level()).isEqualTo(NotificationLevel.INFO);
+        assertThat(events)
+            .extracting(NotificationEvent::receiverId)
+            .containsExactlyInAnyOrderElementsOf(userIds);
+
+        assertThat(events)
+            .allSatisfy(event -> {
+                assertThat(event.title()).isEqualTo("새 의상 속성이 추가되었습니다.");
+                assertThat(event.content()).isEqualTo("'색상' 의상 속성이 추가되었습니다.");
+                assertThat(event.level()).isEqualTo(NotificationLevel.INFO);
+            });
     }
 
 
