@@ -145,5 +145,23 @@ tasks.named('jacocoTestReport') {
 }
 
 tasks.named('jacocoTestCoverageVerification') {
+	dependsOn tasks.named('test')
+
 	classDirectories.setFrom(jacocoClassDirectories)
+
+	violationRules {
+		rule {
+			element = 'BUNDLE'
+
+			limit {
+				counter = 'LINE'
+				value = 'COVEREDRATIO'
+				minimum = 0.80
+			}
+		}
+	}
+}
+
+tasks.named('check') {
+	dependsOn tasks.named('jacocoTestCoverageVerification')
 }

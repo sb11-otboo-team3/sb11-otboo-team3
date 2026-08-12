@@ -526,7 +526,7 @@ jobs:
               --silent \
               --show-error \
               --max-time 20 \
-              "http://${ALB_DNS}/actuator/health"
+              "http://otboo.work/actuator/health"
           )"
 
           printf '%s' "$HEALTH_RESPONSE" | python3 -c '
