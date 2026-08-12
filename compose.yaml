@@ -51,7 +51,8 @@ services:
     ports:
       - "127.0.0.1:3001:3000" # 프론트엔드 dev 서버(3000)와 안 겹치게
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin1234
+      # postgres/redis와 동일한 패턴 - .env나 셸 환경변수로 덮어쓸 수 있고, 안 주면 로컬 기본값 사용
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin1234}
     volumes:
       # Prometheus 데이터소스 + 대시보드들을 컨테이너 기동 시 자동으로 구성(수동 클릭 불필요)
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
