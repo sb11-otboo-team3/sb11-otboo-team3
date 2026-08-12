@@ -11,10 +11,13 @@ import com.otboo.domain.clothes.mapper.ClothesAttributeDefinitionMapper;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeDefinitionRepository;
 
+import com.otboo.domain.notification.entity.NotificationLevel;
+import com.otboo.domain.notification.event.NotificationEvent;
 import com.otboo.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -68,7 +71,7 @@ public class ClothesAttributeDefinitionServiceTest {
                         UUID.randomUUID(), "색상", List.of("빨강", "파랑"), null
                 ));
 
-        given(userRepository.findAll()).willReturn(List.of());
+        given(userRepository.findAllUserIds()).willReturn(List.of());
 
         //when
         ClothesAttributeDefinitionResponse response = service.create(request);
@@ -103,7 +106,7 @@ public class ClothesAttributeDefinitionServiceTest {
                         UUID.randomUUID(), "색상", List.of(), null
                 ));
 
-        given(userRepository.findAll()).willReturn(List.of());
+        given(userRepository.findAllUserIds()).willReturn(List.of());
 
         //when
         service.create(request);
@@ -291,7 +294,7 @@ public class ClothesAttributeDefinitionServiceTest {
         given(mapper.toResponse(any(), any()))
                 .willReturn(new ClothesAttributeDefinitionResponse(definition.getId(), "색상", List.of("빨강"),null));
 
-        given(userRepository.findAll()).willReturn(List.of());
+        given(userRepository.findAllUserIds()).willReturn(List.of());
 
         //when
         service.create(request);
@@ -300,6 +303,53 @@ public class ClothesAttributeDefinitionServiceTest {
         assertThat(definition.getDeletedAt()).isNull();
         assertThat(red.getDeletedAt()).isNull();
         assertThat(blue.getDeletedAt()).isNotNull();
+    }
+
+    @Test
+    void 의상_속성_생성시_전체_사용자에게_알림을_발행한다() {
+        // given
+        UUID userId = UUID.randomUUID();
+
+        ClothesAttributeDefinitionRequest request =
+            new ClothesAttributeDefinitionRequest("색상", List.of("빨강", "파랑"));
+
+        given(definitionRepository.findByName("색상"))
+            .willReturn(Optional.empty());
+
+        given(definitionRepository.saveAndFlush(any(ClothesAttributeDefinition.class)))
+            .willAnswer(invocation -> invocation.getArgument(0));
+
+        given(selectableValueRepository.findByDefinitionAndValue(any(), any()))
+            .willReturn(Optional.empty());
+
+        given(selectableValueRepository.save(any(AttributeSelectableValue.class)))
+            .willAnswer(invocation -> invocation.getArgument(0));
+
+        given(userRepository.findAllUserIds())
+            .willReturn(List.of(userId));
+
+        given(mapper.toResponse(any(), any()))
+            .willReturn(new ClothesAttributeDefinitionResponse(
+                UUID.randomUUID(),
+                "색상",
+                List.of("빨강", "파랑"),
+                null
+            ));
+
+        // when
+        service.create(request);
+
+        // then
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+
+        verify(eventPublisher).publishEvent(captor.capture());
+
+        NotificationEvent notificationEvent = (NotificationEvent) captor.getValue();
+
+        assertThat(notificationEvent.receiverId()).isEqualTo(userId);
+        assertThat(notificationEvent.title()).isEqualTo("새 의상 속성이 추가되었습니다.");
+        assertThat(notificationEvent.content()).isEqualTo("'색상' 의상 속성이 추가되었습니다.");
+        assertThat(notificationEvent.level()).isEqualTo(NotificationLevel.INFO);
     }
 
 
