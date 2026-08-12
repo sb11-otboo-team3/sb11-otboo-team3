@@ -11,13 +11,14 @@ ALB DNS의 루트 `/` 경로에서 프론트엔드와 백엔드 API를 함께 �
 
 이번 배포에서는 최초 배포의 정상 동작 확인을 우선합니다.
 
+후속 이슈에서 다음 구성을 추가로 적용했습니다.
+
+- Issue #142: Nginx Reverse Proxy
+
 다음 항목은 후속 이슈에서 진행합니다.
 
-- GitHub Actions OIDC 기반 자동 배포
-- Nginx Reverse Proxy
 - 도메인 및 HTTPS
 - ECS 다중 Task
-- Rolling Update 및 무중단 배포
 - 장시간 WebSocket·SSE 연결 및 재연결
 - AWS 예상 비용 산정 및 비용 최적화
 
@@ -1070,6 +1071,418 @@ CloudWatch Logs 정상 수집
 Rolling Update 정책 조정, 무중단 배포 보장 및 실패 배포 자동 롤백은
 Issue #131의 범위에 포함하지 않고 별도 운영 안정화 이슈에서 진행합니다.
 
+---
+
+## 21. Nginx Reverse Proxy 운영 구성
+
+Issue #142에서는 기존 ALB가 Spring Boot 애플리케이션의 8080 포트로
+직접 요청을 전달하던 구조에 Nginx Reverse Proxy를 추가했습니다.
+
+도메인 DNS 연결과 HTTPS 적용은 이 이슈에 포함하지 않고
+후속 인프라 이슈에서 진행합니다.
+
+### 적용 전 구조
+
+```text
+Internet
+→ ALB :80
+→ ECS Task
+→ otboo-backend :8080
+→ Spring Boot
+```
+
+### 적용 후 구조
+
+```text
+Internet
+→ ALB :80
+→ ECS Task
+   ├─ otboo-nginx :80
+   │    ↓ 127.0.0.1:8080
+   └─ otboo-backend :8080
+```
+
+Nginx와 Spring Boot는 동일한 ECS Fargate Task 안에서
+서로 다른 컨테이너로 실행합니다.
+
+Nginx는 외부 요청을 받는 Reverse Proxy 역할을 담당하고,
+Spring Boot는 Task 내부의 8080 포트에서 애플리케이션 요청을 처리합니다.
+
+### Sidecar 구조 선택
+
+Nginx와 Spring Boot의 실행 책임을 분리하기 위해
+하나의 컨테이너에 두 프로세스를 함께 실행하지 않고 별도 컨테이너로 구성했습니다.
+
+현재 서비스 규모에서는 Nginx만을 위한 별도 ECS Service와
+Service Discovery 구성을 추가할 필요가 없다고 판단하여
+동일 ECS Task의 Sidecar 구조를 사용합니다.
+
+동일 Task의 컨테이너은 다음 경로로 통신합니다.
+
+```text
+otboo-nginx :80
+→ http://127.0.0.1:8080
+→ otboo-backend
+```
+
+ECS Task가 교체될 때 Nginx와 Spring Boot도
+하나의 배포 단위로 함께 생성되고 제거됩니다.
+
+### Nginx 이미지
+
+Nginx 이미지는 별도 ECR Repository에서 관리합니다.
+
+```text
+otboo/nginx
+```
+
+운영 이미지는 Git Commit SHA를 태그로 사용합니다.
+
+```text
+otboo/nginx:{git-sha}
+```
+
+ECR Repository는 Backend Repository와 동일한 기준으로 구성합니다.
+
+| 구분 | 설정 |
+| --- | --- |
+| Image Tag Mutability | IMMUTABLE |
+| Scan On Push | 활성화 |
+| Encryption | AES256 |
+| Build Platform | linux/amd64 |
+
+### ECS Task Definition 구성
+
+Nginx 적용 후 하나의 Task Definition에
+다음 두 컨테이너가 포함됩니다.
+
+| 컨테이너 | 포트 | 역할 |
+| --- | ---: | --- |
+| `otboo-nginx` | 80 | Reverse Proxy |
+| `otboo-backend` | 8080 | Spring Boot 애플리케이션 |
+
+Task 전체 리소스는 기존 설정을 유지합니다.
+
+```text
+CPU: 1 vCPU
+Memory: 2 GB
+Network Mode: awsvpc
+Runtime: Linux / X86_64
+```
+
+Backend 컨테이너의 기존 환경변수, Secret, Task Role,
+Execution Role 및 CloudWatch Logs 설정은 그대로 유지합니다.
+
+Nginx 로그는 기존 Log Group을 사용하고
+별도 Stream Prefix로 구분합니다.
+
+```text
+Log Group
+/ecs/otboo-prod
+
+Backend Stream Prefix
+backend
+
+Nginx Stream Prefix
+nginx
+```
+
+### Nginx Reverse Proxy 설정
+
+공통 요청은 Spring Boot의 8080 포트로 전달합니다.
+
+```nginx
+proxy_pass http://127.0.0.1:8080;
+```
+
+다음 Forwarded Header를 전달합니다.
+
+```text
+Host
+X-Real-IP
+X-Forwarded-For
+X-Forwarded-Host
+X-Forwarded-Proto
+```
+
+Spring Boot 운영 환경에서는 Forwarded Header를 처리하도록
+다음 설정을 적용합니다.
+
+```yaml
+server:
+  forward-headers-strategy: framework
+```
+
+### WebSocket 및 SockJS
+
+WebSocket 및 SockJS Endpoint는 다음 경로를 사용합니다.
+
+```text
+/ws
+```
+
+WebSocket Upgrade 요청 전달을 위해
+`Upgrade`와 `Connection` Header를 설정합니다.
+
+SockJS HTTP Streaming 응답이 Nginx Buffer에 의해 지연되지 않도록
+응답 Buffering을 비활성화합니다.
+
+```nginx
+proxy_buffering off;
+proxy_read_timeout 65m;
+```
+
+로컬 검증에서 Nginx를 경유한 WebSocket 요청이
+`101 Switching Protocols`로 응답하는 것을 확인했습니다.
+
+SockJS HTTP fallback의 `xhr_streaming` 요청은
+Spring Boot에 직접 요청해도 Spring Security CSRF 정책으로
+403 응답하는 것을 확인했습니다.
+
+해당 보안 정책은 Nginx Reverse Proxy 범위와 분리하여 검토합니다.
+
+### Server-Sent Events
+
+SSE Endpoint는 다음 경로를 사용합니다.
+
+```text
+/api/sse
+```
+
+SSE 응답이 즉시 전달되도록 다음 설정을 적용합니다.
+
+```nginx
+proxy_buffering off;
+proxy_cache off;
+proxy_read_timeout 65m;
+```
+
+로컬 검증에서 인증된 Nginx 경유 요청이
+다음과 같이 정상 연결되는 것을 확인했습니다.
+
+```text
+HTTP 200
+Content-Type: text/event-stream
+
+event: connected
+data: SSE 연결이 완료되었습니다.
+```
+
+### ALB 및 Target Group 전환
+
+기존 ECS Service의 ALB 연결은 다음과 같았습니다.
+
+```text
+Target Container: otboo-backend
+Target Port: 8080
+```
+
+Nginx 적용 후 다음 구성으로 변경했습니다.
+
+```text
+Target Container: otboo-nginx
+Target Port: 80
+```
+
+기존 Target Group은 그대로 사용합니다.
+
+```text
+Target Group
+otboo-prod-backend-tg
+
+Health Check Port
+traffic-port
+
+Health Check Path
+/actuator/health
+
+Success Code
+200
+```
+
+Nginx 적용 후 Health Check 요청 흐름은 다음과 같습니다.
+
+```text
+ALB
+→ otboo-nginx :80
+→ Spring Boot :8080
+→ /actuator/health
+```
+
+### Security Group 변경
+
+전환 전 ECS Application Security Group은
+ALB Security Group에서 TCP 8080 접근을 허용했습니다.
+
+Nginx 전환 과정에서는 기존 Task의 트래픽을 유지하기 위해
+8080 규칙을 먼저 제거하지 않고 TCP 80 규칙을 추가했습니다.
+
+```text
+전환 중
+
+ALB Security Group
+├─ TCP 8080 → 기존 Backend Target
+└─ TCP 80   → 신규 Nginx Target
+```
+
+새 Nginx Target이 `healthy`가 되고
+기존 Backend 8080 Target이 완전히 제거된 이후
+ALB → ECS TCP 8080 인바운드 규칙을 제거했습니다.
+
+최종 외부 애플리케이션 진입 경로는 다음과 같습니다.
+
+```text
+ALB Security Group
+→ TCP 80
+→ ECS Application Security Group
+→ otboo-nginx :80
+```
+
+Spring Boot의 8080 포트는 Nginx가 동일 Task 내부에서 사용하는
+애플리케이션 Upstream 포트로 유지합니다.
+
+### 운영 배포 절차
+
+Nginx Reverse Proxy 최초 적용은 다음 순서로 진행합니다.
+
+```text
+1. Nginx 설정 작성 및 로컬 검증
+2. Nginx Docker 이미지 linux/amd64 빌드
+3. Git Commit SHA 태그로 ECR Push
+4. 기존 Task Definition을 기준으로 Nginx Sidecar 추가
+5. 새 Task Definition Revision 등록
+6. ALB Security Group → ECS Security Group TCP 80 허용
+7. ECS Service의 Task Definition 변경
+8. ALB Target Container를 otboo-nginx:80으로 변경
+9. 새 ECS Task RUNNING 확인
+10. 새 :80 Target healthy 확인
+11. 기존 :8080 Target draining 확인
+12. ECS Service Stable 확인
+13. 운영 기능 및 로그 검증
+14. 기존 :8080 Target 제거 확인
+15. 기존 ALB → ECS TCP 8080 Security Group 규칙 제거
+16. 최종 Target Health 및 /actuator/health 재검증
+```
+
+### Rolling 전환 확인
+
+서비스는 다음 배포 정책을 사용합니다.
+
+```text
+Desired Count: 1
+minimumHealthyPercent: 100
+maximumPercent: 200
+Deployment Strategy: ROLLING
+Deployment Circuit Breaker: enabled
+Rollback: enabled
+```
+
+Nginx 적용 과정에서는 기존 Task를 유지한 상태에서
+새 Task가 추가로 실행되는 것을 확인했습니다.
+
+```text
+기존 Task
+otboo-backend :8080
+healthy
+
+        ↓ 새 Task 시작
+
+신규 Task
+otboo-nginx :80
+→ otboo-backend :8080
+healthy
+
+        ↓
+
+기존 :8080 Target
+draining
+
+        ↓
+
+기존 Target 제거
+```
+
+새 Target이 `healthy`가 된 이후 기존 Target이
+`draining` 상태로 전환되고 제거되는 것을 확인했습니다.
+
+### 운영 검증 결과
+
+다음 항목을 실제 운영 환경에서 확인했습니다.
+
+- ECS Service Desired Count 1
+- ECS Service Running Count 1
+- Pending Count 0
+- Deployment `COMPLETED`
+- ALB Target `otboo-nginx:80`
+- Target Health `healthy`
+- `/actuator/health` HTTP 200 및 `UP`
+- 응답 Header에서 `Server: nginx/1.30.4` 확인
+- 루트 `/` HTTP 200
+- JavaScript 정적 리소스 `/assets/**` HTTP 200
+- `/api/auth/csrf-token` HTTP 204
+- Nginx Access Log 정상 수집
+- Spring Boot 시작 로그 정상 수집
+- 기존 Backend `:8080` Target 제거
+- 기존 ALB → ECS TCP 8080 Security Group 규칙 제거
+- TCP 8080 규칙 제거 후에도 `/actuator/health` HTTP 200 유지
+
+최종 외부 요청 흐름은 다음과 같습니다.
+
+```text
+Internet
+→ ALB :80
+→ ECS Application Security Group :80
+→ otboo-nginx :80
+→ 127.0.0.1:8080
+→ otboo-backend
+```
+
+### 컨테이너 시작 시 Health Check
+
+Nginx와 Backend는 동일 Task에서 함께 시작하지만
+별도 컨테이너이므로 준비 완료 시점은 다를 수 있습니다.
+
+최초 Sidecar 배포에서는 Nginx가 먼저 시작되어
+Spring Boot가 8080 포트에서 준비되기 전
+ALB Health Check에 일시적인 502 응답이 발생했습니다.
+
+Spring Boot 기동 완료 후에는 Nginx를 경유한
+Health Check가 200으로 정상 전환되었고
+Target 상태도 `healthy`로 변경되었습니다.
+
+현재는 ALB Target Health Check를 통해
+애플리케이션 준비 완료 여부를 판단합니다.
+
+### 롤백 절차
+
+Nginx 적용 후 문제가 발생하면 다음 순서로 롤백합니다.
+
+```text
+1. ALB Security Group → ECS Security Group TCP 8080 허용
+2. 이전 Backend 전용 Task Definition Revision 선택
+3. Load Balancer Target Container를 otboo-backend:8080으로 복원
+4. ECS Service 업데이트
+5. 새 Backend Target healthy 확인
+6. 기존 Nginx Target 제거 확인
+7. 프론트엔드와 /actuator/health 재검증
+```
+
+정상 Target이 확보되기 전에
+현재 정상 동작 중인 Target이나 Security Group 규칙을
+먼저 제거하지 않습니다.
+
+### 후속 작업
+
+다음 항목은 Nginx Reverse Proxy 이슈에 포함하지 않습니다.
+
+- 도메인 DNS 연결
+- HTTPS 및 ACM 인증서 적용
+- HTTP → HTTPS Redirect
+- Secure Cookie 운영 검증
+- SockJS HTTP fallback CSRF 정책 검토
+- 장시간 WebSocket·SSE 연결 및 재연결 검증
+- ECS 다중 Task 구성
+
 ### 후속 검증
 
 다음 항목은 팀원 도메인 구현 또는 후속 인프라 이슈에서 진행합니다.
@@ -1078,11 +1491,8 @@ Issue #131의 범위에 포함하지 않고 별도 운영 안정화 이슈에서
 - Redis 사용 기능의 실제 저장·조회
 - 프로필 및 의상 이미지 업로드·조회·삭제
 - WebSocket 실제 메시지 송수신
-- SSE 실제 이벤트 수신
 - Spring Security 기본 사용자 자동 생성 로그 제거
 - 장시간 WebSocket·SSE 연결 및 재연결
 - ECS 다중 Task
-- Rolling Update
 - 무중단 배포
-- GitHub Actions OIDC ECS 자동 배포 실제 `develop` 환경 검증
 - 도메인 및 HTTPS
