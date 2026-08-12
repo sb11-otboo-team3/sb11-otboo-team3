@@ -2002,27 +2002,66 @@ server: nginx/1.30.4
 {"status":"UP"}
 ```
 
-TLS 인증서가 운영 도메인과 일치하는지도 확인했습니다.
+TLS 인증서 검증은
+인증서 정보를 단순히 출력하는 것에 그치지 않고
+인증서 신뢰 체인과 운영 도메인 일치 여부까지 확인합니다.
+
+현재 macOS 개발 환경에서는 LibreSSL 3.3.6을 사용하며,
+해당 버전에서 지원하지 않는 OpenSSL hostname 검증 옵션 대신
+`curl`의 기본 TLS 검증을 통해 인증서 신뢰 체인과
+요청 도메인 `otboo.work`의 일치 여부를 확인합니다.
+
+`--insecure` 옵션을 사용하지 않으므로
+인증서 또는 호스트명 검증에 실패하면 요청도 실패합니다.
 
 ```bash
+curl --fail --silent --show-error \
+  --output /dev/null \
+  https://otboo.work/ \
+  && echo "curl TLS verification: PASS"
+```
+
+인증서 Chain 검증 오류가 명령 실패로 반영되도록
+`openssl s_client`에는 `-verify_return_error`를 적용하고,
+Pipeline 중간 명령 실패도 감지할 수 있도록 `pipefail`을 사용합니다.
+
+또한 인증서의 Subject, Issuer, 유효기간 및
+Subject Alternative Name(SAN)을 확인합니다.
+
+```bash
+set -o pipefail
+
 echo | openssl s_client \
   -connect otboo.work:443 \
   -servername otboo.work \
-  2>/dev/null \
+  -verify_return_error \
   | openssl x509 \
       -noout \
       -subject \
       -issuer \
-      -dates
+      -dates \
+      -text \
+  | sed -n \
+      -e '/subject=/p' \
+      -e '/issuer=/p' \
+      -e '/notBefore=/p' \
+      -e '/notAfter=/p' \
+      -e '/Subject Alternative Name/,+1p'
 ```
 
-다음 항목을 확인했습니다.
+다음 항목을 확인합니다.
 
 ```text
+curl TLS verification = PASS
 Subject = otboo.work
-Issuer  = Amazon
-Certificate Valid = True
+Subject Alternative Name = DNS:otboo.work
+Issuer = Amazon
+Certificate Chain Verification = 정상
+Certificate Validity = 정상
 ```
+
+TLS 검증 오류를 숨기지 않도록
+기존 `2>/dev/null` 처리는 사용하지 않습니다.
 
 인증서의 실제 ARN 및 계정 식별 정보는 저장소에 기록하지 않습니다.
 
