@@ -10,8 +10,13 @@ import com.otboo.domain.clothes.mapper.ClothesAttributeDefinitionMapper;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeDefinitionRepository;
 import com.otboo.domain.clothes.exception.InvalidSortConditionException;
+import com.otboo.domain.notification.entity.NotificationLevel;
+import com.otboo.domain.notification.event.NotificationEvent;
+import com.otboo.domain.user.entity.User;
+import com.otboo.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -28,6 +33,8 @@ public class ClothesAttributeDefinitionService {
     private final ClothesAttributeDefinitionRepository definitionRepository;
     private final AttributeSelectableValueRepository selectableValueRepository;
     private final ClothesAttributeDefinitionMapper mapper;
+    private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("createdAt", "name");
     private static final Set<String> ALLOWED_SORT_DIRECTIONS = Set.of("ASCENDING", "DESCENDING");
 
@@ -79,6 +86,17 @@ public class ClothesAttributeDefinitionService {
 
         List<AttributeSelectableValue> selectableValues =
                 syncSelectableValues(definition, values);
+
+        userRepository.findAllUserIds().forEach(userId ->
+            eventPublisher.publishEvent(
+                new NotificationEvent(
+                    userId,
+                    "새 의상 속성이 추가되었습니다.",
+                    "'" + definition.getName() + "' 의상 속성이 추가되었습니다.",
+                    NotificationLevel.INFO
+                )
+            )
+        );
 
         return mapper.toResponse(definition, selectableValues);
     }

@@ -1,14 +1,18 @@
 package com.otboo.domain.user.service;
 
+import com.otboo.domain.notification.entity.NotificationLevel;
+import com.otboo.domain.notification.event.NotificationEvent;
 import com.otboo.domain.user.dto.UserCreateRequest;
 import com.otboo.domain.user.dto.UserDto;
 import com.otboo.domain.profile.entity.Profile;
 import com.otboo.domain.user.entity.User;
+import com.otboo.domain.user.entity.UserRole;
 import com.otboo.domain.user.exception.DuplicateEmailException;
 import com.otboo.domain.profile.repository.ProfileRepository;
 import com.otboo.domain.user.repository.UserRepository;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -38,6 +42,7 @@ public class UserService {
   private final ProfileRepository profileRepository;
   private final PasswordEncoder passwordEncoder;
   private final EntityManager entityManager;
+  private final ApplicationEventPublisher eventPublisher;
 
   @Transactional
   public UserDto create(UserCreateRequest request) {
@@ -75,9 +80,23 @@ public class UserService {
 
     user.changeRole(request.role());
 
+    // ADMIN > User일때 WARNING, User > ADMIN일때 INFO
     if (roleChanged) {
       userRepository.incrementTokenVersion(userId);
       entityManager.refresh(user);
+
+      NotificationLevel level = user.getRole() == UserRole.USER
+          ? NotificationLevel.WARNING
+          : NotificationLevel.INFO;
+
+      eventPublisher.publishEvent(
+          new NotificationEvent(
+              user.getId(),
+              "권한이 변경되었습니다.",
+              "회원님의 권한이 " + user.getRole().name() + "로 변경되었습니다.",
+              level
+          )
+      );
     }
 
     return UserDto.from(user);
@@ -99,6 +118,23 @@ public class UserService {
     if (lockStateChanged) {
       userRepository.incrementTokenVersion(userId);
       entityManager.refresh(user);
+
+      NotificationLevel level = user.isLocked()
+          ? NotificationLevel.WARNING
+          : NotificationLevel.INFO;
+
+      String content = user.isLocked()
+          ? "회원님의 계정이 비활성 처리되었습니다."
+          : "회원님의 계정이 활성 처리되었습니다.";
+
+      eventPublisher.publishEvent(
+          new NotificationEvent(
+              user.getId(),
+              "계정 상태가 변경되었습니다.",
+              content,
+              level
+          )
+      );
     }
 
     return UserDto.from(user);

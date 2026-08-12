@@ -13,6 +13,8 @@ import com.otboo.domain.feed.core.entity.Feed;
 import com.otboo.domain.feed.core.exception.FeedNotFoundException;
 import com.otboo.domain.feed.core.exception.FeedUserNotFoundException;
 import com.otboo.domain.feed.core.repository.FeedRepository;
+import com.otboo.domain.notification.entity.NotificationLevel;
+import com.otboo.domain.notification.event.NotificationEvent;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import java.time.Instant;
@@ -20,6 +22,7 @@ import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +35,7 @@ public class FeedCommentService {
   private final FeedRepository feedRepository;
   private final FeedCommentRepository feedCommentRepository;
   private final FeedCommentMapper feedCommentMapper;
+  private final ApplicationEventPublisher eventPublisher;
 
   @Transactional
   public FeedCommentDto createFeedComment(
@@ -57,6 +61,17 @@ public class FeedCommentService {
     Comment savedComment = feedCommentRepository.save(comment);
 
     feedRepository.increaseCommentCount(feedId);
+
+    if (!feed.getAuthor().getId().equals(currentUserId)) {
+      eventPublisher.publishEvent(
+          new NotificationEvent(
+              feed.getAuthor().getId(),
+              "새 댓글이 등록되었습니다.",
+              user.getName() + "님이 회원님의 피드에 댓글을 남겼습니다.",
+              NotificationLevel.INFO
+          )
+      );
+    }
 
     return feedCommentMapper.toDto(savedComment);
   }

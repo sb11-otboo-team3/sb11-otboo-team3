@@ -12,7 +12,6 @@ import com.otboo.domain.clothes.repository.ClothesRepository;
 import com.otboo.domain.feed.clothes.entity.FeedClothes;
 import com.otboo.domain.feed.clothes.exception.FeedClothesNotFoundException;
 import com.otboo.domain.feed.clothes.repository.FeedClothesRepository;
-import com.otboo.domain.feed.comment.repository.FeedCommentRepository;
 import com.otboo.domain.feed.core.dto.request.FeedCreateRequest;
 import com.otboo.domain.feed.core.dto.request.FeedUpdateRequest;
 import com.otboo.domain.feed.core.dto.response.FeedDto;
@@ -24,6 +23,9 @@ import com.otboo.domain.feed.core.exception.FeedWeatherNotFoundException;
 import com.otboo.domain.feed.core.mapper.FeedMapper;
 import com.otboo.domain.feed.core.repository.FeedRepository;
 import com.otboo.domain.feed.like.repository.FeedLikeRepository;
+import com.otboo.domain.follow.repository.FollowRepository;
+import com.otboo.domain.notification.entity.NotificationLevel;
+import com.otboo.domain.notification.event.NotificationEvent;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import com.otboo.domain.weather.dto.WeatherSummaryDto;
@@ -35,6 +37,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,9 +55,11 @@ public class FeedCommandService {
   private final ClothesAttributeRepository clothesAttributeRepository;
   private final AttributeSelectableValueRepository attributeSelectableValueRepository;
   private final FeedLikeRepository feedLikeRepository;
-  private final FeedCommentRepository feedCommentRepository;
+  private final ApplicationEventPublisher eventPublisher;
+  private final FollowRepository followRepository;
   private final FeedMapper feedMapper;
   private final ObjectMapper objectMapper;
+
 
   @Transactional
   public FeedDto createFeed(FeedCreateRequest request, UUID currentUserId) {
@@ -93,6 +98,18 @@ public class FeedCommandService {
 
     feedClothesRepository.saveAll(feedClothes);
 
+    followRepository.findFollowerIdsByFolloweeId(author.getId()).stream()
+        .filter(followerId -> !followerId.equals(author.getId()))
+        .forEach(followerId ->
+            eventPublisher.publishEvent(
+                new NotificationEvent(
+                    followerId,
+                    "팔로우한 사용자가 피드를 등록했습니다.",
+                    author.getName() + "님이 새 피드를 등록했습니다.",
+                    NotificationLevel.INFO
+                )
+            )
+        );
     // 최초 생성시엔 좋아요를 누를 수가 없음
     boolean likedByMe = false;
 

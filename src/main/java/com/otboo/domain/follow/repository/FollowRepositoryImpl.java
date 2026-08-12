@@ -139,4 +139,13 @@ public class FollowRepositoryImpl implements FollowRepositoryCustom {
                 .and(follow.id.gt(idAfter))
         );
   }
+
+  @Override
+  public List<UUID> findFollowerIdsByFolloweeId(UUID followeeId) {
+    return queryFactory
+        .select(follow.follower.id)
+        .from(follow)
+        .where(follow.followee.id.eq(followeeId))
+        .fetch();
+  }
 }

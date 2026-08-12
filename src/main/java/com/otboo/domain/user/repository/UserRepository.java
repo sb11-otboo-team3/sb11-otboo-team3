@@ -1,6 +1,7 @@
 package com.otboo.domain.user.repository;
 
 import com.otboo.domain.user.entity.User;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,4 +18,7 @@ public interface UserRepository extends JpaRepository<User, UUID>, UserRepositor
   @Modifying
   @Query("UPDATE User u SET u.tokenVersion = u.tokenVersion + 1 WHERE u.id = :userId")
   int incrementTokenVersion(@Param("userId") UUID userId);
+
+  @Query("select u.id from User u")
+  List<UUID> findAllUserIds();
 }

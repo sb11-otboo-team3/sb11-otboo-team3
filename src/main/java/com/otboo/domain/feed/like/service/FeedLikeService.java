@@ -8,10 +8,13 @@ import com.otboo.domain.feed.like.entity.FeedLike;
 import com.otboo.domain.feed.like.exception.DuplicateFeedLikeException;
 import com.otboo.domain.feed.like.exception.FeedLikeNotFoundException;
 import com.otboo.domain.feed.like.repository.FeedLikeRepository;
+import com.otboo.domain.notification.entity.NotificationLevel;
+import com.otboo.domain.notification.event.NotificationEvent;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +27,7 @@ public class FeedLikeService {
   private final UserRepository userRepository;
   private final FeedRepository feedRepository;
   private final FeedLikeRepository feedLikeRepository;
+  private final ApplicationEventPublisher eventPublisher;
 
   @Transactional
   public void createFeedLike(UUID feedId, UUID currentUserId) {
@@ -37,6 +41,17 @@ public class FeedLikeService {
       FeedLike feedLike = FeedLike.create(feed, user);
       feedLikeRepository.saveAndFlush(feedLike);
       feedRepository.increaseLikeCount(feedId);
+
+      if (!feed.getAuthor().getId().equals(currentUserId)) {
+        eventPublisher.publishEvent(
+            new NotificationEvent(
+                feed.getAuthor().getId(),
+                "새 좋아요가 등록되었습니다.",
+                user.getName() + "님이 회원님의 피드에 좋아요를 눌렀습니다.",
+                NotificationLevel.INFO
+            )
+        );
+      }
     } catch (DataIntegrityViolationException exception) {
       throw new DuplicateFeedLikeException();
     }
