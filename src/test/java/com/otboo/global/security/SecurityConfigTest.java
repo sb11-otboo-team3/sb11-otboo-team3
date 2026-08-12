@@ -289,4 +289,15 @@ class SecurityConfigTest {
             .cookie(xsrfCookie))
         .andExpect(status().isForbidden());
   }
+
+  @Test
+  @DisplayName("CSRF 토큰 없이 /ws/** 경로에 POST 요청을 보내도 CSRF 검증에 막히지 않는다")
+  void wsPathBypassesCsrfProtection() throws Exception {
+    // when & then
+    // CSRF 토큰 없이 /ws 하위 경로에 POST 요청을 보낸다.
+    // SockJS 프로토콜 자체를 완벽히 재현하지는 않으므로 200을 기대하지 않고,
+    // 403(CSRF 검증 실패)이 아닌 것만 확인한다.
+    mockMvc.perform(post("/ws/000/000000/xhr_streaming"))
+        .andExpect(status().is(org.hamcrest.Matchers.not(403)));
+  }
 }
