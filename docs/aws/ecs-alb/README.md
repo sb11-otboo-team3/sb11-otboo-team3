@@ -1587,6 +1587,8 @@ otboo.work
 
 Route 53 Domains 관련 명령은 `us-east-1` 리전에서 실행합니다.
 
+등록된 도메인의 Nameserver를 확인합니다.
+
 ```bash
 aws route53domains get-domain-detail \
   --domain-name otboo.work \
@@ -1596,13 +1598,50 @@ aws route53domains get-domain-detail \
   --output table
 ```
 
-Route 53의 Public Hosted Zone을 확인합니다.
+도메인 등록 완료 후 Nameserver 4개가 정상적으로 할당된 것을 확인했습니다.
+
+Route 53에서 `otboo.work`와 이름이 일치하고
+`PrivateZone=False`인 Public Hosted Zone만 조회합니다.
 
 ```bash
-aws route53 list-hosted-zones-by-name \
-  --dns-name otboo.work \
+HOSTED_ZONE_IDS="$(
+  aws route53 list-hosted-zones-by-name \
+    --dns-name otboo.work \
+    --profile otboo \
+    --query "HostedZones[?Name=='otboo.work.' && Config.PrivateZone==\`false\`].Id" \
+    --output text
+)"
+```
+
+동일한 이름의 Public Hosted Zone이 여러 개 존재하면
+잘못된 Hosted Zone을 선택할 수 있으므로 조회 결과가 정확히 1개인지 확인합니다.
+
+```bash
+HOSTED_ZONE_COUNT="$(
+  printf '%s\n' "${HOSTED_ZONE_IDS}" \
+    | awk 'NF { count += NF } END { print count + 0 }'
+)"
+
+test "${HOSTED_ZONE_COUNT}" -eq 1
+```
+
+`list-hosted-zones-by-name`에서 반환되는 Hosted Zone ID는
+`/hostedzone/Z...` 형식이므로 이후 CLI 명령에서 사용할 수 있도록
+`/hostedzone/` 접두사를 제거해 `HOSTED_ZONE_ID`를 설정합니다.
+
+```bash
+HOSTED_ZONE_ID="${HOSTED_ZONE_IDS##*/}"
+
+printf 'HOSTED_ZONE_ID=%s\n' "${HOSTED_ZONE_ID}"
+```
+
+설정된 Hosted Zone이 실제로 `otboo.work`의 Public Hosted Zone인지 다시 확인합니다.
+
+```bash
+aws route53 get-hosted-zone \
+  --id "${HOSTED_ZONE_ID}" \
   --profile otboo \
-  --query "HostedZones[?Name=='otboo.work.'].[Id,Name,Config.PrivateZone]" \
+  --query 'HostedZone.{Id:Id,Name:Name,PrivateZone:Config.PrivateZone}' \
   --output table
 ```
 
@@ -1613,7 +1652,7 @@ Name        = otboo.work.
 PrivateZone = False
 ```
 
-Hosted Zone의 Nameserver도 확인합니다.
+Hosted Zone에 할당된 Nameserver도 확인합니다.
 
 ```bash
 aws route53 get-hosted-zone \
@@ -1625,6 +1664,9 @@ aws route53 get-hosted-zone \
 
 Route 53 Domains에 등록된 Nameserver 4개와
 Public Hosted Zone의 Nameserver 4개가 모두 일치하는 것을 확인했습니다.
+
+따라서 `otboo.work`가 현재 Public Hosted Zone에
+정상적으로 위임되어 있음을 확인했습니다.
 
 AWS 계정 ID, 사용자 ARN, 인증정보 및 도메인 구매 계정의 민감정보는
 Issue, PR 또는 저장소 문서에 기록하지 않습니다.
@@ -1711,24 +1753,64 @@ aws route53 get-change \
 
 ### DNS 및 HTTP 접근 검증
 
-DNS 전파는 다음 명령으로 확인했습니다.
+Route 53 변경이 `INSYNC` 상태로 반영된 이후
+로컬 기본 Resolver를 통해 운영 도메인의 A 레코드를 확인합니다.
 
 ```bash
 dig otboo.work A +short
 dig otboo.work A
 ```
 
-검증 결과는 다음과 같습니다.
+기본 Resolver 조회에서 다음 결과를 확인했습니다.
 
 ```text
-DNS status: NOERROR
+status: NOERROR
 A 레코드 정상 반환
 ```
 
-ALB의 개별 IP는 고정값으로 관리하지 않으며,
-Route 53 Alias가 ALB 자체를 대상으로 연결되도록 유지합니다.
+로컬 환경에 설정된 Resolver뿐 아니라
+외부 Public Resolver에서도 DNS 레코드가 정상적으로 조회되는지 확인합니다.
 
-도메인을 통한 프론트엔드 루트 요청도 확인했습니다.
+Cloudflare Public DNS Resolver인 `1.1.1.1`을 대상으로 조회했습니다.
+
+```bash
+dig +short @1.1.1.1 otboo.work A
+```
+
+확인 결과:
+
+```text
+15.164.56.75
+52.78.7.146
+```
+
+상세 DNS 응답도 확인합니다.
+
+```bash
+dig @1.1.1.1 otboo.work A
+```
+
+실제 조회에서 다음 결과를 확인했습니다.
+
+```text
+SERVER: 1.1.1.1
+status: NOERROR
+ANSWER: 2
+
+otboo.work.  60  IN  A  15.164.56.75
+otboo.work.  60  IN  A  52.78.7.146
+```
+
+따라서 로컬 기본 Resolver뿐 아니라 외부 Public Resolver에서도
+`otboo.work`의 A 레코드가 정상적으로 조회되는 것을 확인했습니다.
+
+위 IP 주소는 검증 시점의 ALB DNS 조회 결과이며
+운영 설정에서 고정 IP로 사용하지 않습니다.
+
+실제 DNS 연결은 Route 53 Alias A 레코드를 통해
+Application Load Balancer 자체를 대상으로 유지합니다.
+
+도메인을 통한 프론트엔드 루트 요청도 확인합니다.
 
 ```bash
 curl -sS -o /dev/null \
@@ -1746,7 +1828,7 @@ Content-Type: text/html;charset=UTF-8
 브라우저에서도 `http://otboo.work`를 통한
 프론트엔드 접근이 정상적으로 동작하는 것을 확인했습니다.
 
-Spring Boot Health Check도 동일한 도메인으로 검증했습니다.
+Spring Boot Health Check도 동일한 도메인을 통해 검증합니다.
 
 ```bash
 curl -sS -i http://otboo.work/actuator/health
@@ -1760,9 +1842,10 @@ Server: nginx/1.30.4
 {"status":"UP"}
 ```
 
-`Server: nginx/1.30.4`와 Actuator의 `UP` 응답을 함께 확인해
+`Server: nginx/1.30.4` 응답 Header와
+Spring Boot Actuator의 `UP` 응답을 함께 확인해
 도메인 요청이 기존 Nginx Reverse Proxy를 거쳐
-Spring Boot까지 정상 전달되는 것을 확인했습니다.
+Spring Boot까지 정상적으로 전달되는 것을 확인했습니다.
 
 ### Issue #157 완료 기준
 
