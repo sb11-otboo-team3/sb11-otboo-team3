@@ -33,6 +33,7 @@ ALB DNS의 루트 `/` 경로에서 프론트엔드와 백엔드 API를 함께 �
 - Issue #142: Nginx Reverse Proxy
 - Issue #157: 운영 도메인 DNS 연결
 - Issue #160: HTTPS 및 운영 Secure Cookie 적용
+- Issue #163: HTTPS 운영 도메인 외부 서비스 경로 검증
 - [AWS 기본 운영 기준](../README.md)
 - [Amazon ECR 구성 및 이미지 검증](../ecr/README.md)
 - [RDS PostgreSQL 및 S3 구성](../rds-s3/README.md)
@@ -1865,154 +1866,113 @@ Spring Boot까지 정상적으로 전달되는 것을 확인했습니다.
 
 ## 23. HTTPS 및 운영 Secure Cookie 적용
 
-Issue #160에서는 운영 도메인 `otboo.work`에 HTTPS를 적용하고,
-기존 HTTP 요청을 HTTPS로 Redirect하도록
-Application Load Balancer의 외부 진입 구성을 변경했습니다.
+Issue #160에서는 운영 도메인 `otboo.work`에 ACM 인증서를 적용하고,
+Application Load Balancer에 HTTPS 443 Listener를 구성했습니다.
 
-AWS Certificate Manager(ACM)에서 운영 도메인 인증서를 발급하고,
-Route 53 DNS Validation을 통해 도메인 소유권을 검증했습니다.
+기존 HTTP 80 Listener는 HTTPS 443으로 Redirect하도록 변경하고,
+TLS 종료 이후에는 기존 Nginx Sidecar와 Spring Boot 내부 요청 구조를 유지합니다.
 
-HTTPS 적용 이후에도 기존
-ALB → Nginx Sidecar → Spring Boot 요청 구조는 유지합니다.
+### HTTPS 적용 구조
 
-### 최종 외부 요청 구조
+최종 HTTPS 요청 흐름은 다음과 같습니다.
 
 ```text
 Internet
 → otboo.work
 → Route 53 Alias A
-→ otboo-prod-alb
-   ├─ HTTP :80
-   │   → HTTP 301 Redirect
-   │   → HTTPS :443
-   │
-   └─ HTTPS :443
-       → ACM TLS 종료
-       → otboo-nginx :80
-       → otboo-backend :8080
+→ ALB HTTPS :443
+→ ACM TLS Termination
+→ ECS Task
+   ├─ otboo-nginx :80
+   │    ↓ 127.0.0.1:8080
+   └─ otboo-backend :8080
 ```
 
 TLS는 ALB에서 종료하며,
-ECS Nginx Sidecar와 Spring Boot 사이의 기존 내부 HTTP 구조는 변경하지 않았습니다.
+ALB 이후 ECS Task 내부에서는 기존 HTTP 구조를 유지합니다.
 
----
+따라서 ECS Application Security Group에는
+HTTPS 적용을 위해 별도의 TCP 443 인바운드 규칙을 추가하지 않습니다.
 
 ### ALB Security Group HTTPS 허용
 
-HTTPS Listener를 추가하기 전에
-운영 ALB Security Group의 기존 Inbound 규칙을 확인했습니다.
-
-기존에는 HTTP 80만 외부에 허용되어 있었으므로
-HTTPS 요청을 받을 수 있도록 TCP 443 Inbound 규칙을 추가했습니다.
-
-최종 외부 허용 포트는 다음과 같습니다.
+인터넷에서 ALB HTTPS Listener에 접근할 수 있도록
+ALB Security Group에 다음 인바운드 규칙을 추가했습니다.
 
 ```text
-TCP 80  → 0.0.0.0/0
-TCP 443 → 0.0.0.0/0
+Protocol: TCP
+Port: 443
+Source: 0.0.0.0/0
 ```
 
-HTTP 80은 삭제하지 않고
-HTTPS Redirect를 처리하기 위한 Listener로 유지합니다.
+HTTPS 443은 인터넷에 공개되는 ALB에서만 허용합니다.
 
-ECS Application Security Group에는 HTTPS 443을 추가하지 않습니다.
-TLS는 ALB에서 종료하고 기존 Target인 `otboo-nginx:80`으로 전달합니다.
-
----
+ECS Application Security Group은 기존과 같이
+ALB Security Group으로부터 Nginx의 TCP 80 요청만 허용합니다.
 
 ### ACM 인증서 발급 및 DNS 검증
 
-운영 ALB와 동일한 `ap-northeast-2` 리전에서
-`otboo.work`용 ACM Public Certificate를 요청했습니다.
-
-인증서 검증 방식은 DNS Validation을 사용했습니다.
-
-ACM에서 제공한 CNAME 검증 레코드를
-기존 `otboo.work` Route 53 Public Hosted Zone에 추가했습니다.
-
-Route 53 변경 상태가 `INSYNC`인지 확인하고,
-DNS에서 ACM Validation CNAME이 정상 조회되는지 검증했습니다.
-
-이후 ACM 인증서 상태가 다음과 같이 변경된 것을 확인했습니다.
+운영 도메인에 대해 ACM Public Certificate를 발급했습니다.
 
 ```text
-Status           = ISSUED
-ValidationStatus = SUCCESS
+Domain
+otboo.work
 ```
 
-ACM 인증서 ARN, AWS 계정 ID 및 DNS Validation의 실제 식별값은
-Issue, PR 또는 저장소 문서에 기록하지 않습니다.
+Certificate Validation은 DNS 방식을 사용하며,
+ACM이 제공한 CNAME Validation Record를
+Route 53 Public Hosted Zone에 등록했습니다.
 
----
-
-### HTTPS 443 Listener 구성
-
-기존 HTTP 80 Listener가 사용하던
-`otboo-prod-backend-tg` Target Group을 그대로 사용해
-ALB에 HTTPS 443 Listener를 추가했습니다.
-
-HTTPS Listener 구성은 다음과 같습니다.
+다음 상태를 확인했습니다.
 
 ```text
-Protocol    = HTTPS
-Port        = 443
-Target      = otboo-prod-backend-tg
-TLS Policy  = ELBSecurityPolicy-TLS13-1-2-2021-06
-Certificate = ACM otboo.work Certificate
+Certificate Status
+ISSUED
+
+Validation Status
+SUCCESS
 ```
 
-HTTPS Listener 추가 직후에는
-기존 HTTP 80 Listener를 그대로 유지한 상태에서
-HTTPS 접근을 먼저 검증했습니다.
+ACM DNS Validation CNAME Record는
+인증서 자동 갱신에 사용될 수 있으므로 삭제하지 않습니다.
 
-정상적인 HTTPS Target이 확보되기 전에
-기존 HTTP 요청 경로를 먼저 변경하지 않습니다.
+### ALB HTTPS Listener
 
----
+기존 Application Load Balancer에
+HTTPS 443 Listener를 추가했습니다.
+
+```text
+Protocol
+HTTPS
+
+Port
+443
+
+Certificate
+ACM Public Certificate for otboo.work
+
+SSL Policy
+ELBSecurityPolicy-TLS13-1-2-2021-06
+
+Default Action
+기존 otboo-prod-backend-tg로 Forward
+```
+
+HTTPS 적용을 위해 새로운 Target Group을 만들지 않고
+기존 Target Group을 그대로 사용합니다.
+
+Target Group 이후 요청은 기존과 동일하게
+`otboo-nginx:80`으로 전달됩니다.
 
 ### HTTPS 및 TLS 검증
 
-운영 도메인의 HTTPS 루트 경로를 확인했습니다.
+운영 도메인의 HTTPS 연결을 확인합니다.
 
-```bash
-curl -sS -o /dev/null \
-  -w "HTTPS %{http_code}\n" \
-  https://otboo.work/
-```
+macOS 개발 환경에서는 LibreSSL 3.3.6을 사용하고 있으므로
+OpenSSL 버전에 따라 지원 여부가 다른 옵션에 의존하지 않습니다.
 
-검증 결과:
-
-```text
-HTTPS 200
-```
-
-Spring Boot Health Check도 HTTPS를 통해
-정상 응답하는 것을 확인했습니다.
-
-```bash
-curl -sS -i https://otboo.work/actuator/health
-```
-
-검증 결과:
-
-```text
-HTTP/2 200
-server: nginx/1.30.4
-
-{"status":"UP"}
-```
-
-TLS 인증서 검증은
-인증서 정보를 단순히 출력하는 것에 그치지 않고
-인증서 신뢰 체인과 운영 도메인 일치 여부까지 확인합니다.
-
-현재 macOS 개발 환경에서는 LibreSSL 3.3.6을 사용하며,
-해당 버전에서 지원하지 않는 OpenSSL hostname 검증 옵션 대신
-`curl`의 기본 TLS 검증을 통해 인증서 신뢰 체인과
-요청 도메인 `otboo.work`의 일치 여부를 확인합니다.
-
-`--insecure` 옵션을 사용하지 않으므로
-인증서 또는 호스트명 검증에 실패하면 요청도 실패합니다.
+먼저 `curl`의 기본 TLS 검증을 사용해
+인증서 신뢰 체인과 Hostname 검증을 수행합니다.
 
 ```bash
 curl --fail --silent --show-error \
@@ -2021,12 +1981,14 @@ curl --fail --silent --show-error \
   && echo "curl TLS verification: PASS"
 ```
 
-인증서 Chain 검증 오류가 명령 실패로 반영되도록
-`openssl s_client`에는 `-verify_return_error`를 적용하고,
-Pipeline 중간 명령 실패도 감지할 수 있도록 `pipefail`을 사용합니다.
+정상 결과:
 
-또한 인증서의 Subject, Issuer, 유효기간 및
-Subject Alternative Name(SAN)을 확인합니다.
+```text
+curl TLS verification: PASS
+```
+
+인증서 Chain, Subject, Issuer, 유효기간 및 SAN은
+다음 명령으로 추가 확인합니다.
 
 ```bash
 set -o pipefail
@@ -2049,145 +2011,163 @@ echo | openssl s_client \
       -e '/Subject Alternative Name/,+1p'
 ```
 
-다음 항목을 확인합니다.
+운영 환경에서 다음 항목을 확인했습니다.
 
 ```text
-curl TLS verification = PASS
-Subject = otboo.work
-Subject Alternative Name = DNS:otboo.work
-Issuer = Amazon
-Certificate Chain Verification = 정상
-Certificate Validity = 정상
+Certificate Chain 검증 성공
+Subject CN=otboo.work
+Subject Alternative Name DNS:otboo.work
+Issuer Amazon
+인증서 유효기간 정상
 ```
 
-TLS 검증 오류를 숨기지 않도록
-기존 `2>/dev/null` 처리는 사용하지 않습니다.
+### HTTPS 애플리케이션 접근 검증
 
-인증서의 실제 ARN 및 계정 식별 정보는 저장소에 기록하지 않습니다.
-
----
-
-### HTTP → HTTPS Redirect
-
-HTTPS 요청이 정상 동작하는 것을 확인한 뒤
-기존 HTTP 80 Listener의 Default Action을
-Target Group Forward에서 HTTPS Redirect로 변경했습니다.
-
-최종 Listener 구조는 다음과 같습니다.
-
-```text
-HTTP :80
-→ HTTP_301
-→ HTTPS :443
-
-HTTPS :443
-→ otboo-prod-backend-tg
-```
-
-HTTP 루트 요청의 Redirect를 확인했습니다.
+운영 도메인의 루트 경로를 HTTPS로 요청합니다.
 
 ```bash
 curl -sS -o /dev/null \
-  -w "HTTP %{http_code}\nRedirect: %{redirect_url}\n" \
-  http://otboo.work/
+  -w "HTTPS %{http_code}\n" \
+  https://otboo.work/
 ```
 
-검증 결과:
+다음 응답을 확인했습니다.
 
 ```text
-HTTP 301
-Redirect: https://otboo.work:443/
+HTTPS 200
 ```
 
-Redirect를 따라간 최종 응답도 확인했습니다.
+Spring Boot Health Check도 HTTPS로 확인합니다.
 
 ```bash
-curl -sS -L -o /dev/null \
-  -w "FINAL %{http_code}\nURL %{url_effective}\n" \
-  http://otboo.work/
+curl -sS https://otboo.work/actuator/health
 ```
 
-검증 결과:
-
-```text
-FINAL 200
-URL https://otboo.work:443/
-```
-
-`/actuator/health` 경로에서도
-HTTP 요청이 동일한 경로의 HTTPS 요청으로 Redirect되는 것을 확인했습니다.
-
-```bash
-curl -sS -o /dev/null \
-  -w "HTTP %{http_code}\nRedirect: %{redirect_url}\n" \
-  http://otboo.work/actuator/health
-```
-
-검증 결과:
-
-```text
-HTTP 301
-Redirect: https://otboo.work:443/actuator/health
-```
-
-Redirect를 따라간 최종 Health Check도 정상입니다.
-
-```bash
-curl -sS -L \
-  http://otboo.work/actuator/health
-```
-
-검증 결과:
+정상 결과:
 
 ```json
 {"status":"UP"}
 ```
 
----
+응답 Header에서 Nginx를 경유하는 것도 확인했습니다.
 
-### Forwarded Header 및 Secure Cookie 검증
+```text
+Server: nginx/1.30.4
+```
 
-운영 Spring Boot 설정에는 다음 설정이 적용되어 있습니다.
+### HTTP → HTTPS Redirect
+
+HTTPS 경로가 정상 동작하는 것을 확인한 이후
+기존 HTTP 80 Listener의 Default Action을
+HTTPS 443 Redirect로 변경했습니다.
+
+Redirect 설정은 다음과 같습니다.
+
+```text
+Protocol
+HTTPS
+
+Port
+443
+
+Host
+#{host}
+
+Path
+/#{path}
+
+Query
+#{query}
+
+Status Code
+HTTP_301
+```
+
+루트 요청을 확인합니다.
+
+```bash
+curl -sS -D - -o /dev/null \
+  'http://otboo.work/?redirect_probe=1'
+```
+
+운영 환경에서 다음 결과를 확인했습니다.
+
+```text
+HTTP/1.1 301 Moved Permanently
+Location: https://otboo.work:443/?redirect_probe=1
+```
+
+Health Check 경로도 동일하게 확인했습니다.
+
+```bash
+curl -sS -D - -o /dev/null \
+  'http://otboo.work/actuator/health?redirect_probe=1'
+```
+
+다음 조건을 확인했습니다.
+
+```text
+HTTP 301
+HTTPS Location 반환
+/actuator/health 경로 유지
+Query String 유지
+```
+
+Redirect 이후 최종 HTTPS 요청은
+HTTP 200 및 `UP` 상태를 반환합니다.
+
+### Forwarded Header 처리
+
+TLS는 ALB에서 종료되지만 Spring Boot가
+원래 요청의 HTTPS Scheme을 인식할 수 있도록
+운영 환경에 다음 설정을 유지합니다.
 
 ```yaml
 server:
   forward-headers-strategy: framework
 ```
 
-ALB에서 TLS가 종료된 뒤
-Nginx를 거쳐 Spring Boot로 전달되는 요청에서도
-애플리케이션이 원래 요청을 HTTPS로 정상 인식하는지 검증했습니다.
-
-다음 명령으로 HTTPS 응답 Header를 확인했습니다.
-
-```bash
-curl -sS -D - -o /dev/null \
-  https://otboo.work/actuator/health \
-  | grep -Ei 'HTTP/|set-cookie|strict-transport-security|server:'
-```
-
-검증 결과:
+Nginx도 다음 Forwarded Header를 Backend로 전달합니다.
 
 ```text
-HTTP/2 200
-server: nginx/1.30.4
-set-cookie: XSRF-TOKEN=...; Path=/; Secure
-strict-transport-security: max-age=31536000 ; includeSubDomains
+Host
+X-Real-IP
+X-Forwarded-For
+X-Forwarded-Host
+X-Forwarded-Proto
 ```
 
-따라서 운영 HTTPS 환경에서 다음 항목이 정상 동작함을 확인했습니다.
+애플리케이션에서 HTTPS 요청 정보를 정상적으로 인식하는지
+Secure Cookie와 HSTS Header를 통해 함께 검증했습니다.
 
-- HTTPS 요청 정상 처리
-- Nginx Reverse Proxy 경유
-- Forwarded Header 기반 HTTPS 인식
-- CSRF Cookie의 `Secure` 속성 적용
-- HSTS Header 적용
+### CSRF Secure Cookie
 
-현재 설정만으로 운영 HTTPS 요청의 CSRF Cookie에
-`Secure` 속성이 정상 적용되므로,
-이번 이슈에서는 별도의 Secure Cookie 강제 설정을 추가하지 않았습니다.
+HTTPS `/actuator/health` 응답에서
+다음 CSRF Cookie 속성을 확인했습니다.
 
----
+```text
+Set-Cookie: XSRF-TOKEN=...; Path=/; Secure
+```
+
+운영 HTTPS 환경에서 `XSRF-TOKEN`에
+`Secure` 속성이 적용되는 것을 확인했습니다.
+
+운영 환경만을 위해 애플리케이션 코드에서
+Cookie의 Secure 속성을 무조건 강제하지 않습니다.
+
+로컬 HTTP 개발 환경과 운영 HTTPS 환경의 차이는
+Forwarded Header와 현재 요청 Scheme을 기준으로 처리합니다.
+
+### HSTS Header
+
+HTTPS 응답에서 다음 Header를 확인했습니다.
+
+```text
+Strict-Transport-Security: max-age=31536000 ; includeSubDomains
+```
+
+따라서 HTTPS 요청에 대해
+HSTS Header가 정상적으로 적용되고 있음을 확인했습니다.
 
 ### Issue #160 완료 기준
 
@@ -2216,11 +2196,237 @@ strict-transport-security: max-age=31536000 ; includeSubDomains
 다음 항목은 Issue #160 범위에 포함하지 않고
 후속 외부 서비스 경로 및 운영 안정성 검증 이슈에서 진행합니다.
 
-- WebSocket HTTPS/WSS 외부 연결 및 재연결 검증
+- WebSocket HTTPS 외부 연결 및 재연결 검증
 - SSE HTTPS 외부 연결 및 재연결 검증
 - CORS 운영 도메인 영향 검증
 - OAuth Redirect URI 운영 도메인 전환 검증
 - WebSocket Origin 검증
+- ECS 다중 Task 기반 Rolling Update 검증
+- Deployment Circuit Breaker 및 Rollback 검증
+- ALB Health Check 운영 기준 재검증
+- CloudWatch 운영 모니터링 및 알림 구성
+
+---
+
+## 24. HTTPS 운영 도메인 외부 서비스 경로 검증
+
+Issue #163에서는 HTTPS 운영 도메인 `otboo.work` 환경에서
+일반 REST 요청 외에 WebSocket과 SSE 같은 장시간 연결 경로가
+ALB와 Nginx Reverse Proxy를 거쳐 정상 동작하는지 검증합니다.
+
+운영 요청 구조는 다음과 같습니다.
+
+```text
+Client
+→ https://otboo.work
+→ ALB HTTPS :443
+→ TLS Termination
+→ otboo-nginx :80
+→ otboo-backend :8080
+```
+
+### WebSocket 운영 Origin
+
+WebSocket Endpoint는 다음 경로를 사용합니다.
+
+```text
+/ws
+```
+
+운영 환경에서는 WebSocket Origin을 운영 도메인으로 제한합니다.
+
+```text
+WEBSOCKET_ALLOWED_ORIGIN_PATTERNS=https://otboo.work
+```
+
+기존 ALB HTTP DNS를 WebSocket Allowed Origin으로 사용하던 설정을
+운영 HTTPS 도메인으로 변경했습니다.
+
+Repository의 Task Definition 기준 파일도 동일한 값으로 변경했습니다.
+
+```text
+infra/ecs/task-definition-prod.json
+```
+
+현재 GitHub Actions ECS 배포는 Repository의 Task Definition JSON을
+직접 등록하는 방식이 아니라 현재 ECS Service가 사용하는
+Task Definition Revision을 기준으로 Backend 이미지 URI만 변경합니다.
+
+따라서 운영 환경에는 기존 실행 Task Definition을 기준으로
+WebSocket Origin 값만 변경한 새 Revision을 등록하고
+ECS Service를 해당 Revision으로 갱신했습니다.
+
+새 Task가 `healthy` 상태가 된 이후 기존 Target이
+`draining` 상태로 전환되는 것을 확인했으며,
+새 Target을 통해 HTTPS 루트와 Health Check가 정상 동작하는 것을 확인했습니다.
+
+### WebSocket Origin 검증
+
+운영 HTTPS WebSocket Endpoint에 Native WebSocket Upgrade 요청을 보내
+다음 결과를 확인했습니다.
+
+```text
+Origin: https://otboo.work
+→ HTTP 101 Switching Protocols
+
+Origin: 기존 HTTP ALB DNS
+→ HTTP 403 Invalid CORS request
+
+Origin: https://example.com
+→ HTTP 403 Invalid CORS request
+```
+
+따라서 운영 도메인 Origin은 허용되고
+기존 ALB Origin 및 임의 외부 Origin은 차단되는 것을 확인했습니다.
+
+### 브라우저 WebSocket 및 STOMP 검증
+
+실제 운영 프론트엔드에서 로그인한 상태로
+Chrome DevTools의 Socket 연결을 확인했습니다.
+
+```text
+WebSocket Status: 101
+STOMP CONNECT 전송
+Authorization Bearer Header 전달
+STOMP CONNECTED 수신
+Heartbeat 지속 수신
+```
+
+이를 통해 다음 요청 경로가 정상적으로 동작함을 확인했습니다.
+
+```text
+Browser
+→ HTTPS
+→ ALB
+→ Nginx
+→ WebSocket Upgrade
+→ STOMP CONNECT
+→ JWT 인증
+→ STOMP CONNECTED
+```
+
+Access Token이 포함된 WebSocket Frame은
+저장소 문서와 Pull Request의 스크린샷에 기록하지 않습니다.
+
+실제 DM 등 비즈니스 메시지의 송수신 여부는
+각 기능의 통합 테스트 범위에서 별도로 검증합니다.
+
+### SSE 운영 HTTPS 검증
+
+SSE Endpoint는 다음 경로를 사용합니다.
+
+```text
+/api/sse
+```
+
+인증하지 않은 요청은 다음과 같이 차단되는 것을 확인했습니다.
+
+```text
+HTTP 401 Unauthorized
+```
+
+유효한 Access Token을 포함한 요청에서는 다음 응답을 확인했습니다.
+
+```text
+HTTP 200
+Content-Type: text/event-stream
+
+event:connected
+data:SSE 연결이 완료되었습니다.
+```
+
+연결 종료 후 다시 인증된 요청을 수행했을 때도
+SSE Endpoint에 정상적으로 연결되는 것을 확인했습니다.
+
+Nginx는 기존 설정에 따라 SSE 응답 Buffering과 Cache를 비활성화하고
+장시간 연결을 처리합니다.
+
+팔로우나 알림 등 실제 비즈니스 이벤트 발생에 따른
+SSE 알림 전송 여부는 각 기능의 통합 테스트 범위에서 별도로 검증합니다.
+
+### REST 및 CORS
+
+현재 프론트엔드 정적 리소스와 Backend API는 모두
+`https://otboo.work`의 동일 Origin에서 제공됩니다.
+
+```text
+Frontend
+https://otboo.work/
+
+Backend API
+https://otboo.work/api/**
+```
+
+따라서 현재 운영 구조에서는 일반 REST API 통신을 위해
+별도의 Cross-Origin CORS 설정을 추가하지 않습니다.
+
+WebSocket Origin 정책은 일반 REST 요청과 별도로 검증했습니다.
+
+### OAuth 검증 보류
+
+현재 소셜 로그인 기능은 아직 구현되지 않았으므로
+OAuth Provider Redirect URI 및 운영 Callback 경로는
+Issue #163에서 검증할 수 없는 상태입니다.
+
+구현되지 않은 Callback 경로나 환경변수를
+인프라에서 임의로 생성하지 않습니다.
+
+소셜 로그인 기능이 구현되고 관련 PR이 Merge된 이후
+실제 구현에서 사용하는 설정을 기준으로 다음 항목을
+별도 후속 인프라 이슈에서 검증합니다.
+
+```text
+OAuth Client ID / Secret 주입
+Provider Redirect URI
+HTTPS Callback
+Nginx Proxy 경로
+인증 완료 후 Redirect
+```
+
+OAuth 검증 미수행은 운영 인프라 오류가 아니라
+현재 해당 기능이 구현되지 않은 데 따른 검증 대기 상태입니다.
+
+### Issue #163 검증 결과
+
+다음 항목을 확인했습니다.
+
+- HTTPS 운영 도메인 REST 요청 정상
+- 일반 REST API 동일 Origin 구조 확인
+- WebSocket Allowed Origin을 `https://otboo.work`로 변경
+- 새 ECS Task Definition Revision 운영 반영
+- 새 ALB Target `healthy`
+- WebSocket 운영 Origin HTTP 101
+- 기존 HTTP ALB Origin HTTP 403
+- 임의 외부 Origin HTTP 403
+- 브라우저 실제 WebSocket 연결 HTTP 101
+- STOMP CONNECT 및 CONNECTED 확인
+- JWT Authorization 기반 STOMP 인증 확인
+- WebSocket Heartbeat 확인
+- SSE 무인증 요청 HTTP 401
+- SSE 인증 요청 HTTP 200
+- SSE `text/event-stream` 확인
+- SSE `connected` 이벤트 수신
+- SSE 연결 종료 후 재접속 확인
+
+다음 항목은 이번 Issue에서 기능 수준의 완료로 판단하지 않습니다.
+
+- 실제 WebSocket DM 등 비즈니스 메시지 송수신
+- 실제 비즈니스 이벤트에 따른 SSE 알림 전송
+- OAuth Provider Redirect URI 및 Callback 검증
+
+WebSocket 및 SSE의 실제 비즈니스 이벤트 검증은
+각 기능의 통합 테스트 범위에서 진행합니다.
+
+OAuth 운영 Redirect 검증은
+소셜 로그인 구현 완료 이후 별도 후속 인프라 이슈에서 진행합니다.
+
+---
+
+### 후속 작업
+
+다음 항목은 Issue #163 이후 별도 이슈에서 진행합니다.
+
+- 소셜 로그인 구현 완료 후 OAuth 운영 Redirect URI 및 Callback 검증
 - ECS 다중 Task 기반 Rolling Update 검증
 - Deployment Circuit Breaker 및 Rollback 검증
 - ALB Health Check 운영 기준 재검증
