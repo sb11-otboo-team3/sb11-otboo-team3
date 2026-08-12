@@ -128,10 +128,10 @@ public class AuthService {
   public void changePassword(UUID userId, ChangePasswordRequest request) {
     User user = userRepository.findById(userId)
         .orElseThrow(() -> new UserNotFoundException(userId));
-
     String encodedPassword = passwordEncoder.encode(request.password());
     user.changePassword(encodedPassword);
-
+    userRepository.incrementTokenVersion(userId);
+    entityManager.refresh(user);
     passwordResetService.delete(userId);
   }
 }

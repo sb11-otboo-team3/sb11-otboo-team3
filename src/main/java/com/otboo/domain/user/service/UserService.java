@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Set;
+import jakarta.persistence.EntityManager;
 
 @Service
 @RequiredArgsConstructor
@@ -36,6 +37,7 @@ public class UserService {
   private final UserRepository userRepository;
   private final ProfileRepository profileRepository;
   private final PasswordEncoder passwordEncoder;
+  private final EntityManager entityManager;
 
   @Transactional
   public UserDto create(UserCreateRequest request) {
@@ -69,7 +71,14 @@ public class UserService {
     User user = userRepository.findById(userId)
         .orElseThrow(() -> new UserNotFoundException(userId));
 
+    boolean roleChanged = user.getRole() != request.role();
+
     user.changeRole(request.role());
+
+    if (roleChanged) {
+      userRepository.incrementTokenVersion(userId);
+      entityManager.refresh(user);
+    }
 
     return UserDto.from(user);
   }
@@ -79,53 +88,60 @@ public class UserService {
     User user = userRepository.findById(userId)
         .orElseThrow(() -> new UserNotFoundException(userId));
 
+    boolean lockStateChanged = user.isLocked() != request.locked();
+
     if (request.locked()) {
       user.lock();
     } else {
       user.unlock();
     }
 
+    if (lockStateChanged) {
+      userRepository.incrementTokenVersion(userId);
+      entityManager.refresh(user);
+    }
+
     return UserDto.from(user);
   }
 
-  public UserDtoCursorResponse getUsers(
-      String cursor,
-      UUID idAfter,
-      int limit,
-      String sortBy,
-      String sortDirection,
-      String emailLike,
-      String roleEqual,
-      Boolean locked
+    public UserDtoCursorResponse getUsers(
+        String cursor,
+        UUID idAfter,
+    int limit,
+    String sortBy,
+    String sortDirection,
+    String emailLike,
+    String roleEqual,
+    Boolean locked
   ) {
-    validateSort(sortBy, sortDirection);
-    validateCursor(cursor, idAfter, sortBy);
+      validateSort(sortBy, sortDirection);
+      validateCursor(cursor, idAfter, sortBy);
 
-    List<User> users = userRepository.findUsers(
-        cursor, idAfter, limit + 1, sortBy, sortDirection, emailLike, roleEqual, locked
-    );
+      List<User> users = userRepository.findUsers(
+          cursor, idAfter, limit + 1, sortBy, sortDirection, emailLike, roleEqual, locked
+      );
 
-    boolean hasNext = users.size() > limit;
-    if (hasNext) {
-      users = users.subList(0, limit);
-    }
+      boolean hasNext = users.size() > limit;
+      if (hasNext) {
+        users = users.subList(0, limit);
+      }
 
-    List<UserDto> data = users.stream()
-        .map(UserDto::from)
-        .toList();
+      List<UserDto> data = users.stream()
+          .map(UserDto::from)
+          .toList();
 
-    String nextCursor = null;
-    UUID nextIdAfter = null;
+      String nextCursor = null;
+      UUID nextIdAfter = null;
 
-    if (hasNext) {
-      User last = users.get(users.size() - 1);
-      nextCursor = "createdAt".equalsIgnoreCase(sortBy)
-          ? last.getCreatedAt().toString()
-          : last.getEmail();
-      nextIdAfter = last.getId();
-    }
+      if (hasNext) {
+        User last = users.get(users.size() - 1);
+        nextCursor = "createdAt".equalsIgnoreCase(sortBy)
+            ? last.getCreatedAt().toString()
+            : last.getEmail();
+        nextIdAfter = last.getId();
+      }
 
-    long totalCount = userRepository.countUsers(emailLike, roleEqual, locked);
+      long totalCount = userRepository.countUsers(emailLike, roleEqual, locked);
 
     return new UserDtoCursorResponse(
         data,
