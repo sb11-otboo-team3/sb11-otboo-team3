@@ -87,18 +87,16 @@ public class ClothesAttributeDefinitionService {
         List<AttributeSelectableValue> selectableValues =
                 syncSelectableValues(definition, values);
 
-        userRepository.findAll().stream()
-            .map(User::getId)
-            .forEach(userId ->
-                eventPublisher.publishEvent(
-                    new NotificationEvent(
-                        userId,
-                        "새 의상 속성이 추가되었습니다.",
-                        "'" + definition.getName() + "' 의상 속성이 추가되었습니다.",
-                        NotificationLevel.INFO
-                    )
+        userRepository.findAllUserIds().forEach(userId ->
+            eventPublisher.publishEvent(
+                new NotificationEvent(
+                    userId,
+                    "새 의상 속성이 추가되었습니다.",
+                    "'" + definition.getName() + "' 의상 속성이 추가되었습니다.",
+                    NotificationLevel.INFO
                 )
-            );
+            )
+        );
 
         return mapper.toResponse(definition, selectableValues);
     }
