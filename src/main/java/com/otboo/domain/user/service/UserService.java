@@ -1,14 +1,18 @@
 package com.otboo.domain.user.service;
 
+import com.otboo.domain.notification.entity.NotificationLevel;
+import com.otboo.domain.notification.event.NotificationEvent;
 import com.otboo.domain.user.dto.UserCreateRequest;
 import com.otboo.domain.user.dto.UserDto;
 import com.otboo.domain.profile.entity.Profile;
 import com.otboo.domain.user.entity.User;
+import com.otboo.domain.user.entity.UserRole;
 import com.otboo.domain.user.exception.DuplicateEmailException;
 import com.otboo.domain.profile.repository.ProfileRepository;
 import com.otboo.domain.user.repository.UserRepository;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -36,6 +40,7 @@ public class UserService {
   private final UserRepository userRepository;
   private final ProfileRepository profileRepository;
   private final PasswordEncoder passwordEncoder;
+  private final ApplicationEventPublisher eventPublisher;
 
   @Transactional
   public UserDto create(UserCreateRequest request) {
@@ -69,7 +74,20 @@ public class UserService {
     User user = userRepository.findById(userId)
         .orElseThrow(() -> new UserNotFoundException(userId));
 
+    UserRole previousRole = user.getRole();
+
     user.changeRole(request.role());
+
+    if (previousRole != user.getRole()) {
+      eventPublisher.publishEvent(
+          new NotificationEvent(
+              user.getId(),
+              "권한이 변경되었습니다.",
+              "회원님의 권한이 " + user.getRole().name() + "로 변경되었습니다.",
+              NotificationLevel.INFO
+          )
+      );
+    }
 
     return UserDto.from(user);
   }

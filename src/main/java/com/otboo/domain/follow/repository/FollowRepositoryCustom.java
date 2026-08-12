@@ -26,4 +26,6 @@ public interface FollowRepositoryCustom {
 
   long countFollowers(UUID followeeId, String nameLike);
 
+  // 팔로워 목록 조회(팔로우한 사용자의 피드 등록 알림)
+  List<UUID> findFollowerIdsByFolloweeId(UUID followeeId);
 }
