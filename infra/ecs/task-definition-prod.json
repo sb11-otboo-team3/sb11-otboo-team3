@@ -85,7 +85,7 @@
         },
         {
           "name": "WEBSOCKET_ALLOWED_ORIGIN_PATTERNS",
-          "value": "http://otboo-prod-alb-25524387.ap-northeast-2.elb.amazonaws.com"
+          "value": "https://otboo.work"
         }
       ],
       "secrets": [
