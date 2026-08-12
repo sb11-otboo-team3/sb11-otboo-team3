@@ -78,13 +78,18 @@ public class UserService {
 
     user.changeRole(request.role());
 
+    // ADMIN > User일때 WARNING, User > ADMIN일때 INFO
     if (previousRole != user.getRole()) {
+      NotificationLevel level = user.getRole() == UserRole.USER
+          ? NotificationLevel.WARNING
+          : NotificationLevel.INFO;
+
       eventPublisher.publishEvent(
           new NotificationEvent(
               user.getId(),
               "권한이 변경되었습니다.",
               "회원님의 권한이 " + user.getRole().name() + "로 변경되었습니다.",
-              NotificationLevel.INFO
+              level
           )
       );
     }
@@ -97,10 +102,33 @@ public class UserService {
     User user = userRepository.findById(userId)
         .orElseThrow(() -> new UserNotFoundException(userId));
 
+    // 활성상태 조회
+    boolean previousLocked = user.isLocked();
+
     if (request.locked()) {
       user.lock();
     } else {
       user.unlock();
+    }
+
+    // 활성 상태가 변경될시 실행
+    if (previousLocked != user.isLocked()) {
+      NotificationLevel level = user.isLocked()
+          ? NotificationLevel.WARNING
+          : NotificationLevel.INFO;
+
+      String content = user.isLocked()
+          ? "회원님의 계정이 비활성 처리되었습니다."
+          : "회원님의 계정이 활성 처리되었습니다.";
+
+      eventPublisher.publishEvent(
+          new NotificationEvent(
+              user.getId(),
+              "계정 상태가 변경되었습니다.",
+              content,
+              level
+          )
+      );
     }
 
     return UserDto.from(user);
