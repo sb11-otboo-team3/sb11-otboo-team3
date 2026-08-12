@@ -1136,13 +1136,24 @@ Nginx 이미지는 별도 ECR Repository에서 관리합니다.
 otboo/nginx
 ```
 
-운영 이미지는 Git Commit SHA를 태그로 사용합니다.
+Nginx 설정 또는 Dockerfile이 변경되어 새 이미지를 생성하는 경우
+해당 변경의 Git Commit SHA를 이미지 태그로 사용합니다.
 
 ```text
-otboo/nginx:{git-sha}
+otboo/nginx:{nginx-change-git-sha}
 ```
 
-ECR Repository는 Backend Repository와 동일한 기준으로 구성합니다.
+Backend 자동 배포에서는 Nginx 이미지를 매번 다시 빌드하지 않습니다.
+
+GitHub Actions는 현재 ECS Service가 사용하는 Task Definition을 조회한 뒤
+`otboo-backend` 컨테이너 이미지만 새로운 Git SHA 이미지로 변경합니다.
+
+따라서 현재 Task Definition에 포함된 `otboo-nginx` 컨테이너와
+Nginx 이미지 태그는 Backend 자동 배포 시 그대로 유지됩니다.
+
+Nginx 설정 또는 Dockerfile이 변경되는 경우에는
+Nginx 이미지를 새 Git Commit SHA로 다시 빌드·Push하고
+Task Definition의 `otboo-nginx` 이미지도 함께 갱신합니다.
 
 | 구분 | 설정 |
 | --- | --- |
@@ -1213,33 +1224,44 @@ server:
   forward-headers-strategy: framework
 ```
 
-### WebSocket 및 SockJS
+### WebSocket 및 SockJS 프록시 설정
 
-WebSocket 및 SockJS Endpoint는 다음 경로를 사용합니다.
+WebSocket Endpoint는 다음 경로를 사용합니다.
 
 ```text
 /ws
 ```
 
-WebSocket Upgrade 요청 전달을 위해
-`Upgrade`와 `Connection` Header를 설정합니다.
-
-SockJS HTTP Streaming 응답이 Nginx Buffer에 의해 지연되지 않도록
-응답 Buffering을 비활성화합니다.
+Nginx는 `/ws` 요청에 대해 WebSocket Upgrade Header 전달과
+Streaming 응답 Buffering 비활성화를 적용합니다.
 
 ```nginx
 proxy_buffering off;
 proxy_read_timeout 65m;
 ```
 
-로컬 검증에서 Nginx를 경유한 WebSocket 요청이
-`101 Switching Protocols`로 응답하는 것을 확인했습니다.
+Issue #142의 기능 검증 범위에서는
+Native WebSocket Upgrade 요청을 검증했습니다.
 
-SockJS HTTP fallback의 `xhr_streaming` 요청은
-Spring Boot에 직접 요청해도 Spring Security CSRF 정책으로
+로컬 검증에서 Spring Boot 직접 요청과 Nginx 경유 요청 모두
+다음 응답을 확인했습니다.
+
+```text
+101 Switching Protocols
+```
+
+애플리케이션의 `/ws` Endpoint에는 SockJS가 구성되어 있지만,
+SockJS HTTP fallback transport인 `xhr_streaming` 요청은
+Spring Boot에 직접 요청한 경우에도 Spring Security CSRF 정책으로
 403 응답하는 것을 확인했습니다.
 
-해당 보안 정책은 Nginx Reverse Proxy 범위와 분리하여 검토합니다.
+따라서 현재 Issue #142에서는 Native WebSocket Reverse Proxy 동작까지만
+검증 범위에 포함하며, SockJS HTTP fallback의 정상 지원은 포함하지 않습니다.
+
+SockJS fallback을 지원하기 위한 Spring Security 및 CSRF 정책은
+인증·인가 및 WebSocket 기능 담당 범위에서 별도로 검토합니다.
+
+CSRF는 전역으로 비활성화하지 않습니다.
 
 ### Server-Sent Events
 
@@ -1273,23 +1295,40 @@ data: SSE 연결이 완료되었습니다.
 기존 ECS Service의 ALB 연결은 다음과 같았습니다.
 
 ```text
-Target Container: otboo-backend
-Target Port: 8080
+Container Name: otboo-backend
+Container Port: 8080
+Registered Target Port: 8080
 ```
 
-Nginx 적용 후 다음 구성으로 변경했습니다.
+Nginx 적용 후 ECS Service의 Load Balancer 연결을
+다음과 같이 변경했습니다.
 
 ```text
-Target Container: otboo-nginx
-Target Port: 80
+Container Name: otboo-nginx
+Container Port: 80
+Registered Target Port: 80
 ```
 
-기존 Target Group은 그대로 사용합니다.
+기존 Target Group `otboo-prod-backend-tg`는 그대로 사용합니다.
+
+Target Group 리소스에 설정된 기본 Port는 기존 값인 8080을 유지하지만,
+ECS Service가 Target을 등록할 때 `otboo-nginx`의 `containerPort: 80`을
+사용하므로 실제 등록 Target은 ECS Task IP의 80 포트입니다.
 
 ```text
-Target Group
-otboo-prod-backend-tg
+Target Group Default Port
+8080
 
+ECS Service Load Balancer Mapping
+otboo-nginx :80
+
+Actual Registered Target
+<ECS Task Private IP>:80
+```
+
+Target Group Health Check는 다음 설정을 사용합니다.
+
+```text
 Health Check Port
 traffic-port
 
@@ -1300,14 +1339,25 @@ Success Code
 200
 ```
 
-Nginx 적용 후 Health Check 요청 흐름은 다음과 같습니다.
+`traffic-port`를 사용하므로 Nginx 전환 후 실제 Health Check 포트는
+등록 Target과 동일한 TCP 80입니다.
+
+최종 Health Check 요청 흐름은 다음과 같습니다.
 
 ```text
 ALB
+→ ECS Target :80
 → otboo-nginx :80
-→ Spring Boot :8080
+→ 127.0.0.1:8080
+→ otboo-backend
 → /actuator/health
 ```
+
+ECS Application Security Group 역시
+ALB Security Group으로부터 TCP 80만 허용합니다.
+
+기존 ALB → ECS TCP 8080 인바운드 규칙은
+Nginx Target이 `healthy`가 되고 기존 8080 Target이 제거된 이후 삭제했습니다.
 
 ### Security Group 변경
 
