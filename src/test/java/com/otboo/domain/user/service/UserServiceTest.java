@@ -15,6 +15,7 @@ import com.otboo.domain.user.entity.UserRole;
 import com.otboo.domain.user.exception.DuplicateEmailException;
 import com.otboo.domain.user.exception.UserNotFoundException;
 import com.otboo.domain.user.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -47,6 +48,9 @@ class UserServiceTest {
 
   @Mock
   private ProfileRepository profileRepository;
+
+  @Mock
+  private EntityManager entityManager;
 
   @Test
   @DisplayName("회원가입에 성공하면 UserDto를 반환한다")
