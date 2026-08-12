@@ -113,7 +113,23 @@ class ProfileServiceTest {
     assertThatThrownBy(() -> profileService.getProfile(userId, userId))
         .isInstanceOf(ProfileNotFoundException.class);
   }
-  
+
+  @Test
+  @DisplayName("본인이 아닌 사용자의 프로필을 수정하면 예외가 발생한다")
+  void updateProfileWithDifferentUserThrowsException() {
+    // given
+    UUID userId = UUID.randomUUID();
+    UUID otherUserId = UUID.randomUUID();
+
+    ProfileUpdateRequest request = new ProfileUpdateRequest(
+        "이름", null, null, null, null
+    );
+
+    // when & then
+    assertThatThrownBy(
+        () -> profileService.updateProfile(userId, otherUserId, request, null)
+    ).isInstanceOf(ProfileAccessDeniedException.class);
+  }
 
   @Test
   @DisplayName("프로필을 수정하면 갱신된 ProfileDto를 반환한다")
