@@ -2191,20 +2191,21 @@ HSTS Header가 정상적으로 적용되고 있음을 확인했습니다.
 
 ---
 
-### 후속 작업
+### 후속 작업 진행 상태
 
-다음 항목은 Issue #160 범위에 포함하지 않고
-후속 외부 서비스 경로 및 운영 안정성 검증 이슈에서 진행합니다.
+Issue #160 완료 당시 후속 작업으로 분리한 항목의
+현재 진행 상태는 다음과 같습니다.
 
-- WebSocket HTTPS 외부 연결 및 재연결 검증
-- SSE HTTPS 외부 연결 및 재연결 검증
-- CORS 운영 도메인 영향 검증
-- OAuth Redirect URI 운영 도메인 전환 검증
-- WebSocket Origin 검증
-- ECS 다중 Task 기반 Rolling Update 검증
-- Deployment Circuit Breaker 및 Rollback 검증
-- ALB Health Check 운영 기준 재검증
-- CloudWatch 운영 모니터링 및 알림 구성
+- [x] WebSocket HTTPS 외부 연결 및 재연결 검증 — Issue #163
+- [x] SSE HTTPS 외부 연결 및 재연결 검증 — Issue #163
+- [x] CORS 운영 도메인 영향 검증 — Issue #163
+- [x] WebSocket Origin 검증 — Issue #163
+- [ ] OAuth Redirect URI 운영 도메인 전환 검증
+    - 소셜 로그인 기능 구현 완료 후 별도 후속 이슈에서 진행
+- [ ] ECS 다중 Task 기반 Rolling Update 검증
+- [ ] Deployment Circuit Breaker 및 Rollback 검증
+- [ ] ALB Health Check 운영 기준 재검증
+- [ ] CloudWatch 운영 모니터링 및 알림 구성
 
 ---
 
