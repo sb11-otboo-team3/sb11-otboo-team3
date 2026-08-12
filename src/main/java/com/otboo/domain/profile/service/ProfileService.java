@@ -36,8 +36,6 @@ public class ProfileService {
   private final FileDeletionRetryService fileDeletionRetryService;
 
   public ProfileDto getProfile(UUID userId, UUID currentUserId) {
-    validateOwnership(userId, currentUserId);
-
     Profile profile = profileRepository.findById(userId)
         .orElseThrow(() -> new ProfileNotFoundException(userId));
 
