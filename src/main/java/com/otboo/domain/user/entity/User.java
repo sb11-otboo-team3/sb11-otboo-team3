@@ -49,33 +49,19 @@ public class User extends UpdatableEntity {
   }
 
   public void changeRole(UserRole newRole) {
-    if (this.role != newRole) {
-      this.role = newRole;
-      this.tokenVersion++;
-    }
+    this.role = newRole;
   }
 
   public void lock() {
-    if (!this.locked) {
-      this.locked = true;
-      this.tokenVersion++;
-    }
+    this.locked = true;
   }
 
   public void unlock() {
-    if (this.locked) {
-      this.locked = false;
-      this.tokenVersion++;
-    }
+    this.locked = false;
   }
 
   public void changePassword(String newPasswordHash) {
     this.passwordHash = newPasswordHash;
-    this.tokenVersion++;
-  }
-
-  public void refreshSession() {
-    this.tokenVersion++;
   }
 
   public void changeName(String newName) {

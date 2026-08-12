@@ -1,4 +1,4 @@
-package com.otboo.global.config;
+package com.otboo.domain.user.init;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;

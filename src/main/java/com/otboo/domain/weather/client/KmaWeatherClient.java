@@ -5,6 +5,7 @@ import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
 import com.otboo.domain.weather.exception.KmaApiException;
 import com.otboo.domain.weather.util.VilageFcstBaseTime;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -22,10 +23,14 @@ public class KmaWeatherClient {
 
   private final WebClient webClient;
   private final String apiKey;
+  // responseTimeout(연결 후 read 사이 간격)은 응답이 끊기지 않고 계속(느리게라도) 오면 안 걸린다 -
+  // 이 필드는 요청 하나가 끝까지 걸릴 수 있는 절대 시간을 따로 못박아둔다.
+  private final Duration timeout;
 
-  public KmaWeatherClient(WebClient webClient, String apiKey) {
+  public KmaWeatherClient(WebClient webClient, String apiKey, Duration timeout) {
     this.webClient = webClient;
     this.apiKey = apiKey;
+    this.timeout = timeout;
   }
 //격자 단위, 현재 가지고 예보 발표 시간을 통해 기상청 api로부터 날씨 데이터를 가져온다.
   public Mono<List<VilageFcstItem>> getForecast(int nx, int ny, VilageFcstBaseTime baseTime) {
@@ -49,6 +54,9 @@ public class KmaWeatherClient {
             .build())
         .retrieve()
         .bodyToMono(KmaApiResponse.class)
+        // 요청 전체(연결~응답 다 받기)에 대한 절대 시간제한. TimeoutException도 Exception이라 바로 아래
+        // onErrorMap에 자연스럽게 걸려서 KmaApiException으로 변환된다 - 재시도/skip 정책도 그대로 적용됨.
+        .timeout(timeout)
         // WebClientException(통신 실패)뿐 아니라 JSON 파싱 실패(DecodingException, WebClientException과 무관한 별도 계층)도
         // 여기서 잡아야 한다 - 안 그러면 파싱 에러가 그대로 흘러가서 GlobalExceptionHandler의 500 catch-all로 떨어진다.
         .onErrorMap(Exception.class, e -> {

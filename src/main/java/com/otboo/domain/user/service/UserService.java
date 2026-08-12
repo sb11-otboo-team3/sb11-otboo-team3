@@ -27,6 +27,7 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Set;
+import jakarta.persistence.EntityManager;
 
 @Service
 @RequiredArgsConstructor
@@ -40,6 +41,7 @@ public class UserService {
   private final UserRepository userRepository;
   private final ProfileRepository profileRepository;
   private final PasswordEncoder passwordEncoder;
+  private final EntityManager entityManager;
   private final ApplicationEventPublisher eventPublisher;
 
   @Transactional
@@ -74,12 +76,15 @@ public class UserService {
     User user = userRepository.findById(userId)
         .orElseThrow(() -> new UserNotFoundException(userId));
 
-    UserRole previousRole = user.getRole();
+    boolean roleChanged = user.getRole() != request.role();
 
     user.changeRole(request.role());
 
     // ADMIN > User일때 WARNING, User > ADMIN일때 INFO
-    if (previousRole != user.getRole()) {
+    if (roleChanged) {
+      userRepository.incrementTokenVersion(userId);
+      entityManager.refresh(user);
+
       NotificationLevel level = user.getRole() == UserRole.USER
           ? NotificationLevel.WARNING
           : NotificationLevel.INFO;
@@ -102,8 +107,7 @@ public class UserService {
     User user = userRepository.findById(userId)
         .orElseThrow(() -> new UserNotFoundException(userId));
 
-    // 활성상태 조회
-    boolean previousLocked = user.isLocked();
+    boolean lockStateChanged = user.isLocked() != request.locked();
 
     if (request.locked()) {
       user.lock();
@@ -111,8 +115,10 @@ public class UserService {
       user.unlock();
     }
 
-    // 활성 상태가 변경될시 실행
-    if (previousLocked != user.isLocked()) {
+    if (lockStateChanged) {
+      userRepository.incrementTokenVersion(userId);
+      entityManager.refresh(user);
+
       NotificationLevel level = user.isLocked()
           ? NotificationLevel.WARNING
           : NotificationLevel.INFO;
@@ -134,44 +140,44 @@ public class UserService {
     return UserDto.from(user);
   }
 
-  public UserDtoCursorResponse getUsers(
-      String cursor,
-      UUID idAfter,
-      int limit,
-      String sortBy,
-      String sortDirection,
-      String emailLike,
-      String roleEqual,
-      Boolean locked
+    public UserDtoCursorResponse getUsers(
+        String cursor,
+        UUID idAfter,
+    int limit,
+    String sortBy,
+    String sortDirection,
+    String emailLike,
+    String roleEqual,
+    Boolean locked
   ) {
-    validateSort(sortBy, sortDirection);
-    validateCursor(cursor, idAfter, sortBy);
+      validateSort(sortBy, sortDirection);
+      validateCursor(cursor, idAfter, sortBy);
 
-    List<User> users = userRepository.findUsers(
-        cursor, idAfter, limit + 1, sortBy, sortDirection, emailLike, roleEqual, locked
-    );
+      List<User> users = userRepository.findUsers(
+          cursor, idAfter, limit + 1, sortBy, sortDirection, emailLike, roleEqual, locked
+      );
 
-    boolean hasNext = users.size() > limit;
-    if (hasNext) {
-      users = users.subList(0, limit);
-    }
+      boolean hasNext = users.size() > limit;
+      if (hasNext) {
+        users = users.subList(0, limit);
+      }
 
-    List<UserDto> data = users.stream()
-        .map(UserDto::from)
-        .toList();
+      List<UserDto> data = users.stream()
+          .map(UserDto::from)
+          .toList();
 
-    String nextCursor = null;
-    UUID nextIdAfter = null;
+      String nextCursor = null;
+      UUID nextIdAfter = null;
 
-    if (hasNext) {
-      User last = users.get(users.size() - 1);
-      nextCursor = "createdAt".equalsIgnoreCase(sortBy)
-          ? last.getCreatedAt().toString()
-          : last.getEmail();
-      nextIdAfter = last.getId();
-    }
+      if (hasNext) {
+        User last = users.get(users.size() - 1);
+        nextCursor = "createdAt".equalsIgnoreCase(sortBy)
+            ? last.getCreatedAt().toString()
+            : last.getEmail();
+        nextIdAfter = last.getId();
+      }
 
-    long totalCount = userRepository.countUsers(emailLike, roleEqual, locked);
+      long totalCount = userRepository.countUsers(emailLike, roleEqual, locked);
 
     return new UserDtoCursorResponse(
         data,

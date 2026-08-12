@@ -7,13 +7,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.security.test.context.support.WithMockUser;
 
+// @SpringBootTest는 기본적으로 메트릭 익스포트를 꺼버려서 PrometheusMeterRegistry가 안 뜬다 - 다시 켠다.
 @SpringBootTest
 @AutoConfigureMockMvc
+@AutoConfigureObservability
 class ActuatorEndpointTest {
 
     @Autowired
@@ -35,5 +38,21 @@ class ActuatorEndpointTest {
     void unexposedActuatorIsNotAccessible() throws Exception {
         mockMvc.perform(get("/actuator/env"))
                 .andExpect(status().isNotFound());
+    }
+
+    // local 프로필의 permitAll 자체는 검증하지 않음 - 실제 Postgres/Redis가 필요해서 CI에서 못 돌림
+    @Test
+    @DisplayName("prometheus 엔드포인트는 local 프로필이 아니면 인증 없이 접근할 수 없다")
+    void prometheusEndpointRequiresAuthenticationOutsideLocalProfile() throws Exception {
+        mockMvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser
+    @DisplayName("인증된 요청이면 prometheus 엔드포인트가 실제로 노출되어 텍스트 포맷으로 응답한다")
+    void prometheusEndpointRespondsWhenAuthenticated() throws Exception {
+        mockMvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isOk());
     }
 }

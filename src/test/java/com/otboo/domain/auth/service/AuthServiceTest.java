@@ -229,10 +229,10 @@ class AuthServiceTest {
     User user = User.create("versiontest@otboo.io", "버전테스트", "encoded-password");
     UUID userId = UUID.randomUUID();
     ReflectionTestUtils.setField(user, "id", userId);
+    // User의 현재 tokenVersion은 1인데, Refresh Token엔 예전 버전(0)이 저장되어 있음
+    ReflectionTestUtils.setField(user, "tokenVersion", 1L);
 
-    // Refresh Token엔 예전 버전(0)이 저장되어 있는데, User는 이미 버전이 올라간 상태
     RefreshTokenService.TokenInfo tokenInfo = new RefreshTokenService.TokenInfo(userId, 0L);
-    user.changeRole(com.otboo.domain.user.entity.UserRole.ADMIN); // tokenVersion을 1로 올림
 
     given(refreshTokenService.consumeTokenInfo("stale-token")).willReturn(Optional.of(tokenInfo));
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
@@ -355,7 +355,6 @@ class AuthServiceTest {
     User user = User.create("changetest@otboo.io", "변경테스트", "encoded-password");
     UUID userId = UUID.randomUUID();
     ReflectionTestUtils.setField(user, "id", userId);
-    long versionBeforeChange = user.getTokenVersion();
 
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
     given(passwordEncoder.encode("newPassword1234")).willReturn("new-encoded-password");
@@ -367,7 +366,8 @@ class AuthServiceTest {
 
     // then
     assertThat(user.getPasswordHash()).isEqualTo("new-encoded-password");
-    assertThat(user.getTokenVersion()).isEqualTo(versionBeforeChange + 1);
+    verify(userRepository).incrementTokenVersion(userId);
+    verify(entityManager).refresh(user);
     verify(passwordResetService).delete(userId);
   }
 
@@ -377,9 +377,7 @@ class AuthServiceTest {
     // given
     UUID userId = UUID.randomUUID();
     given(userRepository.findById(userId)).willReturn(Optional.empty());
-
     ChangePasswordRequest request = new ChangePasswordRequest("newPassword1234");
-
     // when & then
     assertThatThrownBy(() -> authService.changePassword(userId, request))
         .isInstanceOf(UserNotFoundException.class);
