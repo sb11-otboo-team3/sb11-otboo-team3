@@ -5,6 +5,7 @@ import com.otboo.domain.profile.dto.ProfileUpdateRequest;
 import com.otboo.domain.profile.entity.Profile;
 import com.otboo.domain.profile.exception.LocationResolutionFailedException;
 import com.otboo.domain.profile.exception.ProfileAccessDeniedException;
+import com.otboo.domain.profile.exception.ProfileConcurrentUpdateException;
 import com.otboo.domain.profile.exception.ProfileNotFoundException;
 import com.otboo.domain.profile.repository.ProfileRepository;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
@@ -16,6 +17,7 @@ import com.otboo.global.infrastructure.storage.event.FileDeletionRetryService;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -87,6 +89,18 @@ public class ProfileService {
           newImageKey,
           resolveImageUrl(resultImageKey)
       );
+    } catch (ObjectOptimisticLockingFailureException e) {
+      // 동시 수정으로 낙관적 락 충돌이 발생한 경우. 새로 업로드한 이미지는
+      // 정리하고, 클라이언트가 재시도할 수 있도록 명확한 예외로 변환한다. (#121)
+      if (newImageKey != null) {
+        log.warn(
+            "낙관적 락 충돌로 프로필 갱신이 실패하여 신규 업로드 이미지를 정리합니다. "
+                + "userId={}, newImageKey={}",
+            userId, newImageKey, e
+        );
+        fileDeletionRetryService.deleteWithRetry(newImageKey);
+      }
+      throw new ProfileConcurrentUpdateException();
     } catch (RuntimeException e) {
       // update() 진입 자체(예: 동시 삭제로 인한 findById 실패)를 포함해 어느 시점에
       // 실패하더라도, 이벤트가 아예 등록되지 못했을 수 있으므로 여기서 한 번 더

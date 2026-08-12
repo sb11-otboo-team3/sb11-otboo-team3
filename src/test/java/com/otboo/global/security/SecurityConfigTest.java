@@ -192,7 +192,8 @@ class SecurityConfigTest {
     mockMvc.perform(post("/api/users")
             .contentType(MediaType.APPLICATION_JSON)
             .content("""
-                            {"name":"csrf테스트","email":"csrfsignup1@otboo.io","password":"password1234"}
+
+                {"name":"csrf테스트","email":"csrfsignup1@otboo.io","password":"password1234"}
                             """))
         .andExpect(status().isForbidden());
   }
@@ -299,5 +300,46 @@ class SecurityConfigTest {
     // 403(CSRF 검증 실패)이 아닌 것만 확인한다.
     mockMvc.perform(post("/ws/000/000000/xhr_streaming"))
         .andExpect(status().is(org.hamcrest.Matchers.not(403)));
+  }
+
+  @Test
+  @DisplayName("인증된 상태 변경 요청을 연속으로 보내도 두 번째 요청까지 성공한다")
+  @DirtiesContext(methodMode = DirtiesContext.MethodMode.BEFORE_METHOD)
+  void consecutiveAuthenticatedRequestsBothSucceed() throws Exception {
+    // given
+    User user = User.create("csrfconsecutive@otboo.io", "csrf연속테스트",
+        passwordEncoder.encode("password1234"));
+    User savedUser = userRepository.saveAndFlush(user);
+
+    String jwt = jwtProvider.createAccessToken(
+        savedUser.getId(), savedUser.getRole().name(), savedUser.getTokenVersion()
+    );
+
+    MvcResult csrfResult = mockMvc.perform(get("/api/auth/csrf-token"))
+        .andExpect(status().isNoContent())
+        .andReturn();
+    Cookie firstCsrfCookie = csrfResult.getResponse().getCookie("XSRF-TOKEN");
+    assertThat(firstCsrfCookie).isNotNull();
+
+    // when: 첫 번째 요청 - 성공 후 갱신된 쿠키를 확보
+    MvcResult firstResult = mockMvc.perform(post("/api/test/protected")
+            .header("Authorization", "Bearer " + jwt)
+            .cookie(firstCsrfCookie)
+            .header("X-XSRF-TOKEN", firstCsrfCookie.getValue()))
+        .andExpect(status().isOk())
+        .andReturn();
+
+    Cookie updatedCookie = firstResult.getResponse().getCookie("XSRF-TOKEN");
+    Cookie cookieForSecondRequest =
+        (updatedCookie != null && !updatedCookie.getValue().isBlank())
+            ? updatedCookie
+            : firstCsrfCookie;
+
+    // then: 갱신된(또는 기존) 쿠키로 두 번째 요청도 성공해야 한다 (#140 회귀 방지)
+    mockMvc.perform(post("/api/test/protected")
+            .header("Authorization", "Bearer " + jwt)
+            .cookie(cookieForSecondRequest)
+            .header("X-XSRF-TOKEN", cookieForSecondRequest.getValue()))
+        .andExpect(status().isOk());
   }
 }
