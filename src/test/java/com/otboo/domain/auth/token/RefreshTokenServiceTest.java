@@ -34,7 +34,8 @@ class RefreshTokenServiceTest {
     JwtProperties jwtProperties = new JwtProperties(
         "test-secret-key-for-refresh-token-test-minimum-256-bits",
         900000L,
-        604800000L
+        604800000L,
+        300000L
     );
     refreshTokenService = new RefreshTokenService(redisTemplate, jwtProperties);
   }

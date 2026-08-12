@@ -74,7 +74,7 @@ class ClothesControllerTest {
                 UUID.randomUUID(), userId, "티셔츠", null, ClothesType.TOP, List.of()
         );
 
-        given(clothesService.create(any(), any())).willReturn(response);
+        given(clothesService.create(any(), any(), any())).willReturn(response);
 
         MockMultipartFile requestPart = new MockMultipartFile(
                 "request", "", MediaType.APPLICATION_JSON_VALUE,
@@ -145,7 +145,7 @@ class ClothesControllerTest {
                 clothesId, userId, "새이름", null, ClothesType.BOTTOM, List.of()
         );
 
-        given(clothesService.update(any(), any(), any())).willReturn(response);
+        given(clothesService.update(any(), any(), any(), any())).willReturn(response);
 
         MockMultipartFile requestPart = new MockMultipartFile(
                 "request", "", MediaType.APPLICATION_JSON_VALUE,
@@ -168,7 +168,7 @@ class ClothesControllerTest {
         UUID clothesId = UUID.randomUUID();
         ClothesUpdateRequest request = new ClothesUpdateRequest("새이름", ClothesType.TOP, List.of(), null);
 
-        given(clothesService.update(any(), any(), any()))
+        given(clothesService.update(any(), any(), any(), any()))
                 .willThrow(new ClothesNotFoundException(clothesId));
 
         MockMultipartFile requestPart = new MockMultipartFile(

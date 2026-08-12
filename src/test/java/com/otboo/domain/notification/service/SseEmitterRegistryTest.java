@@ -2,6 +2,7 @@ package com.otboo.domain.notification.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.otboo.domain.notification.sse.SseEmitterRegistry;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;

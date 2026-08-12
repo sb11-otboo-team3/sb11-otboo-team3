@@ -14,6 +14,7 @@ import com.otboo.domain.notification.entity.NotificationLevel;
 import com.otboo.domain.notification.exception.InvalidNotificationCursorException;
 import com.otboo.domain.notification.exception.NotificationForbiddenException;
 import com.otboo.domain.notification.repository.NotificationRepository;
+import com.otboo.domain.notification.sse.SseEmitterRegistry;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import java.time.Instant;

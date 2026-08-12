@@ -10,6 +10,7 @@ import com.otboo.domain.notification.exception.NotificationNotFoundException;
 import com.otboo.domain.notification.exception.NotificationUserNotFoundException;
 import com.otboo.domain.notification.mapper.NotificationMapper;
 import com.otboo.domain.notification.repository.NotificationRepository;
+import com.otboo.domain.notification.sse.SseEmitterRegistry;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
 import java.io.IOException;

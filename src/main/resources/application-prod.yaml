@@ -1,6 +1,6 @@
 server:
   port: ${SERVER_PORT:8080}
-
+  forward-headers-strategy: framework
 spring:
   config:
     activate:
@@ -28,25 +28,30 @@ spring:
   batch:
     jdbc:
       initialize-schema: never
-
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
 logging:
   level:
     root: INFO
-
 jwt:
   secret: ${JWT_SECRET}
   access-expiration: ${JWT_ACCESS_EXPIRATION:900000}
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
-
+  admin-access-expiration: ${JWT_ADMIN_ACCESS_EXPIRATION:300000}
 app:
   websocket:
     allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS}
-
   storage:
     s3:
       region: ${AWS_REGION:ap-northeast-2}
       bucket: ${S3_BUCKET}
       presigned-url-expiration-seconds: ${S3_PRESIGNED_URL_EXPIRATION_SECONDS:600}
-
     image:
       max-file-size-bytes: ${IMAGE_MAX_FILE_SIZE_BYTES:10485760}
+  admin:
+    init-email: ${ADMIN_INIT_EMAIL}
+    init-name: ${ADMIN_INIT_NAME}
+    init-password: ${ADMIN_INIT_PASSWORD}

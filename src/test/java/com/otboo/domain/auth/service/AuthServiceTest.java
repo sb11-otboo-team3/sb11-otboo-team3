@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.mockito.BDDMockito.willAnswer;
+import static org.mockito.ArgumentMatchers.eq;
 
 import com.otboo.domain.auth.dto.SignInRequest;
 import com.otboo.domain.auth.exception.InvalidCredentialsException;
@@ -14,6 +16,7 @@ import com.otboo.domain.auth.token.PasswordResetService;
 import com.otboo.domain.auth.token.RefreshTokenService;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -28,6 +31,7 @@ import com.otboo.domain.auth.dto.ResetPasswordRequest;
 import com.otboo.domain.user.dto.ChangePasswordRequest;
 import com.otboo.domain.user.exception.UserNotFoundException;
 import com.otboo.domain.auth.token.RefreshTokenService.TokenInfo;
+
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -49,6 +53,9 @@ class AuthServiceTest {
 
   @InjectMocks
   private AuthService authService;
+
+  @Mock
+  private EntityManager entityManager;
 
   @Test
   @DisplayName("로그인에 성공하면 JwtDto와 refreshToken을 반환한다")
@@ -116,23 +123,39 @@ class AuthServiceTest {
   }
 
   @Test
-  @DisplayName("로그인에 성공하면 tokenVersion이 증가한다")
+  @DisplayName("로그인에 성공하면 tokenVersion을 원자적으로 증가시키고 최신 값을 다시 조회한다")
   void signInIncreasesTokenVersion() throws Exception {
     // given
     User user = User.create("test@otboo.io", "테스트유저", "encoded-password");
+    UUID userId = UUID.randomUUID();
+    ReflectionTestUtils.setField(user, "id", userId);
     long versionBeforeLogin = user.getTokenVersion();
+
     SignInRequest request = new SignInRequest("test@otboo.io", "password1234");
 
     given(userRepository.findByEmail("test@otboo.io")).willReturn(Optional.of(user));
     given(passwordEncoder.matches("password1234", "encoded-password")).willReturn(true);
-    given(jwtProvider.createAccessToken(any(), any(), anyLong())).willReturn("access-token");
-    given(refreshTokenService.issue(any(), anyLong())).willReturn("refresh-token-value");
+
+    // entityManager.refresh(user) 호출 시, 실제 DB 원자적 증가를 흉내내어
+    // 메모리상 tokenVersion도 +1 시킨다.
+    willAnswer(invocation -> {
+      ReflectionTestUtils.setField(user, "tokenVersion", versionBeforeLogin + 1);
+      return null;
+    }).given(entityManager).refresh(user);
+
+    given(jwtProvider.createAccessToken(any(), any(), eq(versionBeforeLogin + 1)))
+        .willReturn("access-token");
+    given(refreshTokenService.issue(any(), eq(versionBeforeLogin + 1)))
+        .willReturn("refresh-token-value");
 
     // when
     authService.signIn(request);
 
     // then
-    assertThat(user.getTokenVersion()).isEqualTo(versionBeforeLogin + 1);
+    verify(userRepository).incrementTokenVersion(userId);
+    verify(entityManager).refresh(user);
+    verify(jwtProvider).createAccessToken(any(), any(), eq(versionBeforeLogin + 1));
+    verify(refreshTokenService).issue(any(), eq(versionBeforeLogin + 1));
   }
 
   @Test
@@ -206,10 +229,10 @@ class AuthServiceTest {
     User user = User.create("versiontest@otboo.io", "버전테스트", "encoded-password");
     UUID userId = UUID.randomUUID();
     ReflectionTestUtils.setField(user, "id", userId);
+    // User의 현재 tokenVersion은 1인데, Refresh Token엔 예전 버전(0)이 저장되어 있음
+    ReflectionTestUtils.setField(user, "tokenVersion", 1L);
 
-    // Refresh Token엔 예전 버전(0)이 저장되어 있는데, User는 이미 버전이 올라간 상태
     RefreshTokenService.TokenInfo tokenInfo = new RefreshTokenService.TokenInfo(userId, 0L);
-    user.changeRole(com.otboo.domain.user.entity.UserRole.ADMIN); // tokenVersion을 1로 올림
 
     given(refreshTokenService.consumeTokenInfo("stale-token")).willReturn(Optional.of(tokenInfo));
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
@@ -332,7 +355,6 @@ class AuthServiceTest {
     User user = User.create("changetest@otboo.io", "변경테스트", "encoded-password");
     UUID userId = UUID.randomUUID();
     ReflectionTestUtils.setField(user, "id", userId);
-    long versionBeforeChange = user.getTokenVersion();
 
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
     given(passwordEncoder.encode("newPassword1234")).willReturn("new-encoded-password");
@@ -344,7 +366,8 @@ class AuthServiceTest {
 
     // then
     assertThat(user.getPasswordHash()).isEqualTo("new-encoded-password");
-    assertThat(user.getTokenVersion()).isEqualTo(versionBeforeChange + 1);
+    verify(userRepository).incrementTokenVersion(userId);
+    verify(entityManager).refresh(user);
     verify(passwordResetService).delete(userId);
   }
 
@@ -354,9 +377,7 @@ class AuthServiceTest {
     // given
     UUID userId = UUID.randomUUID();
     given(userRepository.findById(userId)).willReturn(Optional.empty());
-
     ChangePasswordRequest request = new ChangePasswordRequest("newPassword1234");
-
     // when & then
     assertThatThrownBy(() -> authService.changePassword(userId, request))
         .isInstanceOf(UserNotFoundException.class);

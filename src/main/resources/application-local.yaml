@@ -29,6 +29,7 @@ jwt:
   secret: ${JWT_SECRET:3WayDafV59YynmTwCpaDtnpeur8sokrAkQ+wFlXO4QY=}
   access-expiration: ${JWT_ACCESS_EXPIRATION:900000}
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
+  admin-access-expiration: ${JWT_ADMIN_ACCESS_EXPIRATION:300000}
 
 app:
   websocket:

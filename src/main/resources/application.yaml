@@ -47,3 +47,7 @@ app:
       presigned-url-expiration-seconds: ${S3_PRESIGNED_URL_EXPIRATION_SECONDS:600}
     image:
       max-file-size-bytes: ${IMAGE_MAX_FILE_SIZE_BYTES:10485760}
+  admin:
+    init-email: ${ADMIN_INIT_EMAIL:admin@otboo.io}
+    init-name: ${ADMIN_INIT_NAME:admin}
+    init-password: ${ADMIN_INIT_PASSWORD:admin1234!}

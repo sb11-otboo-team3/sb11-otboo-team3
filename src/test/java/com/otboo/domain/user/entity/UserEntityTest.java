@@ -35,7 +35,7 @@ class UserEntityTest {
   }
 
   @Test
-  void 권한_변경시_tokenVersion이_증가한다() {
+  void 권한을_변경하면_role이_바뀐다() {
     // given
     User user = User.create("test@otboo.io", "테스트유저", "encoded-password");
 
@@ -44,22 +44,10 @@ class UserEntityTest {
 
     // then
     assertThat(user.getRole()).isEqualTo(UserRole.ADMIN);
-    assertThat(user.getTokenVersion()).isEqualTo(1L);
-  }
-  @Test
-  void 같은_권한으로_변경하면_tokenVersion이_증가하지_않는다() {
-    // given
-    User user = User.create("test@otboo.io", "테스트유저", "encoded-password");
-
-    // when
-    user.changeRole(UserRole.USER);
-
-    // then
-    assertThat(user.getTokenVersion()).isZero();
   }
 
   @Test
-  void 이미_잠긴_계정을_다시_잠그면_tokenVersion이_증가하지_않는다() {
+  void 계정을_잠그면_locked가_true가된다() {
     // given
     User user = User.create("test@otboo.io", "테스트유저", "encoded-password");
 
@@ -68,14 +56,31 @@ class UserEntityTest {
 
     // then
     assertThat(user.isLocked()).isTrue();
-    assertThat(user.getTokenVersion()).isEqualTo(1L);
+  }
 
-    // when
+  @Test
+  void 계정_잠금을_해제하면_locked가_false가된다() {
+    // given
+    User user = User.create("test@otboo.io", "테스트유저", "encoded-password");
     user.lock();
 
+    // when
+    user.unlock();
+
     // then
-    assertThat(user.isLocked()).isTrue();
-    assertThat(user.getTokenVersion()).isEqualTo(1L);
+    assertThat(user.isLocked()).isFalse();
+  }
+
+  @Test
+  void 비밀번호를_변경하면_passwordHash가_바뀐다() {
+    // given
+    User user = User.create("test@otboo.io", "테스트유저", "encoded-password");
+
+    // when
+    user.changePassword("new-encoded-password");
+
+    // then
+    assertThat(user.getPasswordHash()).isEqualTo("new-encoded-password");
   }
 
   @Test

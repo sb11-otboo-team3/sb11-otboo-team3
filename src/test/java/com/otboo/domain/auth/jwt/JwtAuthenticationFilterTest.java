@@ -155,16 +155,15 @@ class JwtAuthenticationFilterTest {
     UUID userId = UUID.randomUUID();
     User user = User.create("test@otboo.io", "테스트유저", "encoded-password");
     ReflectionTestUtils.setField(user, "id", userId);
-    user.changeRole(UserRole.ADMIN); // tokenVersion을 1로 올림
-
+    // User의 현재 tokenVersion은 1인데, 토큰엔 예전 버전(0)이 담겨있는 상황
+    ReflectionTestUtils.setField(user, "tokenVersion", 1L);
     String token = "valid-token";
     MockHttpServletRequest request = new MockHttpServletRequest();
     request.addHeader("Authorization", "Bearer " + token);
     MockHttpServletResponse response = new MockHttpServletResponse();
-
     given(jwtProvider.isValid(token)).willReturn(true);
     given(jwtProvider.getUserId(token)).willReturn(userId);
-    given(jwtProvider.getTokenVersion(token)).willReturn(0L); // 토큰엔 예전 버전(0)이 담겨있음
+    given(jwtProvider.getTokenVersion(token)).willReturn(0L);
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
 
     // when

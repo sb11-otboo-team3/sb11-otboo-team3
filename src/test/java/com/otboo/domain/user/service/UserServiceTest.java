@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 
 import com.otboo.domain.user.dto.UserCreateRequest;
 import com.otboo.domain.user.dto.UserDto;
@@ -15,6 +16,7 @@ import com.otboo.domain.user.entity.UserRole;
 import com.otboo.domain.user.exception.DuplicateEmailException;
 import com.otboo.domain.user.exception.UserNotFoundException;
 import com.otboo.domain.user.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -47,6 +49,9 @@ class UserServiceTest {
 
   @Mock
   private ProfileRepository profileRepository;
+
+  @Mock
+  private EntityManager entityManager;
 
   @Test
   @DisplayName("회원가입에 성공하면 UserDto를 반환한다")
@@ -134,7 +139,6 @@ class UserServiceTest {
     User user = User.create("roletest@otboo.io", "권한테스트", "encoded-password");
     UUID userId = UUID.randomUUID();
     ReflectionTestUtils.setField(user, "id", userId);
-    long versionBeforeChange = user.getTokenVersion();
 
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
 
@@ -145,7 +149,8 @@ class UserServiceTest {
 
     // then
     assertThat(result.role()).isEqualTo(UserRole.ADMIN);
-    assertThat(user.getTokenVersion()).isEqualTo(versionBeforeChange + 1);
+    verify(userRepository).incrementTokenVersion(userId);
+    verify(entityManager).refresh(user);
   }
 
   @Test
@@ -154,9 +159,7 @@ class UserServiceTest {
     // given
     UUID userId = UUID.randomUUID();
     given(userRepository.findById(userId)).willReturn(Optional.empty());
-
     UserRoleUpdateRequest request = new UserRoleUpdateRequest(UserRole.ADMIN);
-
     // when & then
     assertThatThrownBy(() -> userService.changeRole(userId, request))
         .isInstanceOf(UserNotFoundException.class);
@@ -169,7 +172,6 @@ class UserServiceTest {
     User user = User.create("locktest@otboo.io", "잠금테스트", "encoded-password");
     UUID userId = UUID.randomUUID();
     ReflectionTestUtils.setField(user, "id", userId);
-    long versionBeforeLock = user.getTokenVersion();
 
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
 
@@ -180,7 +182,8 @@ class UserServiceTest {
 
     // then
     assertThat(result.locked()).isTrue();
-    assertThat(user.getTokenVersion()).isEqualTo(versionBeforeLock + 1);
+    verify(userRepository).incrementTokenVersion(userId);
+    verify(entityManager).refresh(user);
   }
 
   @Test
@@ -191,7 +194,6 @@ class UserServiceTest {
     user.lock();
     UUID userId = UUID.randomUUID();
     ReflectionTestUtils.setField(user, "id", userId);
-    long versionAfterLock = user.getTokenVersion();
 
     given(userRepository.findById(userId)).willReturn(Optional.of(user));
 
@@ -202,7 +204,8 @@ class UserServiceTest {
 
     // then
     assertThat(result.locked()).isFalse();
-    assertThat(user.getTokenVersion()).isEqualTo(versionAfterLock + 1);
+    verify(userRepository).incrementTokenVersion(userId);
+    verify(entityManager).refresh(user);
   }
 
   @Test
@@ -211,9 +214,7 @@ class UserServiceTest {
     // given
     UUID userId = UUID.randomUUID();
     given(userRepository.findById(userId)).willReturn(Optional.empty());
-
     UserLockUpdateRequest request = new UserLockUpdateRequest(true);
-
     // when & then
     assertThatThrownBy(() -> userService.updateLock(userId, request))
         .isInstanceOf(UserNotFoundException.class);
@@ -359,5 +360,47 @@ class UserServiceTest {
 
     // then
     assertThat(result.data()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("동일한 권한으로 변경 요청하면 tokenVersion을 증가시키지 않는다")
+  void changeRoleWithSameRoleDoesNotIncreaseTokenVersion() throws Exception {
+    // given
+    User user = User.create("samerole@otboo.io", "동일권한테스트", "encoded-password");
+    UUID userId = UUID.randomUUID();
+    ReflectionTestUtils.setField(user, "id", userId);
+    // User는 기본 USER role로 생성됨
+
+    given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+    UserRoleUpdateRequest request = new UserRoleUpdateRequest(UserRole.USER);
+
+    // when
+    userService.changeRole(userId, request);
+
+    // then
+    verify(userRepository, never()).incrementTokenVersion(any());
+    verify(entityManager, never()).refresh(any());
+  }
+
+  @Test
+  @DisplayName("이미 잠긴 계정을 다시 잠그도록 요청하면 tokenVersion을 증가시키지 않는다")
+  void updateLockWithSameLockStateDoesNotIncreaseTokenVersion() throws Exception {
+    // given
+    User user = User.create("samelock@otboo.io", "동일잠금테스트", "encoded-password");
+    user.lock();
+    UUID userId = UUID.randomUUID();
+    ReflectionTestUtils.setField(user, "id", userId);
+
+    given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+    UserLockUpdateRequest request = new UserLockUpdateRequest(true);
+
+    // when
+    userService.updateLock(userId, request);
+
+    // then
+    verify(userRepository, never()).incrementTokenVersion(any());
+    verify(entityManager, never()).refresh(any());
   }
 }

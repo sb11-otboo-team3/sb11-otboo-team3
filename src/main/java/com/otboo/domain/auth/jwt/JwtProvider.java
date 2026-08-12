@@ -1,5 +1,6 @@
 package com.otboo.domain.auth.jwt;
 
+import com.otboo.domain.user.entity.UserRole;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
@@ -21,16 +22,18 @@ public class JwtProvider {
 
   private final Key key;
   private final long accessExpiration;
+  private final long adminAccessExpiration;
 
   public JwtProvider(JwtProperties jwtProperties) {
     byte[] decodedSecret = Decoders.BASE64.decode(jwtProperties.secret());
     this.key = Keys.hmacShaKeyFor(decodedSecret);
     this.accessExpiration = jwtProperties.accessExpiration();
+    this.adminAccessExpiration = jwtProperties.adminAccessExpiration();
   }
 
   public String createAccessToken(UUID userId, String role, long tokenVersion) {
     Date now = new Date();
-    Date expiry = new Date(now.getTime() + accessExpiration);
+    Date expiry = new Date(now.getTime() + resolveExpiration(role));
 
     return Jwts.builder()
         .subject(userId.toString())
@@ -40,6 +43,10 @@ public class JwtProvider {
         .expiration(expiry)
         .signWith(key)
         .compact();
+  }
+
+  private long resolveExpiration(String role) {
+    return UserRole.ADMIN.name().equals(role) ? adminAccessExpiration : accessExpiration;
   }
 
   public UUID getUserId(String token) {
