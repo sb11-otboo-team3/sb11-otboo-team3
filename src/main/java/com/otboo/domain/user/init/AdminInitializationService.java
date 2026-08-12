@@ -1,4 +1,4 @@
-package com.otboo.global.config;
+package com.otboo.domain.user.init;
 
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.entity.UserRole;
