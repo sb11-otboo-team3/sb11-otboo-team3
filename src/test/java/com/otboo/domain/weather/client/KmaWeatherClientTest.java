@@ -9,10 +9,12 @@ import com.otboo.domain.weather.entity.SkyStatus;
 import com.otboo.domain.weather.exception.KmaApiException;
 import com.otboo.domain.weather.util.VilageFcstBaseTime;
 import java.io.IOException;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -36,7 +38,7 @@ class KmaWeatherClientTest {
     WebClient webClient = WebClient.builder()
         .baseUrl(mockWebServer.url("/").toString())
         .build();
-    kmaWeatherClient = new KmaWeatherClient(webClient, "test-api-key");
+    kmaWeatherClient = new KmaWeatherClient(webClient, "test-api-key", Duration.ofSeconds(5));
   }
 
   @AfterEach
@@ -253,5 +255,33 @@ class KmaWeatherClientTest {
     // when & then
     assertThatThrownBy(() -> kmaWeatherClient.getForecast(60, 127, baseTime).block())
         .isInstanceOf(KmaApiException.class);
+  }
+
+  // responseTimeout(연결 후 read 사이 간격)은 응답이 끊기지 않고 계속(느리게) 오면 안 걸린다 - 그래서
+  // 전체 호출에 대한 절대 시간제한을 별도로 둔다. 여기선 짧은 타임아웃(200ms)을 가진 별도 클라이언트로,
+  // 응답이 그보다 훨씬 오래 걸리게(2초) 만들어서 실제로 그 안에 끊기는지 확인한다.
+  @Test
+  @DisplayName("응답이 지정된 시간 안에 끝나지 않으면 KmaApiException을 던지고, 그 시점에서 바로 끊긴다")
+  void throwsKmaApiExceptionWhenOverallTimeoutExceeded() {
+    // given
+    WebClient webClient = WebClient.builder()
+        .baseUrl(mockWebServer.url("/").toString())
+        .build();
+    KmaWeatherClient shortTimeoutClient = new KmaWeatherClient(webClient, "test-api-key", Duration.ofMillis(200));
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    mockWebServer.enqueue(new MockResponse()
+        .setBody("{}")
+        .setBodyDelay(2, TimeUnit.SECONDS)
+        .addHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE));
+
+    // when
+    long start = System.currentTimeMillis();
+
+    // then
+    assertThatThrownBy(() -> shortTimeoutClient.getForecast(60, 127, baseTime).block())
+        .isInstanceOf(KmaApiException.class);
+    long elapsed = System.currentTimeMillis() - start;
+    assertThat(elapsed).isLessThan(1500); // 2초 다 안 기다리고 200ms 근처에서 끊겼는지
   }
 }
