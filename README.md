@@ -535,19 +535,37 @@ macOS에서 보고서를 열려면 다음 명령을 실행합니다.
 open build/reports/jacoco/test/html/index.html
 ```
 
-현재 커버리지는 측정만 수행합니다.
+프로젝트 전체 Line Coverage는 최소 80%를 유지합니다.
 
-커버리지 80% 미달을 CI 실패 또는 Merge 차단 조건으로 사용하지 않습니다.
+`check`가 `jacocoTestCoverageVerification`을 수행하도록 구성되어 있으므로
+로컬 및 GitHub Actions에서 실행하는 전체 빌드 과정에서도
+커버리지 품질 게이트가 함께 적용됩니다.
+
+```bash
+./gradlew clean build
+```
+
+전체 Line Coverage가 80% 미만이면
+`jacocoTestCoverageVerification`이 실패하고,
+이에 따라 GitHub Actions의 `Build and Test`도 실패하여
+`develop` 브랜치 Merge가 제한됩니다.
+
+현재 품질 게이트 기준은 다음과 같습니다.
 
 ```text
-테스트 실패
-→ CI 실패
-→ Merge 불가
+필수 기준
+- 전체 Line Coverage 80% 이상
 
-테스트 성공
-→ 커버리지와 관계없이 CI 성공
-→ 승인과 리뷰 조건 충족 후 Merge 가능
+참고 지표
+- Instruction Coverage
+- Branch Coverage
 ```
+
+QueryDSL Q클래스는 자동 생성 코드이므로
+JaCoCo 커버리지 측정 및 검증 대상에서 제외합니다.
+
+커버리지 보고서는 GitHub Actions에서도 업로드하며,
+빌드 또는 커버리지 검증 실패 여부와 관계없이 결과를 확인할 수 있도록 구성합니다.
 
 ---
 
@@ -945,12 +963,24 @@ CI 실행 과정:
 → JDK 17 설정
 → Gradle 설정
 → ./gradlew clean build
+→ 테스트 및 전체 Line Coverage 80% 품질 게이트 검증
 → JaCoCo 커버리지 보고서 업로드
 ```
 
-테스트 실패는 CI 실패로 처리됩니다.
+Gradle `check`가 `jacocoTestCoverageVerification`을 수행하도록 구성되어 있으므로
+`./gradlew clean build` 실행 시 테스트와 커버리지 품질 게이트를 함께 검증합니다.
 
-커버리지 보고서 업로드 실패는 CI 성공 여부에 영향을 주지 않습니다.
+다음 중 하나라도 충족하지 못하면 GitHub Actions의 `Build and Test`가 실패합니다.
+
+- 전체 테스트 성공
+- 프로젝트 전체 Line Coverage 80% 이상
+
+`Build and Test`는 `develop` 브랜치의 필수 Status Check이므로
+검증 실패 상태에서는 Merge할 수 없습니다.
+
+JaCoCo 커버리지 보고서 업로드 단계는
+빌드 또는 커버리지 검증 결과와 관계없이 실행되도록 구성합니다.
+
 
 ---
 

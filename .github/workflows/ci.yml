@@ -42,7 +42,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
       - name: Build and test
         run: ./gradlew clean build
-      # 커버리지 결과는 저장만 하고 CI 성공 여부에는 영향 주지 않음
+      # Gradle build에서 전체 Line Coverage 80% 품질 게이트를 검증하고,
+      # 커버리지 보고서는 성공·실패 여부와 관계없이 업로드
       - name: Upload coverage report
         if: always()
         continue-on-error: true
