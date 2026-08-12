@@ -13,23 +13,25 @@ ALB DNS의 루트 `/` 경로에서 프론트엔드와 백엔드 API를 함께 �
 
 후속 이슈에서 다음 구성을 추가로 적용했습니다.
 
+- Issue #131: GitHub Actions ECS 자동 배포
 - Issue #142: Nginx Reverse Proxy
+- Issue #157: 운영 도메인 DNS 연결
 
 다음 항목은 후속 이슈에서 진행합니다.
 
-- 도메인 및 HTTPS
+- HTTPS 및 운영 Secure Cookie
 - ECS 다중 Task
 - 장시간 WebSocket·SSE 연결 및 재연결
 - AWS 예상 비용 산정 및 비용 최적화
-
-실제 AWS 계정 ID, Endpoint, Secret 값, 사용자 ARN은
-Issue, PR, README에 기록하지 않습니다.
 
 ---
 
 ## 2. 관련 이슈 및 문서
 
 - Issue #22: ECS Cluster, Task Definition, Service 및 ALB 구성
+- Issue #131: GitHub Actions ECS 자동 배포
+- Issue #142: Nginx Reverse Proxy
+- Issue #157: 운영 도메인 DNS 연결
 - [AWS 기본 운영 기준](../README.md)
 - [Amazon ECR 구성 및 이미지 검증](../ecr/README.md)
 - [RDS PostgreSQL 및 S3 구성](../rds-s3/README.md)
@@ -1078,8 +1080,10 @@ Issue #131의 범위에 포함하지 않고 별도 운영 안정화 이슈에서
 Issue #142에서는 기존 ALB가 Spring Boot 애플리케이션의 8080 포트로
 직접 요청을 전달하던 구조에 Nginx Reverse Proxy를 추가했습니다.
 
-도메인 DNS 연결과 HTTPS 적용은 이 이슈에 포함하지 않고
-후속 인프라 이슈에서 진행합니다.
+Issue #142에서는 도메인 DNS 연결과 HTTPS 적용을 범위에서 제외했습니다.
+
+도메인 DNS 연결은 후속 Issue #157에서 적용했으며,
+HTTPS 및 운영 Secure Cookie는 별도 후속 이슈에서 진행합니다.
 
 ### 적용 전 구조
 
@@ -1525,7 +1529,6 @@ Nginx 적용 후 문제가 발생하면 다음 순서로 롤백합니다.
 
 다음 항목은 Nginx Reverse Proxy 이슈에 포함하지 않습니다.
 
-- 도메인 DNS 연결
 - HTTPS 및 ACM 인증서 적용
 - HTTP → HTTPS Redirect
 - Secure Cookie 운영 검증
@@ -1545,4 +1548,246 @@ Nginx 적용 후 문제가 발생하면 다음 순서로 롤백합니다.
 - 장시간 WebSocket·SSE 연결 및 재연결
 - ECS 다중 Task
 - 무중단 배포
-- 도메인 및 HTTPS
+- HTTPS 및 운영 Secure Cookie
+
+## 22. Route 53 운영 도메인 DNS 연결
+
+Issue #157에서는 운영 및 시연에 사용할 도메인 `otboo.work`를 등록하고,
+Route 53 Alias A 레코드를 통해 기존 운영 ALB인 `otboo-prod-alb`와 연결했습니다.
+
+이번 이슈의 범위는 도메인 등록·DNS 연결과
+HTTP 환경에서 기존 ALB → Nginx → Spring Boot 요청 경로가
+정상적으로 유지되는지 확인하는 것까지입니다.
+
+ACM 인증서, HTTPS Listener, HTTP → HTTPS Redirect 및
+Secure Cookie 적용은 후속 HTTPS 이슈에서 진행합니다.
+
+### 최종 요청 구조
+
+```text
+Internet
+→ otboo.work
+→ Route 53 Alias A
+→ otboo-prod-alb :80
+→ otboo-nginx :80
+→ 127.0.0.1:8080
+→ otboo-backend
+```
+
+Route 53 연결 과정에서 기존 ALB Target,
+ECS Service와 Nginx Sidecar 구조는 변경하지 않았습니다.
+
+### 도메인 등록 및 Nameserver 검증
+
+운영 도메인은 다음과 같이 확정했습니다.
+
+```text
+otboo.work
+```
+
+Route 53 Domains 관련 명령은 `us-east-1` 리전에서 실행합니다.
+
+```bash
+aws route53domains get-domain-detail \
+  --domain-name otboo.work \
+  --region us-east-1 \
+  --profile otboo \
+  --query "Nameservers[].Name" \
+  --output table
+```
+
+Route 53의 Public Hosted Zone을 확인합니다.
+
+```bash
+aws route53 list-hosted-zones-by-name \
+  --dns-name otboo.work \
+  --profile otboo \
+  --query "HostedZones[?Name=='otboo.work.'].[Id,Name,Config.PrivateZone]" \
+  --output table
+```
+
+확인 기준은 다음과 같습니다.
+
+```text
+Name        = otboo.work.
+PrivateZone = False
+```
+
+Hosted Zone의 Nameserver도 확인합니다.
+
+```bash
+aws route53 get-hosted-zone \
+  --id "${HOSTED_ZONE_ID}" \
+  --profile otboo \
+  --query "DelegationSet.NameServers" \
+  --output table
+```
+
+Route 53 Domains에 등록된 Nameserver 4개와
+Public Hosted Zone의 Nameserver 4개가 모두 일치하는 것을 확인했습니다.
+
+AWS 계정 ID, 사용자 ARN, 인증정보 및 도메인 구매 계정의 민감정보는
+Issue, PR 또는 저장소 문서에 기록하지 않습니다.
+
+### ALB Alias A 레코드 구성
+
+연결 대상인 기존 운영 ALB의 정보를 확인합니다.
+
+```bash
+aws elbv2 describe-load-balancers \
+  --names otboo-prod-alb \
+  --region ap-northeast-2 \
+  --profile otboo \
+  --query "LoadBalancers[0].[DNSName,CanonicalHostedZoneId,Scheme,State.Code]" \
+  --output table
+```
+
+운영 ALB가 다음 상태임을 확인했습니다.
+
+```text
+Scheme     = internet-facing
+State.Code = active
+```
+
+Alias 생성 전 `otboo.work` 루트 도메인에
+기존 A 레코드가 없는지도 확인했습니다.
+
+```bash
+aws route53 list-resource-record-sets \
+  --hosted-zone-id "${HOSTED_ZONE_ID}" \
+  --profile otboo \
+  --query "ResourceRecordSets[?Name=='otboo.work.']" \
+  --output json
+```
+
+기본 NS 및 SOA 레코드만 존재하고 기존 A 레코드는 없었으므로,
+루트 도메인을 CNAME이 아닌 Route 53 Alias A 레코드로 생성했습니다.
+
+```bash
+aws route53 change-resource-record-sets \
+  --hosted-zone-id "${HOSTED_ZONE_ID}" \
+  --profile otboo \
+  --change-batch "{
+    \"Comment\": \"Route otboo.work to otboo-prod-alb\",
+    \"Changes\": [
+      {
+        \"Action\": \"CREATE\",
+        \"ResourceRecordSet\": {
+          \"Name\": \"otboo.work\",
+          \"Type\": \"A\",
+          \"AliasTarget\": {
+            \"HostedZoneId\": \"${ALB_ZONE_ID}\",
+            \"DNSName\": \"${ALB_DNS}\",
+            \"EvaluateTargetHealth\": false
+          }
+        }
+      }
+    ]
+  }"
+```
+
+여기서 두 Hosted Zone ID는 역할이 다릅니다.
+
+```text
+HOSTED_ZONE_ID
+→ otboo.work DNS 레코드를 생성할 Route 53 Hosted Zone
+
+ALB_ZONE_ID
+→ AliasTarget이 가리키는 ALB의 CanonicalHostedZoneId
+```
+
+기존 A 레코드가 없는 것을 먼저 확인했기 때문에
+최초 생성에는 기존 값을 덮어쓰지 않는 `CREATE`를 사용했습니다.
+
+변경 요청 이후 반환된 Change ID로 반영 상태를 확인합니다.
+
+```bash
+aws route53 get-change \
+  --id "${CHANGE_ID}" \
+  --profile otboo
+```
+
+최종 상태가 `INSYNC`인 것을 확인했습니다.
+
+### DNS 및 HTTP 접근 검증
+
+DNS 전파는 다음 명령으로 확인했습니다.
+
+```bash
+dig otboo.work A +short
+dig otboo.work A
+```
+
+검증 결과는 다음과 같습니다.
+
+```text
+DNS status: NOERROR
+A 레코드 정상 반환
+```
+
+ALB의 개별 IP는 고정값으로 관리하지 않으며,
+Route 53 Alias가 ALB 자체를 대상으로 연결되도록 유지합니다.
+
+도메인을 통한 프론트엔드 루트 요청도 확인했습니다.
+
+```bash
+curl -sS -o /dev/null \
+  -w "HTTP %{http_code}\nContent-Type: %{content_type}\nRemote IP: %{remote_ip}\n" \
+  http://otboo.work/
+```
+
+확인 결과:
+
+```text
+HTTP 200
+Content-Type: text/html;charset=UTF-8
+```
+
+브라우저에서도 `http://otboo.work`를 통한
+프론트엔드 접근이 정상적으로 동작하는 것을 확인했습니다.
+
+Spring Boot Health Check도 동일한 도메인으로 검증했습니다.
+
+```bash
+curl -sS -i http://otboo.work/actuator/health
+```
+
+확인 결과:
+
+```text
+HTTP/1.1 200
+Server: nginx/1.30.4
+{"status":"UP"}
+```
+
+`Server: nginx/1.30.4`와 Actuator의 `UP` 응답을 함께 확인해
+도메인 요청이 기존 Nginx Reverse Proxy를 거쳐
+Spring Boot까지 정상 전달되는 것을 확인했습니다.
+
+### Issue #157 완료 기준
+
+다음 항목을 모두 확인해 Issue #157의 작업 범위를 완료했습니다.
+
+- `otboo.work` 운영 도메인 등록
+- Route 53 Public Hosted Zone 확인
+- 등록 도메인과 Hosted Zone의 Nameserver 4개 일치
+- 운영 ALB `internet-facing`, `active` 상태 확인
+- `otboo.work` Alias A → `otboo-prod-alb` 구성
+- Route 53 변경 상태 `INSYNC`
+- 외부 DNS A 레코드 정상 조회
+- `http://otboo.work/` HTTP 200 및 브라우저 접근 확인
+- `http://otboo.work/actuator/health` HTTP 200 및 `UP`
+- Nginx Reverse Proxy 경유 확인
+
+### 후속 작업
+
+다음 항목은 Issue #157에 포함하지 않고
+후속 HTTPS 및 운영 보안 이슈에서 진행합니다.
+
+- ACM 인증서 발급 및 DNS 검증
+- ALB HTTPS 443 Listener 구성
+- HTTP → HTTPS Redirect
+- Forwarded Header 처리 재검증
+- CSRF Secure Cookie 운영 적용 및 검증
+- HTTPS 기반 프론트엔드 및 백엔드 접근 검증
+- HTTPS 환경 WebSocket 및 SSE 외부 연결 검증
