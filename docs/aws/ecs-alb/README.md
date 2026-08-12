@@ -16,10 +16,10 @@ ALB DNS의 루트 `/` 경로에서 프론트엔드와 백엔드 API를 함께 �
 - Issue #131: GitHub Actions ECS 자동 배포
 - Issue #142: Nginx Reverse Proxy
 - Issue #157: 운영 도메인 DNS 연결
+- Issue #160: HTTPS 및 운영 Secure Cookie 적용
 
 다음 항목은 후속 이슈에서 진행합니다.
 
-- HTTPS 및 운영 Secure Cookie
 - ECS 다중 Task
 - 장시간 WebSocket·SSE 연결 및 재연결
 - AWS 예상 비용 산정 및 비용 최적화
@@ -32,6 +32,7 @@ ALB DNS의 루트 `/` 경로에서 프론트엔드와 백엔드 API를 함께 �
 - Issue #131: GitHub Actions ECS 자동 배포
 - Issue #142: Nginx Reverse Proxy
 - Issue #157: 운영 도메인 DNS 연결
+- Issue #160: HTTPS 및 운영 Secure Cookie 적용
 - [AWS 기본 운영 기준](../README.md)
 - [Amazon ECR 구성 및 이미지 검증](../ecr/README.md)
 - [RDS PostgreSQL 및 S3 구성](../rds-s3/README.md)
@@ -1862,15 +1863,326 @@ Spring Boot까지 정상적으로 전달되는 것을 확인했습니다.
 - `http://otboo.work/actuator/health` HTTP 200 및 `UP`
 - Nginx Reverse Proxy 경유 확인
 
+## 23. HTTPS 및 운영 Secure Cookie 적용
+
+Issue #160에서는 운영 도메인 `otboo.work`에 HTTPS를 적용하고,
+기존 HTTP 요청을 HTTPS로 Redirect하도록
+Application Load Balancer의 외부 진입 구성을 변경했습니다.
+
+AWS Certificate Manager(ACM)에서 운영 도메인 인증서를 발급하고,
+Route 53 DNS Validation을 통해 도메인 소유권을 검증했습니다.
+
+HTTPS 적용 이후에도 기존
+ALB → Nginx Sidecar → Spring Boot 요청 구조는 유지합니다.
+
+### 최종 외부 요청 구조
+
+```text
+Internet
+→ otboo.work
+→ Route 53 Alias A
+→ otboo-prod-alb
+   ├─ HTTP :80
+   │   → HTTP 301 Redirect
+   │   → HTTPS :443
+   │
+   └─ HTTPS :443
+       → ACM TLS 종료
+       → otboo-nginx :80
+       → otboo-backend :8080
+```
+
+TLS는 ALB에서 종료하며,
+ECS Nginx Sidecar와 Spring Boot 사이의 기존 내부 HTTP 구조는 변경하지 않았습니다.
+
+---
+
+### ALB Security Group HTTPS 허용
+
+HTTPS Listener를 추가하기 전에
+운영 ALB Security Group의 기존 Inbound 규칙을 확인했습니다.
+
+기존에는 HTTP 80만 외부에 허용되어 있었으므로
+HTTPS 요청을 받을 수 있도록 TCP 443 Inbound 규칙을 추가했습니다.
+
+최종 외부 허용 포트는 다음과 같습니다.
+
+```text
+TCP 80  → 0.0.0.0/0
+TCP 443 → 0.0.0.0/0
+```
+
+HTTP 80은 삭제하지 않고
+HTTPS Redirect를 처리하기 위한 Listener로 유지합니다.
+
+ECS Application Security Group에는 HTTPS 443을 추가하지 않습니다.
+TLS는 ALB에서 종료하고 기존 Target인 `otboo-nginx:80`으로 전달합니다.
+
+---
+
+### ACM 인증서 발급 및 DNS 검증
+
+운영 ALB와 동일한 `ap-northeast-2` 리전에서
+`otboo.work`용 ACM Public Certificate를 요청했습니다.
+
+인증서 검증 방식은 DNS Validation을 사용했습니다.
+
+ACM에서 제공한 CNAME 검증 레코드를
+기존 `otboo.work` Route 53 Public Hosted Zone에 추가했습니다.
+
+Route 53 변경 상태가 `INSYNC`인지 확인하고,
+DNS에서 ACM Validation CNAME이 정상 조회되는지 검증했습니다.
+
+이후 ACM 인증서 상태가 다음과 같이 변경된 것을 확인했습니다.
+
+```text
+Status           = ISSUED
+ValidationStatus = SUCCESS
+```
+
+ACM 인증서 ARN, AWS 계정 ID 및 DNS Validation의 실제 식별값은
+Issue, PR 또는 저장소 문서에 기록하지 않습니다.
+
+---
+
+### HTTPS 443 Listener 구성
+
+기존 HTTP 80 Listener가 사용하던
+`otboo-prod-backend-tg` Target Group을 그대로 사용해
+ALB에 HTTPS 443 Listener를 추가했습니다.
+
+HTTPS Listener 구성은 다음과 같습니다.
+
+```text
+Protocol    = HTTPS
+Port        = 443
+Target      = otboo-prod-backend-tg
+TLS Policy  = ELBSecurityPolicy-TLS13-1-2-2021-06
+Certificate = ACM otboo.work Certificate
+```
+
+HTTPS Listener 추가 직후에는
+기존 HTTP 80 Listener를 그대로 유지한 상태에서
+HTTPS 접근을 먼저 검증했습니다.
+
+정상적인 HTTPS Target이 확보되기 전에
+기존 HTTP 요청 경로를 먼저 변경하지 않습니다.
+
+---
+
+### HTTPS 및 TLS 검증
+
+운영 도메인의 HTTPS 루트 경로를 확인했습니다.
+
+```bash
+curl -sS -o /dev/null \
+  -w "HTTPS %{http_code}\n" \
+  https://otboo.work/
+```
+
+검증 결과:
+
+```text
+HTTPS 200
+```
+
+Spring Boot Health Check도 HTTPS를 통해
+정상 응답하는 것을 확인했습니다.
+
+```bash
+curl -sS -i https://otboo.work/actuator/health
+```
+
+검증 결과:
+
+```text
+HTTP/2 200
+server: nginx/1.30.4
+
+{"status":"UP"}
+```
+
+TLS 인증서가 운영 도메인과 일치하는지도 확인했습니다.
+
+```bash
+echo | openssl s_client \
+  -connect otboo.work:443 \
+  -servername otboo.work \
+  2>/dev/null \
+  | openssl x509 \
+      -noout \
+      -subject \
+      -issuer \
+      -dates
+```
+
+다음 항목을 확인했습니다.
+
+```text
+Subject = otboo.work
+Issuer  = Amazon
+Certificate Valid = True
+```
+
+인증서의 실제 ARN 및 계정 식별 정보는 저장소에 기록하지 않습니다.
+
+---
+
+### HTTP → HTTPS Redirect
+
+HTTPS 요청이 정상 동작하는 것을 확인한 뒤
+기존 HTTP 80 Listener의 Default Action을
+Target Group Forward에서 HTTPS Redirect로 변경했습니다.
+
+최종 Listener 구조는 다음과 같습니다.
+
+```text
+HTTP :80
+→ HTTP_301
+→ HTTPS :443
+
+HTTPS :443
+→ otboo-prod-backend-tg
+```
+
+HTTP 루트 요청의 Redirect를 확인했습니다.
+
+```bash
+curl -sS -o /dev/null \
+  -w "HTTP %{http_code}\nRedirect: %{redirect_url}\n" \
+  http://otboo.work/
+```
+
+검증 결과:
+
+```text
+HTTP 301
+Redirect: https://otboo.work:443/
+```
+
+Redirect를 따라간 최종 응답도 확인했습니다.
+
+```bash
+curl -sS -L -o /dev/null \
+  -w "FINAL %{http_code}\nURL %{url_effective}\n" \
+  http://otboo.work/
+```
+
+검증 결과:
+
+```text
+FINAL 200
+URL https://otboo.work:443/
+```
+
+`/actuator/health` 경로에서도
+HTTP 요청이 동일한 경로의 HTTPS 요청으로 Redirect되는 것을 확인했습니다.
+
+```bash
+curl -sS -o /dev/null \
+  -w "HTTP %{http_code}\nRedirect: %{redirect_url}\n" \
+  http://otboo.work/actuator/health
+```
+
+검증 결과:
+
+```text
+HTTP 301
+Redirect: https://otboo.work:443/actuator/health
+```
+
+Redirect를 따라간 최종 Health Check도 정상입니다.
+
+```bash
+curl -sS -L \
+  http://otboo.work/actuator/health
+```
+
+검증 결과:
+
+```json
+{"status":"UP"}
+```
+
+---
+
+### Forwarded Header 및 Secure Cookie 검증
+
+운영 Spring Boot 설정에는 다음 설정이 적용되어 있습니다.
+
+```yaml
+server:
+  forward-headers-strategy: framework
+```
+
+ALB에서 TLS가 종료된 뒤
+Nginx를 거쳐 Spring Boot로 전달되는 요청에서도
+애플리케이션이 원래 요청을 HTTPS로 정상 인식하는지 검증했습니다.
+
+다음 명령으로 HTTPS 응답 Header를 확인했습니다.
+
+```bash
+curl -sS -D - -o /dev/null \
+  https://otboo.work/actuator/health \
+  | grep -Ei 'HTTP/|set-cookie|strict-transport-security|server:'
+```
+
+검증 결과:
+
+```text
+HTTP/2 200
+server: nginx/1.30.4
+set-cookie: XSRF-TOKEN=...; Path=/; Secure
+strict-transport-security: max-age=31536000 ; includeSubDomains
+```
+
+따라서 운영 HTTPS 환경에서 다음 항목이 정상 동작함을 확인했습니다.
+
+- HTTPS 요청 정상 처리
+- Nginx Reverse Proxy 경유
+- Forwarded Header 기반 HTTPS 인식
+- CSRF Cookie의 `Secure` 속성 적용
+- HSTS Header 적용
+
+현재 설정만으로 운영 HTTPS 요청의 CSRF Cookie에
+`Secure` 속성이 정상 적용되므로,
+이번 이슈에서는 별도의 Secure Cookie 강제 설정을 추가하지 않았습니다.
+
+---
+
+### Issue #160 완료 기준
+
+다음 항목을 모두 확인했습니다.
+
+- ACM 인증서 DNS Validation 완료
+- ACM Certificate `ISSUED`
+- ACM Validation Status `SUCCESS`
+- ALB Security Group TCP 443 허용
+- ALB HTTPS 443 Listener 구성
+- HTTPS Listener에서 기존 Target Group 사용
+- `https://otboo.work/` HTTP 200
+- HTTPS `/actuator/health` HTTP 200 및 `UP`
+- 운영 도메인 TLS 인증서 확인
+- HTTP 80 → HTTPS 443 `HTTP_301` Redirect
+- Redirect 이후 최종 HTTPS HTTP 200
+- `/actuator/health` Redirect 시 요청 경로 유지
+- `XSRF-TOKEN` Cookie의 `Secure` 속성 확인
+- HSTS Header 확인
+- 기존 Nginx Sidecar 및 Spring Boot 내부 요청 구조 유지
+
+---
+
 ### 후속 작업
 
-다음 항목은 Issue #157에 포함하지 않고
-후속 HTTPS 및 운영 보안 이슈에서 진행합니다.
+다음 항목은 Issue #160 범위에 포함하지 않고
+후속 외부 서비스 경로 및 운영 안정성 검증 이슈에서 진행합니다.
 
-- ACM 인증서 발급 및 DNS 검증
-- ALB HTTPS 443 Listener 구성
-- HTTP → HTTPS Redirect
-- Forwarded Header 처리 재검증
-- CSRF Secure Cookie 운영 적용 및 검증
-- HTTPS 기반 프론트엔드 및 백엔드 접근 검증
-- HTTPS 환경 WebSocket 및 SSE 외부 연결 검증
+- WebSocket HTTPS/WSS 외부 연결 및 재연결 검증
+- SSE HTTPS 외부 연결 및 재연결 검증
+- CORS 운영 도메인 영향 검증
+- OAuth Redirect URI 운영 도메인 전환 검증
+- WebSocket Origin 검증
+- ECS 다중 Task 기반 Rolling Update 검증
+- Deployment Circuit Breaker 및 Rollback 검증
+- ALB Health Check 운영 기준 재검증
+- CloudWatch 운영 모니터링 및 알림 구성
