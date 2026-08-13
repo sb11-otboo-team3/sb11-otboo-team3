@@ -44,12 +44,12 @@ public class SseEmitterRegistry {
     }
 
     emitter.onCompletion(() -> {
-      log.info("SSE 연결 완료: userId={}", userId);
+      log.debug("SSE 연결 종료: userId={}", userId);
       remove(userId, session);
     });
 
     emitter.onTimeout(() -> {
-      log.warn("SSE 타임아웃: userId={}", userId);
+      log.debug("SSE 타임아웃: userId={}", userId);
       remove(userId, session);
     });
 
