@@ -9,7 +9,10 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
 
+import com.otboo.domain.feed.core.exception.InvalidFeedCursorException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeRepository;
@@ -161,6 +164,192 @@ class FeedQueryServiceTest {
         null,
         null,
         null
+    );
+  }
+
+  @Test
+  @DisplayName("피드 목록 조회 성공 - 빈 목록")
+  void getFeeds_empty_success() {
+    UUID currentUserId = UUID.randomUUID();
+
+    given(feedRepository.findFeeds(
+        null,
+        null,
+        21,
+        SortBy.createdAt,
+        SortDirection.DESCENDING,
+        null,
+        null,
+        null,
+        null
+    )).willReturn(List.of());
+
+    given(feedRepository.countFeeds(null, null, null, null))
+        .willReturn(0L);
+
+    FeedDtoCursorResponse result = feedQueryService.getFeeds(
+        null,
+        null,
+        20,
+        SortBy.createdAt,
+        SortDirection.DESCENDING,
+        null,
+        null,
+        null,
+        null,
+        currentUserId
+    );
+
+    assertThat(result.data()).isEmpty();
+    assertThat(result.hasNext()).isFalse();
+    assertThat(result.nextCursor()).isNull();
+    assertThat(result.nextIdAfter()).isNull();
+    assertThat(result.totalCount()).isZero();
+
+    verify(feedLikeRepository, never()).findByFeedIdInAndUserId(anyList(), eq(currentUserId));
+    verify(feedClothesRepository, never()).findByFeedInAndClothesDeletedAtIsNull(anyList());
+  }
+
+  @Test
+  @DisplayName("피드 목록 조회 성공 - likeCount 정렬 커서 반환")
+  void getFeeds_likeCountCursor_success() {
+    UUID currentUserId = UUID.randomUUID();
+    UUID feedId = UUID.randomUUID();
+
+    User author = User.create("author@test.com", "author", "password");
+
+    WeatherSummaryDto weatherSummary = new WeatherSummaryDto(
+        UUID.randomUUID(),
+        SkyStatus.CLEAR,
+        new PrecipitationDto(PrecipitationType.NONE, 0.0, 0.0),
+        new TemperatureDto(20.0, 0.0, 18.0, 25.0)
+    );
+
+    Feed feed1 = Feed.create(
+        author,
+        mock(Weather.class),
+        objectMapper.valueToTree(weatherSummary),
+        "좋아요 정렬 피드"
+    );
+    ReflectionTestUtils.setField(feed1, "id", feedId);
+    ReflectionTestUtils.setField(feed1, "likeCount", 10L);
+
+    Feed feed2 = Feed.create(
+        author,
+        mock(Weather.class),
+        objectMapper.valueToTree(weatherSummary),
+        "다음 페이지 확인용 피드"
+    );
+    ReflectionTestUtils.setField(feed2, "id", UUID.randomUUID());
+    ReflectionTestUtils.setField(feed2, "likeCount", 5L);
+
+    FeedDto feedDto = mock(FeedDto.class);
+
+    given(feedRepository.findFeeds(
+        null,
+        null,
+        2,
+        SortBy.likeCount,
+        SortDirection.DESCENDING,
+        null,
+        null,
+        null,
+        null
+    )).willReturn(List.of(feed1, feed2));
+
+    given(feedLikeRepository.findByFeedIdInAndUserId(anyList(), eq(currentUserId)))
+        .willReturn(List.of());
+    given(feedClothesRepository.findByFeedInAndClothesDeletedAtIsNull(anyList()))
+        .willReturn(List.of());
+    given(clothesAttributeRepository.findByClothesIn(anyList()))
+        .willReturn(List.of());
+    given(attributeSelectableValueRepository
+        .findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(anyList()))
+        .willReturn(List.of());
+    given(feedMapper.toDto(any(), any(), anyList(), anyMap(), anyMap(), anyBoolean()))
+        .willReturn(feedDto);
+    given(feedRepository.countFeeds(null, null, null, null))
+        .willReturn(2L);
+
+    FeedDtoCursorResponse result = feedQueryService.getFeeds(
+        null,
+        null,
+        1,
+        SortBy.likeCount,
+        SortDirection.DESCENDING,
+        null,
+        null,
+        null,
+        null,
+        currentUserId
+    );
+
+    assertThat(result.data()).containsExactly(feedDto);
+    assertThat(result.hasNext()).isTrue();
+    assertThat(result.nextCursor()).isEqualTo("10");
+    assertThat(result.nextIdAfter()).isEqualTo(feedId);
+    assertThat(result.sortBy()).isEqualTo("likeCount");
+  }
+
+  @Test
+  @DisplayName("피드 목록 조회 실패 - cursor와 idAfter가 함께 오지 않음")
+  void getFeeds_invalidCursorPair() {
+    UUID currentUserId = UUID.randomUUID();
+
+    assertThatThrownBy(() -> feedQueryService.getFeeds(
+        "2026-08-13T01:00:00Z",
+        null,
+        20,
+        SortBy.createdAt,
+        SortDirection.DESCENDING,
+        null,
+        null,
+        null,
+        null,
+        currentUserId
+    )).isInstanceOf(InvalidFeedCursorException.class);
+
+    verify(feedRepository, never()).findFeeds(
+        any(),
+        any(),
+        any(Integer.class),
+        any(),
+        any(),
+        any(),
+        any(),
+        any(),
+        any()
+    );
+  }
+
+  @Test
+  @DisplayName("피드 목록 조회 실패 - cursor 형식 오류")
+  void getFeeds_invalidCursorFormat() {
+    UUID currentUserId = UUID.randomUUID();
+
+    assertThatThrownBy(() -> feedQueryService.getFeeds(
+        "invalid-cursor",
+        UUID.randomUUID(),
+        20,
+        SortBy.createdAt,
+        SortDirection.DESCENDING,
+        null,
+        null,
+        null,
+        null,
+        currentUserId
+    )).isInstanceOf(InvalidFeedCursorException.class);
+
+    verify(feedRepository, never()).findFeeds(
+        any(),
+        any(),
+        any(Integer.class),
+        any(),
+        any(),
+        any(),
+        any(),
+        any(),
+        any()
     );
   }
 }
