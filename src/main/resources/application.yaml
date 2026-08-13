@@ -51,3 +51,6 @@ app:
     init-email: ${ADMIN_INIT_EMAIL:admin@otboo.io}
     init-name: ${ADMIN_INIT_NAME:admin}
     init-password: ${ADMIN_INIT_PASSWORD}
+logging:
+  pattern:
+    level: "%5p [requestId:%X{requestId}] [userId:%X{userId}]"
