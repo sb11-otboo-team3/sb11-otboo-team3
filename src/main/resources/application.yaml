@@ -50,4 +50,4 @@ app:
   admin:
     init-email: ${ADMIN_INIT_EMAIL:admin@otboo.io}
     init-name: ${ADMIN_INIT_NAME:admin}
-    init-password: ${ADMIN_INIT_PASSWORD:admin1234!}
+    init-password: ${ADMIN_INIT_PASSWORD}
