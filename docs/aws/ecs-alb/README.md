@@ -320,6 +320,8 @@ AWS_REGION
 S3_BUCKET
 JWT 만료 시간
 WEBSOCKET_ALLOWED_ORIGIN_PATTERNS
+ADMIN_INIT_EMAIL
+ADMIN_INIT_NAME
 ```
 
 민감정보는 Task Definition의 `secrets`로 전달합니다.
@@ -331,12 +333,17 @@ REDIS_PASSWORD
 JWT_SECRET
 KAKAO_REST_API_KEY
 KMA_API_KEY
+ADMIN_INIT_PASSWORD
 ```
 
 RDS 사용자 정보는 Secrets Manager에서 관리합니다.
 
 Redis AUTH Token, JWT Secret, Kakao REST API Key,
-기상청 API Key는 Parameter Store에서 관리합니다.
+기상청 API Key와 초기 운영 어드민 비밀번호는
+Parameter Store의 `SecureString`으로 관리합니다.
+
+초기 운영 어드민 이메일과 이름은 비민감 설정값이므로
+Task Definition의 일반 환경변수로 관리합니다.
 
 실제 Secret 값은 다음 위치에 포함하지 않습니다.
 
