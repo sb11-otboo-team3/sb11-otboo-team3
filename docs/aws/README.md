@@ -66,6 +66,15 @@ Root 계정에서 IAM 사용자 및 역할의 Billing 콘솔 접근 기능을
 * ECS Task Execution Role과 ECS Task Role을 분리하여 사용합니다.
 * 사람용 IAM 사용자의 인증정보를 GitHub Actions나 애플리케이션에서 사용하지 않습니다.
 
+### 민감정보 관리 기준
+
+* 운영 애플리케이션의 민감정보는 AWS Secrets Manager 또는 SSM Parameter Store의 `SecureString`으로 관리합니다.
+* 비민감 CI/CD 설정값은 GitHub Repository Variables를 사용합니다.
+* GitHub Actions의 AWS 인증은 OIDC 기반 IAM Role을 사용하며 장기 Access Key를 저장하지 않습니다.
+* Secret 변경 시 실행 중인 ECS Task에는 자동 반영되지 않으므로 새 배포를 통해 변경값을 주입합니다.
+* 사용하지 않는 Secret은 애플리케이션 참조와 IAM 권한을 제거한 뒤 폐기합니다.
+* Secret 노출이 확인되면 해당 값을 즉시 폐기·재발급하고 영향 범위를 확인한 뒤 관련 Task를 재배포합니다.
+
 ## 4. 비용 관리
 
 * 프로젝트 Cost Budget: `US$50`
