@@ -2,6 +2,8 @@ package com.otboo.domain.auth.token;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.otboo.domain.user.entity.User;
+import com.otboo.domain.user.repository.UserRepository;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
@@ -26,6 +28,8 @@ public class RefreshTokenRedisIntegrationTest {
 
     @Autowired
     private StringRedisTemplate redisTemplate;
+
+    @Autowired private UserRepository userRepository;
 
     @AfterEach
     void tearDown() {
@@ -79,5 +83,28 @@ public class RefreshTokenRedisIntegrationTest {
         assertThat(
                 redisTemplate.hasKey(KEY_PREFIX + refreshToken)
         ).isFalse();
+    }
+
+    @Test
+    @DisplayName("이미 소비된 토큰을 재사용하면 재사용이 감지되고 tokenVersion이 실제로 증가한다")
+    void reusedTokenIncrementsTokenVersionInDatabase() {
+        // given
+        User user = User.create("reuse-integration@otboo.io", "재사용테스트", "encoded-password");
+        userRepository.saveAndFlush(user);
+        long tokenVersionBefore = user.getTokenVersion();
+
+        String refreshToken = issueRefreshToken(user.getId(), tokenVersionBefore);
+
+        // when: 첫 번째 소비(정상)
+        refreshTokenService.consumeTokenInfo(refreshToken);
+
+        // then: 같은 토큰으로 재사용 시도
+        Optional<RefreshTokenService.TokenInfo> result =
+            refreshTokenService.consumeTokenInfo(refreshToken);
+
+        assertThat(result).isEmpty();
+
+        User reloaded = userRepository.findById(user.getId()).orElseThrow();
+        assertThat(reloaded.getTokenVersion()).isEqualTo(tokenVersionBefore + 1);
     }
 }

@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.eq;
 
 import com.otboo.domain.auth.jwt.JwtProperties;
 import java.util.Optional;
@@ -17,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import com.otboo.domain.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
 class RefreshTokenServiceTest {
@@ -26,6 +28,9 @@ class RefreshTokenServiceTest {
 
   @Mock
   private ValueOperations<String, String> valueOperations;
+
+  @Mock
+  private UserRepository userRepository;
 
   private RefreshTokenService refreshTokenService;
 
@@ -37,7 +42,7 @@ class RefreshTokenServiceTest {
         604800000L,
         300000L
     );
-    refreshTokenService = new RefreshTokenService(redisTemplate, jwtProperties);
+    refreshTokenService = new RefreshTokenService(redisTemplate, jwtProperties, userRepository);
   }
 
   @Test
@@ -116,5 +121,46 @@ class RefreshTokenServiceTest {
 
     // then
     assertThat(result).isEmpty();
+  }
+
+  @Test
+  @DisplayName("이미 소비된 토큰이 재사용되면 재사용을 감지하고 tokenVersion을 증가시킨다")
+  void consumeTokenInfoDetectsReuseAndIncrementsTokenVersion() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+    String token = "reused-token";
+    String consumedValue = userId + ":3";
+
+    given(redisTemplate.opsForValue()).willReturn(valueOperations);
+    given(valueOperations.get("refresh:consumed:" + token)).willReturn(consumedValue);
+
+    // when
+    Optional<RefreshTokenService.TokenInfo> result =
+        refreshTokenService.consumeTokenInfo(token);
+
+    // then
+    assertThat(result).isEmpty();
+    verify(userRepository).incrementTokenVersion(userId);
+  }
+
+  @Test
+  @DisplayName("정상 소비 시 재사용 감지용 마커를 남긴다")
+  void consumeTokenInfoLeavesConsumedMarkerOnNormalConsumption() throws Exception {
+    // given
+    UUID userId = UUID.randomUUID();
+    String token = "normal-token";
+    String value = userId + ":1";
+
+    given(redisTemplate.opsForValue()).willReturn(valueOperations);
+    given(valueOperations.get("refresh:consumed:" + token)).willReturn(null);
+    given(valueOperations.getAndDelete("refresh:" + token)).willReturn(value);
+
+    // when
+    refreshTokenService.consumeTokenInfo(token);
+
+    // then
+    verify(valueOperations).set(
+        eq("refresh:consumed:" + token), eq(value), any()
+    );
   }
 }
