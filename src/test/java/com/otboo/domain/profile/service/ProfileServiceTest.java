@@ -115,15 +115,20 @@ class ProfileServiceTest {
   }
 
   @Test
-  @DisplayName("본인이 아닌 사용자의 프로필을 조회하면 예외가 발생한다")
-  void getProfileWithDifferentUserThrowsException() {
+  @DisplayName("본인이 아닌 사용자의 프로필을 수정하면 예외가 발생한다")
+  void updateProfileWithDifferentUserThrowsException() {
     // given
     UUID userId = UUID.randomUUID();
     UUID otherUserId = UUID.randomUUID();
 
+    ProfileUpdateRequest request = new ProfileUpdateRequest(
+        "이름", null, null, null, null
+    );
+
     // when & then
-    assertThatThrownBy(() -> profileService.getProfile(userId, otherUserId))
-        .isInstanceOf(ProfileAccessDeniedException.class);
+    assertThatThrownBy(
+        () -> profileService.updateProfile(userId, otherUserId, request, null)
+    ).isInstanceOf(ProfileAccessDeniedException.class);
   }
 
   @Test
@@ -345,20 +350,31 @@ class ProfileServiceTest {
   }
 
   @Test
-  @DisplayName("본인이 아닌 사용자의 프로필을 수정하면 예외가 발생한다")
-  void updateProfileWithDifferentUserThrowsException() {
+  @DisplayName("본인이 아닌 사용자도 프로필을 정상적으로 조회할 수 있다")
+  void getProfileWithDifferentUserReturnsProfileDto() {
     // given
+    User user = User.create(
+        "othersprofile@otboo.io",
+        "다른유저프로필",
+        "encoded-password"
+    );
     UUID userId = UUID.randomUUID();
+    ReflectionTestUtils.setField(user, "id", userId);
+
+    Profile profile = Profile.createDefault(user);
+    ReflectionTestUtils.setField(profile, "userId", userId);
+
     UUID otherUserId = UUID.randomUUID();
 
-    ProfileUpdateRequest request = new ProfileUpdateRequest(
-        "이름", null, null, null, null
-    );
+    given(profileRepository.findById(userId))
+        .willReturn(Optional.of(profile));
 
-    // when & then
-    assertThatThrownBy(
-        () -> profileService.updateProfile(userId, otherUserId, request, null)
-    ).isInstanceOf(ProfileAccessDeniedException.class);
+    // when
+    ProfileDto result = profileService.getProfile(userId, otherUserId);
+
+    // then
+    assertThat(result.userId()).isEqualTo(userId);
+    assertThat(result.name()).isEqualTo("다른유저프로필");
   }
 
   @Test
