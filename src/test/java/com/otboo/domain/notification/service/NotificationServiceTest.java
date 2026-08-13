@@ -6,7 +6,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import com.otboo.domain.notification.dto.response.NotificationDto;
 import com.otboo.domain.notification.dto.response.NotificationDtoCursorResponse;
 import com.otboo.domain.notification.entity.Notification;
@@ -237,5 +240,73 @@ class NotificationServiceTest {
 
     verify(sseEmitterRegistry).add(receiverId, emitter);
     verify(notificationRepository).findNotificationsAfter(receiverId, lastEventId, 100);
+  }
+
+  @Test
+  @DisplayName("알림 목록 조회 성공 - 다음 페이지가 있는 경우 cursor를 반환한다")
+  void getNotifications_hasNext_success() {
+    UUID receiverId = UUID.randomUUID();
+    User receiver = createUser(receiverId);
+
+    Notification first = createNotification(UUID.randomUUID(), receiver);
+    Notification second = createNotification(UUID.randomUUID(), receiver);
+
+    given(notificationRepository.findNotifications(receiverId, null, null, 2))
+        .willReturn(List.of(first, second));
+    given(notificationRepository.countNotifications(receiverId)).willReturn(2L);
+
+    NotificationDtoCursorResponse result =
+        notificationService.getNotifications(null, null, 1, receiverId);
+
+    assertThat(result.data()).hasSize(1);
+    assertThat(result.hasNext()).isTrue();
+    assertThat(result.nextCursor()).isEqualTo(first.getCreatedAt().toString());
+    assertThat(result.nextIdAfter()).isEqualTo(first.getId());
+    assertThat(result.totalCount()).isEqualTo(2L);
+  }
+
+  @Test
+  @DisplayName("알림 생성 시 트랜잭션이 활성화되어 있으면 커밋 이후 SSE 전송을 등록한다")
+  void createNotification_registersAfterCommitSynchronization() {
+    UUID receiverId = UUID.randomUUID();
+    UUID notificationId = UUID.randomUUID();
+
+    User receiver = createUser(receiverId);
+
+    given(userRepository.findById(receiverId)).willReturn(Optional.of(receiver));
+    given(notificationRepository.save(any(Notification.class)))
+        .willAnswer(invocation -> {
+          Notification notification = invocation.getArgument(0);
+          ReflectionTestUtils.setField(notification, "id", notificationId);
+          ReflectionTestUtils.setField(notification, "createdAt", Instant.now());
+          return notification;
+        });
+    given(sseEmitterRegistry.get(receiverId)).willReturn(Optional.empty());
+
+    TransactionSynchronizationManager.initSynchronization();
+
+    try {
+      NotificationDto result = notificationService.createNotification(
+          receiverId,
+          "알림 제목",
+          "알림 내용",
+          NotificationLevel.INFO
+      );
+
+      assertThat(result.id()).isEqualTo(notificationId);
+
+      List<TransactionSynchronization> synchronizations =
+          TransactionSynchronizationManager.getSynchronizations();
+
+      assertThat(synchronizations).hasSize(1);
+
+      verify(sseEmitterRegistry, never()).get(receiverId);
+
+      synchronizations.get(0).afterCommit();
+
+      verify(sseEmitterRegistry, times(1)).get(receiverId);
+    } finally {
+      TransactionSynchronizationManager.clearSynchronization();
+    }
   }
 }

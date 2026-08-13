@@ -1,6 +1,9 @@
 package com.otboo.domain.notification.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import com.otboo.domain.notification.sse.SseEmitterRegistry;
 import java.util.Optional;
@@ -106,5 +109,34 @@ class SseEmitterRegistryTest {
     session.touch();
 
     assertThat(session.getLastActiveAt()).isAfterOrEqualTo(before);
+  }
+
+  @Test
+  @DisplayName("기존 SSE 세션이 교체되면 이전 emitter를 완료한다")
+  void add_replacesOldSessionAndCompletesOldEmitter() {
+    UUID userId = UUID.randomUUID();
+
+    SseEmitter oldEmitter = mock(SseEmitter.class);
+    SseEmitter newEmitter = mock(SseEmitter.class);
+
+    sseEmitterRegistry.add(userId, oldEmitter);
+    SseEmitterRegistry.ClientSession newSession =
+        sseEmitterRegistry.add(userId, newEmitter);
+
+    verify(oldEmitter).complete();
+    assertThat(sseEmitterRegistry.get(userId)).contains(newSession);
+  }
+
+  @Test
+  @DisplayName("SSE emitter 콜백을 등록한다")
+  void add_registersEmitterCallbacks() {
+    UUID userId = UUID.randomUUID();
+    SseEmitter emitter = mock(SseEmitter.class);
+
+    sseEmitterRegistry.add(userId, emitter);
+
+    verify(emitter).onCompletion(any(Runnable.class));
+    verify(emitter).onTimeout(any(Runnable.class));
+    verify(emitter).onError(any());
   }
 }
