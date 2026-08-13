@@ -26,10 +26,7 @@ public class AdminInitializationService {
     String normalizedEmail = adminProperties.initEmail().toLowerCase(Locale.ROOT);
 
     if (userRepository.existsByEmail(normalizedEmail)) {
-      log.warn(
-          "초기 어드민 이메일({})이 이미 다른 계정으로 등록되어 있어 초기화를 건너뜁니다.",
-          normalizedEmail
-      );
+      log.warn("초기 어드민 이메일이 이미 다른 계정으로 등록되어 있어 초기화를 건너뜁니다.");
       return;
     }
 
@@ -39,12 +36,10 @@ public class AdminInitializationService {
 
     try {
       userRepository.save(admin);
-      log.info("초기 어드민 계정을 생성했습니다. email={}", normalizedEmail);
+      log.info("초기 어드민 계정을 생성했습니다.");
     } catch (DataIntegrityViolationException e) {
       log.info(
-          "다른 인스턴스가 동시에 초기 어드민 계정을 생성하여 건너뜁니다. email={}",
-          normalizedEmail
-      );
+          "다른 인스턴스가 동시에 초기 어드민 계정을 생성하여 건너뜁니다.");
     }
   }
 }

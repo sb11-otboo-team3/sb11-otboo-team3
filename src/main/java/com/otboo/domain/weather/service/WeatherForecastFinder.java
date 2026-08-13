@@ -127,8 +127,8 @@ public class WeatherForecastFinder {
         .flatMap(dailyForecasts -> saveToCache(weatherGrid, forecastedAt, dailyForecasts))
         // 기상청 API에서 응답을 못받았을시 이전 발표로 폴백
         .onErrorResume(KmaApiException.class, e -> {
-          log.error("기상청 호출 실패 - 이전 판으로 폴백 시도, x={}, y={}, baseTime={}",
-              weatherGrid.x(), weatherGrid.y(), baseTime, e);
+          log.warn("기상청 호출 실패 - 이전 판으로 폴백 시도, x={}, y={}, baseTime={}",
+              weatherGrid.x(), weatherGrid.y(), baseTime);
           return fallbackToPreviousForecast(weatherGrid, grid, baseTime, location)
               .switchIfEmpty(Mono.error(e));
         });

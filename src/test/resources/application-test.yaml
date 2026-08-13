@@ -71,3 +71,7 @@ app:
     init-email: admin@otboo.io
     init-name: admin
     init-password: admin1234!
+
+logging:
+  level:
+    root: WARN
