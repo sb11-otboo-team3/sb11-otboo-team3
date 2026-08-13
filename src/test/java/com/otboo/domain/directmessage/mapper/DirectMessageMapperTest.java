@@ -107,4 +107,63 @@ class DirectMessageMapperTest {
             && userIds.contains(receiverId)
     ));
   }
+
+  @Test
+  @DisplayName("DM 단건 DTO 변환 시 삭제된 참여자는 null로 매핑한다")
+  void toDto_withDeletedParticipant_success() {
+    UUID receiverId = UUID.randomUUID();
+
+    User receiver = User.create("receiver@test.com", "receiver", "password");
+    ReflectionTestUtils.setField(receiver, "id", receiverId);
+
+    DirectMessage directMessage = DirectMessage.create(receiver, receiver, "dm-key", "hello");
+    ReflectionTestUtils.setField(directMessage, "sender", null);
+
+    UserSummary receiverSummary = new UserSummary(receiverId, "receiver", "receiver-image");
+
+    given(userSummaryMapper.toUserSummary(null)).willReturn(null);
+    given(userSummaryMapper.toUserSummary(receiver)).willReturn(receiverSummary);
+
+    DirectMessageDto result = directMessageMapper.toDto(directMessage);
+
+    assertThat(result.sender()).isNull();
+    assertThat(result.receiver()).isEqualTo(receiverSummary);
+    assertThat(result.content()).isEqualTo("hello");
+  }
+
+  @Test
+  @DisplayName("DM 목록 DTO 변환 시 삭제된 참여자는 조회 ID에서 제외하고 null로 매핑한다")
+  void toDtos_withDeletedParticipant_success() {
+    UUID userId = UUID.randomUUID();
+
+    User user = User.create("user@test.com", "user", "password");
+    ReflectionTestUtils.setField(user, "id", userId);
+
+    DirectMessage firstMessage = DirectMessage.create(user, user, "dm-key", "first");
+    ReflectionTestUtils.setField(firstMessage, "sender", null);
+
+    DirectMessage secondMessage = DirectMessage.create(user, user, "dm-key", "second");
+    ReflectionTestUtils.setField(secondMessage, "receiver", null);
+
+    UserSummary userSummary = new UserSummary(userId, "user", "user-image");
+
+    given(userSummaryMapper.toUserSummaries(argThat(userIds ->
+        userIds.size() == 1 && userIds.contains(userId)
+    ))).willReturn(List.of(userSummary));
+
+    List<DirectMessageDto> result =
+        directMessageMapper.toDtos(List.of(firstMessage, secondMessage));
+
+    assertThat(result).hasSize(2);
+
+    assertThat(result.get(0).sender()).isNull();
+    assertThat(result.get(0).receiver()).isEqualTo(userSummary);
+
+    assertThat(result.get(1).sender()).isEqualTo(userSummary);
+    assertThat(result.get(1).receiver()).isNull();
+
+    verify(userSummaryMapper).toUserSummaries(argThat(userIds ->
+        userIds.size() == 1 && userIds.contains(userId)
+    ));
+  }
 }

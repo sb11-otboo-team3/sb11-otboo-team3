@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
@@ -535,8 +536,7 @@ class FollowServiceTest {
     assertThatThrownBy(() -> followService.createFollow(request, currentUserId))
         .isInstanceOf(FollowForbiddenException.class);
 
-    verify(userRepository, never()).findById(followerId);
-    verify(followRepository, never()).save(any());
+    verifyNoInteractions(userRepository, followRepository);
   }
 
   @Test
@@ -552,8 +552,7 @@ class FollowServiceTest {
         null
     )).isInstanceOf(InvalidFollowCursorException.class);
 
-    verify(userRepository, never()).existsById(followerId);
-    verify(followRepository, never()).findFollowings(any(), any(), any(), anyInt(), any());
+    verifyNoInteractions(userRepository, followRepository);
   }
 
   @Test
@@ -569,7 +568,6 @@ class FollowServiceTest {
         null
     )).isInstanceOf(InvalidFollowCursorException.class);
 
-    verify(userRepository, never()).existsById(followeeId);
-    verify(followRepository, never()).findFollowers(any(), any(), any(), anyInt(), any());
+    verifyNoInteractions(userRepository, followRepository);
   }
 }

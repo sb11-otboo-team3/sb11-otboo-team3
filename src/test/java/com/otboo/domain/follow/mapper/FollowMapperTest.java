@@ -65,6 +65,8 @@ class FollowMapperTest {
   void toDtos_success() {
     UUID followerId = UUID.randomUUID();
     UUID followeeId = UUID.randomUUID();
+    UUID firstFollowId = UUID.randomUUID();
+    UUID secondFollowId = UUID.randomUUID();
 
     User follower = User.create("follower@test.com", "follower", "password");
     User followee = User.create("followee@test.com", "followee", "password");
@@ -73,6 +75,8 @@ class FollowMapperTest {
 
     Follow firstFollow = Follow.create(follower, followee);
     Follow secondFollow = Follow.create(followee, follower);
+    ReflectionTestUtils.setField(firstFollow, "id", firstFollowId);
+    ReflectionTestUtils.setField(secondFollow, "id", secondFollowId);
 
     UserSummary followerSummary = new UserSummary(followerId, "follower", "follower-image");
     UserSummary followeeSummary = new UserSummary(followeeId, "followee", "followee-image");
@@ -87,9 +91,11 @@ class FollowMapperTest {
 
     assertThat(result).hasSize(2);
 
+    assertThat(result.get(0).id()).isEqualTo(firstFollowId);
     assertThat(result.get(0).follower()).isEqualTo(followerSummary);
     assertThat(result.get(0).followee()).isEqualTo(followeeSummary);
 
+    assertThat(result.get(1).id()).isEqualTo(secondFollowId);
     assertThat(result.get(1).follower()).isEqualTo(followeeSummary);
     assertThat(result.get(1).followee()).isEqualTo(followerSummary);
 
