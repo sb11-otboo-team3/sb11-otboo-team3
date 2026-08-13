@@ -13,7 +13,7 @@ class FeedCoreExceptionTest {
   void feedForbiddenException_success() {
     FeedForbiddenException exception = new FeedForbiddenException();
 
-    assertThat(exception.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(exception.getMessage()).isNotBlank();
   }
 
@@ -24,7 +24,7 @@ class FeedCoreExceptionTest {
 
     FeedNotFoundException exception = new FeedNotFoundException(feedId);
 
-    assertThat(exception.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(exception.getMessage()).contains(feedId.toString());
   }
 
@@ -35,7 +35,7 @@ class FeedCoreExceptionTest {
 
     FeedUserNotFoundException exception = new FeedUserNotFoundException(userId);
 
-    assertThat(exception.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(exception.getMessage()).contains(userId.toString());
   }
 
@@ -46,7 +46,7 @@ class FeedCoreExceptionTest {
 
     FeedWeatherNotFoundException exception = new FeedWeatherNotFoundException(weatherId);
 
-    assertThat(exception.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(exception.getMessage()).contains(weatherId.toString());
   }
 

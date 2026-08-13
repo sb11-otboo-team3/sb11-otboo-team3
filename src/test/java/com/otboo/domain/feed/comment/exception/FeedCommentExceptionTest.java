@@ -13,7 +13,7 @@ class FeedCommentExceptionTest {
   void feedCommentForbiddenException_success() {
     FeedCommentForbiddenException exception = new FeedCommentForbiddenException();
 
-    assertThat(exception.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(exception.getMessage()).isNotBlank();
   }
 

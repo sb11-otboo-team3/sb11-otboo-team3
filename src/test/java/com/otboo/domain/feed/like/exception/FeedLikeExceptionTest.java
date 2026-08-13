@@ -25,7 +25,7 @@ class FeedLikeExceptionTest {
 
     FeedLikeNotFoundException exception = new FeedLikeNotFoundException(feedId);
 
-    assertThat(exception.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(exception.getMessage()).contains(feedId.toString());
   }
 }

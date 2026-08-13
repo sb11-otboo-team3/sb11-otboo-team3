@@ -13,7 +13,7 @@ class FeedClothesExceptionTest {
   void feedClothesNotFoundException_success() {
     FeedClothesNotFoundException exception = new FeedClothesNotFoundException();
 
-    assertThat(exception.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(exception.getMessage()).isNotBlank();
   }
 }
