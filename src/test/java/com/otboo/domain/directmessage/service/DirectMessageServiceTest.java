@@ -312,4 +312,21 @@ public class DirectMessageServiceTest {
 
     verify(directMessageRepository, never()).findDirectMessages(any(), any(), any(), anyInt());
   }
+
+  @Test
+  @DisplayName("cursor 형식이 올바르지 않으면 예외가 발생한다")
+  void getDirectMessages_invalidCursorFormat_throwsException() {
+    UUID currentUserId = UUID.randomUUID();
+    UUID targetUserId = UUID.randomUUID();
+
+    assertThatThrownBy(() -> directMessageService.getDirectMessages(
+        targetUserId,
+        "invalid-cursor",
+        UUID.randomUUID(),
+        20,
+        currentUserId
+    )).isInstanceOf(InvalidDirectMessageCursorException.class);
+
+    verify(directMessageRepository, never()).findDirectMessages(any(), any(), any(), anyInt());
+  }
 }

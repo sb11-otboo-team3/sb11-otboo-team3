@@ -13,6 +13,8 @@ import com.otboo.domain.notification.entity.Notification;
 import com.otboo.domain.notification.entity.NotificationLevel;
 import com.otboo.domain.notification.exception.InvalidNotificationCursorException;
 import com.otboo.domain.notification.exception.NotificationForbiddenException;
+import com.otboo.domain.notification.exception.NotificationNotFoundException;
+import com.otboo.domain.notification.exception.NotificationUserNotFoundException;
 import com.otboo.domain.notification.repository.NotificationRepository;
 import com.otboo.domain.notification.sse.SseEmitterRegistry;
 import com.otboo.domain.user.entity.User;
@@ -28,6 +30,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @ExtendWith(MockitoExtension.class)
 class NotificationServiceTest {
@@ -161,5 +164,78 @@ class NotificationServiceTest {
     ReflectionTestUtils.setField(notification, "id", notificationId);
     ReflectionTestUtils.setField(notification, "createdAt", Instant.now());
     return notification;
+  }
+
+  @Test
+  @DisplayName("알림 목록 조회 실패 - cursor 형식 오류")
+  void getNotifications_invalidCursorFormat() {
+    UUID receiverId = UUID.randomUUID();
+
+    assertThatThrownBy(() ->
+        notificationService.getNotifications(
+            "invalid-cursor",
+            UUID.randomUUID(),
+            20,
+            receiverId
+        )
+    ).isInstanceOf(InvalidNotificationCursorException.class);
+
+    verify(notificationRepository, never()).findNotifications(any(), any(), any(), any(Integer.class));
+  }
+
+  @Test
+  @DisplayName("알림 삭제 실패 - 알림을 찾을 수 없음")
+  void deleteNotification_notFound() {
+    UUID notificationId = UUID.randomUUID();
+    UUID currentUserId = UUID.randomUUID();
+
+    given(notificationRepository.findById(notificationId))
+        .willReturn(Optional.empty());
+
+    assertThatThrownBy(() ->
+        notificationService.deleteNotification(notificationId, currentUserId)
+    ).isInstanceOf(NotificationNotFoundException.class);
+
+    verify(notificationRepository, never()).delete(any());
+  }
+
+  @Test
+  @DisplayName("알림 생성 실패 - 수신자를 찾을 수 없음")
+  void createNotification_userNotFound() {
+    UUID receiverId = UUID.randomUUID();
+
+    given(userRepository.findById(receiverId)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() ->
+        notificationService.createNotification(
+            receiverId,
+            "알림 제목",
+            "알림 내용",
+            NotificationLevel.INFO
+        )
+    ).isInstanceOf(NotificationUserNotFoundException.class);
+
+    verify(notificationRepository, never()).save(any(Notification.class));
+  }
+
+  @Test
+  @DisplayName("SSE 구독 성공 - lastEventId 이후 알림 재전송")
+  void subscribe_withLastEventId_success() {
+    UUID receiverId = UUID.randomUUID();
+    UUID lastEventId = UUID.randomUUID();
+
+    User receiver = createUser(receiverId);
+    Notification missedNotification =
+        createNotification(UUID.randomUUID(), receiver);
+
+    given(notificationRepository.findNotificationsAfter(receiverId, lastEventId, 100))
+        .willReturn(List.of(missedNotification));
+
+    SseEmitter emitter = notificationService.subscribe(receiverId, lastEventId);
+
+    assertThat(emitter).isNotNull();
+
+    verify(sseEmitterRegistry).add(receiverId, emitter);
+    verify(notificationRepository).findNotificationsAfter(receiverId, lastEventId, 100);
   }
 }

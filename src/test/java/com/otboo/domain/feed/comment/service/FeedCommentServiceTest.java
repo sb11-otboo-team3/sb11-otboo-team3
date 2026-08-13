@@ -5,7 +5,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
 
+import com.otboo.domain.feed.comment.exception.FeedCommentForbiddenException;
+import com.otboo.domain.feed.comment.exception.InvalidFeedCommentCursorException;
+import com.otboo.domain.feed.comment.exception.InvalidFeedCommentRequestException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.feed.comment.dto.request.FeedCommentCreateRequest;
 import com.otboo.domain.feed.comment.dto.response.FeedCommentDto;
@@ -148,5 +153,101 @@ class FeedCommentServiceTest {
     verify(feedCommentRepository).findComments(feedId, null, null, 2);
     verify(feedCommentMapper).toDto(comment1);
     verify(feedCommentRepository).countComments(feedId);
+  }
+
+  @Test
+  @DisplayName("피드 댓글 생성 실패 - 경로 피드 ID와 본문 피드 ID가 다름")
+  void createFeedComment_invalidFeedId() {
+    UUID pathFeedId = UUID.randomUUID();
+    UUID bodyFeedId = UUID.randomUUID();
+    UUID authorId = UUID.randomUUID();
+
+    User author = User.create("author@test.com", "author", "password");
+    ReflectionTestUtils.setField(author, "id", authorId);
+
+    Feed feed = Feed.create(
+        author,
+        mock(Weather.class),
+        objectMapper.createObjectNode(),
+        "댓글 대상 피드"
+    );
+
+    FeedCommentCreateRequest request = new FeedCommentCreateRequest(
+        bodyFeedId,
+        authorId,
+        "댓글 내용"
+    );
+
+    given(userRepository.findById(authorId)).willReturn(Optional.of(author));
+    given(feedRepository.findByIdAndDeletedAtIsNull(pathFeedId)).willReturn(Optional.of(feed));
+
+    assertThatThrownBy(() -> feedCommentService.createFeedComment(pathFeedId, request, authorId))
+        .isInstanceOf(InvalidFeedCommentRequestException.class);
+
+    verify(feedCommentRepository, never()).save(any(Comment.class));
+    verify(feedRepository, never()).increaseCommentCount(pathFeedId);
+  }
+
+  @Test
+  @DisplayName("피드 댓글 생성 실패 - 요청 작성자와 인증 사용자가 다름")
+  void createFeedComment_forbidden() {
+    UUID feedId = UUID.randomUUID();
+    UUID requestAuthorId = UUID.randomUUID();
+    UUID currentUserId = UUID.randomUUID();
+
+    User currentUser = User.create("user@test.com", "user", "password");
+    ReflectionTestUtils.setField(currentUser, "id", currentUserId);
+
+    Feed feed = Feed.create(
+        currentUser,
+        mock(Weather.class),
+        objectMapper.createObjectNode(),
+        "댓글 대상 피드"
+    );
+
+    FeedCommentCreateRequest request = new FeedCommentCreateRequest(
+        feedId,
+        requestAuthorId,
+        "댓글 내용"
+    );
+
+    given(userRepository.findById(currentUserId)).willReturn(Optional.of(currentUser));
+    given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
+
+    assertThatThrownBy(() -> feedCommentService.createFeedComment(feedId, request, currentUserId))
+        .isInstanceOf(FeedCommentForbiddenException.class);
+
+    verify(feedCommentRepository, never()).save(any(Comment.class));
+    verify(feedRepository, never()).increaseCommentCount(feedId);
+  }
+
+  @Test
+  @DisplayName("피드 댓글 목록 조회 실패 - cursor와 idAfter가 함께 오지 않음")
+  void getComment_invalidCursorPair() {
+    UUID feedId = UUID.randomUUID();
+
+    assertThatThrownBy(() -> feedCommentService.getComment(
+        feedId,
+        "2026-08-13T01:00:00Z",
+        null,
+        20
+    )).isInstanceOf(InvalidFeedCommentCursorException.class);
+
+    verify(feedRepository, never()).findByIdAndDeletedAtIsNull(feedId);
+  }
+
+  @Test
+  @DisplayName("피드 댓글 목록 조회 실패 - cursor 형식 오류")
+  void getComment_invalidCursorFormat() {
+    UUID feedId = UUID.randomUUID();
+
+    assertThatThrownBy(() -> feedCommentService.getComment(
+        feedId,
+        "invalid-cursor",
+        UUID.randomUUID(),
+        20
+    )).isInstanceOf(InvalidFeedCommentCursorException.class);
+
+    verify(feedRepository, never()).findByIdAndDeletedAtIsNull(feedId);
   }
 }

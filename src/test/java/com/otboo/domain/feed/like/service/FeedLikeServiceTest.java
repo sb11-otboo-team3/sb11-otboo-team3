@@ -4,7 +4,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
 
+import com.otboo.domain.feed.core.exception.FeedNotFoundException;
+import com.otboo.domain.feed.core.exception.FeedUserNotFoundException;
+import com.otboo.domain.feed.like.exception.DuplicateFeedLikeException;
+import com.otboo.domain.feed.like.exception.FeedLikeNotFoundException;
+import org.springframework.dao.DataIntegrityViolationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.feed.core.entity.Feed;
 import com.otboo.domain.feed.core.repository.FeedRepository;
@@ -91,5 +98,58 @@ class FeedLikeServiceTest {
 
     verify(feedLikeRepository).deleteByFeedIdAndUserId(feedId, userId);
     verify(feedRepository).decreaseLikeCount(feedId);
+  }
+
+  @Test
+  @DisplayName("피드 좋아요 생성 실패 - 이미 좋아요를 누른 피드")
+  void createFeedLike_duplicate() {
+    UUID feedId = UUID.randomUUID();
+    UUID userId = UUID.randomUUID();
+
+    User user = User.create("user@test.com", "user", "password");
+    ReflectionTestUtils.setField(user, "id", userId);
+
+    Feed feed = Feed.create(
+        user,
+        mock(Weather.class),
+        objectMapper.createObjectNode(),
+        "좋아요 대상 피드"
+    );
+
+    given(userRepository.findById(userId)).willReturn(Optional.of(user));
+    given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
+    given(feedLikeRepository.saveAndFlush(any(FeedLike.class)))
+        .willThrow(DataIntegrityViolationException.class);
+
+    assertThatThrownBy(() -> feedLikeService.createFeedLike(feedId, userId))
+        .isInstanceOf(DuplicateFeedLikeException.class);
+
+    verify(feedRepository, never()).increaseLikeCount(feedId);
+  }
+
+  @Test
+  @DisplayName("피드 좋아요 취소 실패 - 좋아요를 찾을 수 없음")
+  void deleteFeedLike_notFound() {
+    UUID feedId = UUID.randomUUID();
+    UUID userId = UUID.randomUUID();
+
+    User user = User.create("user@test.com", "user", "password");
+
+    Feed feed = Feed.create(
+        user,
+        mock(Weather.class),
+        objectMapper.createObjectNode(),
+        "좋아요 취소 대상 피드"
+    );
+
+    given(userRepository.findById(userId)).willReturn(Optional.of(user));
+    given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
+    given(feedLikeRepository.deleteByFeedIdAndUserId(feedId, userId))
+        .willReturn(0L);
+
+    assertThatThrownBy(() -> feedLikeService.deleteFeedLike(feedId, userId))
+        .isInstanceOf(FeedLikeNotFoundException.class);
+
+    verify(feedRepository, never()).decreaseLikeCount(feedId);
   }
 }
