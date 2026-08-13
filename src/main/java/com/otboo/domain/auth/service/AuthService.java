@@ -4,6 +4,7 @@ import com.otboo.domain.auth.dto.JwtDto;
 import com.otboo.domain.auth.dto.ResetPasswordRequest;
 import com.otboo.domain.auth.dto.SignInRequest;
 import com.otboo.domain.auth.exception.InvalidCredentialsException;
+import com.otboo.domain.auth.exception.TooManyLoginAttemptsException;
 import com.otboo.domain.auth.exception.WeakAdminPasswordException;
 import com.otboo.domain.auth.jwt.JwtProvider;
 import com.otboo.domain.auth.token.PasswordResetService;
@@ -40,21 +41,22 @@ public class AuthService {
   private final RefreshTokenService refreshTokenService;
   private final PasswordResetService passwordResetService;
   private final EntityManager entityManager;
+  private final LoginAttemptService loginAttemptService;
 
   @Transactional
   public SignInResult signIn(SignInRequest request) {
     String normalizedEmail = request.username().toLowerCase(Locale.ROOT);
 
-    Optional<User> userOptional = userRepository.findByEmail(normalizedEmail);
+    if (loginAttemptService.isBlocked(normalizedEmail)) {
+      throw new TooManyLoginAttemptsException();
+    }
 
+    Optional<User> userOptional = userRepository.findByEmail(normalizedEmail);
     String passwordHashToCheck = userOptional
         .map(User::getPasswordHash)
         .orElse(DUMMY_PASSWORD_HASH);
     boolean passwordMatches = passwordEncoder.matches(request.password(), passwordHashToCheck);
 
-    // 기존 비밀번호가 일치하지 않을 때만 임시비밀번호(Redis)를 확인합니다.
-    // Redis 장애 시에도 정상 비밀번호로 로그인하는 사용자는 영향받지
-    // 않도록, 불필요한 경우 Redis 조회를 하지 않습니다.
     boolean tempPasswordMatches = !passwordMatches && userOptional
         .flatMap(user -> passwordResetService.find(user.getId()))
         .map(tempPassword -> tempPassword.equals(request.password()))
@@ -65,9 +67,12 @@ public class AuthService {
     boolean accountLocked = userOptional.map(User::isLocked).orElse(false);
 
     if (emailNotFound || passwordInvalid || accountLocked) {
+      loginAttemptService.recordFailure(normalizedEmail);
       log.info("로그인 실패");
       throw new InvalidCredentialsException();
     }
+
+    loginAttemptService.recordSuccess(normalizedEmail);
 
     User user = userOptional.get();
     userRepository.incrementTokenVersion(user.getId());  // DB에서 원자적으로 +1
