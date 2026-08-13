@@ -59,9 +59,21 @@ Root 계정에서 IAM 사용자 및 역할의 Billing 콘솔 접근 기능을
 ### 자동 배포 및 애플리케이션
 
 * GitHub Actions 자동 배포용 IAM 사용자를 생성하지 않습니다.
-* GitHub Actions 인증은 후속 CD 이슈에서 OIDC 기반 IAM Role로 구성합니다.
-* ECS Task Execution Role과 ECS Task Role은 ECS 구성 이슈에서 생성합니다.
+* GitHub Actions의 AWS 인증은 OIDC 기반 IAM Role을 사용합니다.
+* 이미지 Build·ECR Push와 ECS 배포는 목적별 GitHub Actions IAM Role을 분리하여 사용합니다.
+* AWS IAM Role ARN과 같은 비민감 설정값은 GitHub Repository Variable로 관리합니다.
+* `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`와 같은 장기 AWS 인증정보는 GitHub Secrets에 저장하지 않습니다.
+* ECS Task Execution Role과 ECS Task Role을 분리하여 사용합니다.
 * 사람용 IAM 사용자의 인증정보를 GitHub Actions나 애플리케이션에서 사용하지 않습니다.
+
+### 민감정보 관리 기준
+
+* 운영 애플리케이션의 민감정보는 AWS Secrets Manager 또는 SSM Parameter Store의 `SecureString`으로 관리합니다.
+* 비민감 CI/CD 설정값은 GitHub Repository Variables를 사용합니다.
+* GitHub Actions의 AWS 인증은 OIDC 기반 IAM Role을 사용하며 장기 Access Key를 저장하지 않습니다.
+* Secret 변경 시 실행 중인 ECS Task에는 자동 반영되지 않으므로 새 배포를 통해 변경값을 주입합니다.
+* 사용하지 않는 Secret은 애플리케이션 참조와 IAM 권한을 제거한 뒤 폐기합니다.
+* Secret 노출이 확인되면 해당 값을 즉시 폐기·재발급하고 영향 범위를 확인한 뒤 관련 Task를 재배포합니다.
 
 ## 4. 비용 관리
 
@@ -214,10 +226,8 @@ AWS 인증정보가 포함되지 않도록 관리합니다.
 * Issue #21: RDS PostgreSQL 및 S3 운영 환경 구성
 * Issue #73: ElastiCache Redis OSS 운영 환경 구성
 * Issue #22: ECS Cluster, Task Definition, Service 및 ALB 구성
-* 후속 CD 이슈: GitHub Actions OIDC, ECR Push 및 ECS 자동 배포
-
-Issue #46에서는 ECR Repository, 수동 이미지 Push·Pull,
-취약점 스캔 및 Lifecycle Policy까지 구성합니다.
+* Issue #124: GitHub Actions OIDC 기반 이미지 Build 및 ECR Push 구성
+* Issue #131: GitHub Actions ECS 자동 배포 구성
 
 GitHub Actions 자동 Push와 ECS 배포는 Issue #46 범위에 포함하지 않습니다.
 
@@ -230,7 +240,8 @@ AWS 서비스별 상세 설정과 검증 절차는 하위 문서에서 관리합
 * [Amazon ElastiCache for Redis OSS 구성](./elasticache/README.md)
 * RDS PostgreSQL 및 S3 운영 환경: Issue #21에서 작성
 * ECS 및 ALB 운영 환경: Issue #22에서 작성
-* GitHub Actions OIDC 및 자동 배포: 후속 CD 이슈에서 작성
+* GitHub Actions OIDC 및 ECR Push: Issue #124에서 작성
+* GitHub Actions ECS 자동 배포: Issue #131에서 작성
 
 상위 문서에는 AWS 공통 운영 원칙만 작성하고,
 서비스별 명령과 검증 결과는 각 하위 문서에서 관리합니다.

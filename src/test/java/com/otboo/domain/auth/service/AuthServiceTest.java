@@ -8,9 +8,11 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 
 import com.otboo.domain.auth.dto.SignInRequest;
 import com.otboo.domain.auth.exception.InvalidCredentialsException;
+import com.otboo.domain.auth.exception.TooManyLoginAttemptsException;
 import com.otboo.domain.auth.jwt.JwtProvider;
 import com.otboo.domain.auth.token.PasswordResetService;
 import com.otboo.domain.auth.token.RefreshTokenService;
@@ -31,6 +33,7 @@ import com.otboo.domain.auth.dto.ResetPasswordRequest;
 import com.otboo.domain.user.dto.ChangePasswordRequest;
 import com.otboo.domain.user.exception.UserNotFoundException;
 import com.otboo.domain.auth.token.RefreshTokenService.TokenInfo;
+import com.otboo.domain.auth.service.LoginAttemptService;
 
 
 @ExtendWith(MockitoExtension.class)
@@ -50,6 +53,9 @@ class AuthServiceTest {
 
   @Mock
   private PasswordResetService passwordResetService;
+
+  @Mock
+  private LoginAttemptService loginAttemptService;
 
   @InjectMocks
   private AuthService authService;
@@ -381,5 +387,57 @@ class AuthServiceTest {
     // when & then
     assertThatThrownBy(() -> authService.changePassword(userId, request))
         .isInstanceOf(UserNotFoundException.class);
+  }
+
+  @Test
+  @DisplayName("로그인 시도 횟수를 초과한 계정은 비밀번호가 맞아도 로그인이 차단된다")
+  void signInWithBlockedAccountThrowsException() throws Exception {
+    // given
+    given(loginAttemptService.isBlocked("blocked@otboo.io")).willReturn(true);
+
+    SignInRequest request = new SignInRequest("blocked@otboo.io", "password1234");
+
+    // when & then
+    assertThatThrownBy(() -> authService.signIn(request))
+        .isInstanceOf(TooManyLoginAttemptsException.class);
+
+    verify(userRepository, never()).findByEmail(any());
+  }
+
+  @Test
+  @DisplayName("로그인 실패 시 LoginAttemptService에 실패를 기록한다")
+  void signInFailureRecordsAttempt() throws Exception {
+    // given
+    given(userRepository.findByEmail("nouser@otboo.io")).willReturn(Optional.empty());
+
+    SignInRequest request = new SignInRequest("nouser@otboo.io", "password1234");
+
+    // when & then
+    assertThatThrownBy(() -> authService.signIn(request))
+        .isInstanceOf(InvalidCredentialsException.class);
+
+    verify(loginAttemptService).recordFailure("nouser@otboo.io");
+  }
+
+  @Test
+  @DisplayName("로그인 성공 시 LoginAttemptService의 실패 기록을 초기화한다")
+  void signInSuccessRecordsSuccess() throws Exception {
+    // given
+    User user = User.create("success@otboo.io", "성공테스트", "encoded-password");
+    UUID userId = UUID.randomUUID();
+    ReflectionTestUtils.setField(user, "id", userId);
+
+    SignInRequest request = new SignInRequest("success@otboo.io", "password1234");
+
+    given(userRepository.findByEmail("success@otboo.io")).willReturn(Optional.of(user));
+    given(passwordEncoder.matches("password1234", "encoded-password")).willReturn(true);
+    given(jwtProvider.createAccessToken(any(), any(), anyLong())).willReturn("access-token");
+    given(refreshTokenService.issue(any(), anyLong())).willReturn("refresh-token-value");
+
+    // when
+    authService.signIn(request);
+
+    // then
+    verify(loginAttemptService).recordSuccess("success@otboo.io");
   }
 }

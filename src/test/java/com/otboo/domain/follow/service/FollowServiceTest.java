@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
@@ -17,6 +18,7 @@ import com.otboo.domain.follow.exception.DuplicateFollowException;
 import com.otboo.domain.follow.exception.FollowForbiddenException;
 import com.otboo.domain.follow.exception.FollowNotFoundException;
 import com.otboo.domain.follow.exception.FollowUserNotFoundException;
+import com.otboo.domain.follow.exception.InvalidFollowCursorException;
 import com.otboo.domain.follow.exception.SelfFollowNotAllowedException;
 import com.otboo.domain.follow.mapper.FollowMapper;
 import com.otboo.domain.follow.repository.FollowRepository;
@@ -520,5 +522,52 @@ class FollowServiceTest {
     verify(followRepository, never()).existsByFollowerIdAndFolloweeId(any(), any());
     verify(followRepository, never()).countFollowers(any(), any());
     verify(followRepository, never()).countFollowings(any(), any());
+  }
+
+  @Test
+  @DisplayName("팔로우 생성 실패 - 요청 followerId와 인증 사용자가 다름")
+  void createFollow_forbidden_throwsException() {
+    UUID followerId = UUID.randomUUID();
+    UUID followeeId = UUID.randomUUID();
+    UUID currentUserId = UUID.randomUUID();
+
+    FollowCreateRequest request = new FollowCreateRequest(followerId, followeeId);
+
+    assertThatThrownBy(() -> followService.createFollow(request, currentUserId))
+        .isInstanceOf(FollowForbiddenException.class);
+
+    verifyNoInteractions(userRepository, followRepository);
+  }
+
+  @Test
+  @DisplayName("팔로잉 목록 조회 실패 - cursor만 있고 idAfter가 없음")
+  void getFollowings_cursorWithoutIdAfter_throwsException() {
+    UUID followerId = UUID.randomUUID();
+
+    assertThatThrownBy(() -> followService.getFollowings(
+        followerId,
+        "alice",
+        null,
+        20,
+        null
+    )).isInstanceOf(InvalidFollowCursorException.class);
+
+    verifyNoInteractions(userRepository, followRepository);
+  }
+
+  @Test
+  @DisplayName("팔로워 목록 조회 실패 - idAfter만 있고 cursor가 없음")
+  void getFollowers_idAfterWithoutCursor_throwsException() {
+    UUID followeeId = UUID.randomUUID();
+
+    assertThatThrownBy(() -> followService.getFollowers(
+        followeeId,
+        null,
+        UUID.randomUUID(),
+        20,
+        null
+    )).isInstanceOf(InvalidFollowCursorException.class);
+
+    verifyNoInteractions(userRepository, followRepository);
   }
 }

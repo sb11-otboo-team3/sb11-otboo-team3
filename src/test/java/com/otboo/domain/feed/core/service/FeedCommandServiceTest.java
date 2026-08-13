@@ -8,7 +8,11 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
 
+import com.otboo.domain.feed.clothes.exception.FeedClothesNotFoundException;
+import com.otboo.domain.feed.core.exception.FeedForbiddenException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.clothes.entity.Clothes;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
@@ -192,5 +196,144 @@ class FeedCommandServiceTest {
     feedCommandService.deleteFeed(feedId, authorId);
 
     assertThat(feed.getDeletedAt()).isNotNull();
+  }
+  @Test
+  @DisplayName("피드 생성 실패 - 요청 작성자와 인증 사용자가 다름")
+  void createFeed_forbidden_authorMismatch() {
+    UUID authorId = UUID.randomUUID();
+    UUID currentUserId = UUID.randomUUID();
+
+    FeedCreateRequest request = new FeedCreateRequest(
+        authorId,
+        UUID.randomUUID(),
+        List.of(UUID.randomUUID()),
+        "피드 내용"
+    );
+
+    assertThatThrownBy(() -> feedCommandService.createFeed(request, currentUserId))
+        .isInstanceOf(FeedForbiddenException.class);
+
+    verify(userRepository, never()).findById(authorId);
+    verify(feedRepository, never()).save(any(Feed.class));
+  }
+
+  @Test
+  @DisplayName("피드 생성 실패 - 요청한 옷 중 존재하지 않거나 삭제된 옷이 있음")
+  void createFeed_clothesNotFound() {
+    UUID authorId = UUID.randomUUID();
+    UUID weatherId = UUID.randomUUID();
+    UUID clothesId = UUID.randomUUID();
+
+    User author = User.create("author@test.com", "author", "password");
+    ReflectionTestUtils.setField(author, "id", authorId);
+
+    Weather weather = mock(Weather.class);
+
+    FeedCreateRequest request = new FeedCreateRequest(
+        authorId,
+        weatherId,
+        List.of(clothesId),
+        "피드 내용"
+    );
+
+    given(userRepository.findById(authorId)).willReturn(Optional.of(author));
+    given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+    given(clothesRepository.findByIdInAndDeletedAtIsNull(List.of(clothesId)))
+        .willReturn(List.of());
+
+    assertThatThrownBy(() -> feedCommandService.createFeed(request, authorId))
+        .isInstanceOf(FeedClothesNotFoundException.class);
+
+    verify(feedRepository, never()).save(any(Feed.class));
+  }
+
+  @Test
+  @DisplayName("피드 생성 실패 - 본인 소유가 아닌 옷이 포함됨")
+  void createFeed_notOwnedClothes() {
+    UUID authorId = UUID.randomUUID();
+    UUID otherUserId = UUID.randomUUID();
+    UUID weatherId = UUID.randomUUID();
+    UUID clothesId = UUID.randomUUID();
+
+    User author = User.create("author@test.com", "author", "password");
+    ReflectionTestUtils.setField(author, "id", authorId);
+
+    User otherUser = User.create("other@test.com", "other", "password");
+    ReflectionTestUtils.setField(otherUser, "id", otherUserId);
+
+    Weather weather = mock(Weather.class);
+    Clothes clothes = mock(Clothes.class);
+
+    given(clothes.getOwner()).willReturn(otherUser);
+
+    FeedCreateRequest request = new FeedCreateRequest(
+        authorId,
+        weatherId,
+        List.of(clothesId),
+        "피드 내용"
+    );
+
+    given(userRepository.findById(authorId)).willReturn(Optional.of(author));
+    given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+    given(clothesRepository.findByIdInAndDeletedAtIsNull(List.of(clothesId)))
+        .willReturn(List.of(clothes));
+
+    assertThatThrownBy(() -> feedCommandService.createFeed(request, authorId))
+        .isInstanceOf(FeedForbiddenException.class);
+
+    verify(feedRepository, never()).save(any(Feed.class));
+  }
+
+  @Test
+  @DisplayName("피드 수정 실패 - 작성자가 아님")
+  void updateFeed_forbidden() {
+    UUID feedId = UUID.randomUUID();
+    UUID authorId = UUID.randomUUID();
+    UUID currentUserId = UUID.randomUUID();
+
+    User author = User.create("author@test.com", "author", "password");
+    ReflectionTestUtils.setField(author, "id", authorId);
+
+    Feed feed = Feed.create(
+        author,
+        mock(Weather.class),
+        objectMapper.createObjectNode(),
+        "수정 전"
+    );
+
+    given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
+
+    assertThatThrownBy(() -> feedCommandService.updateFeed(
+        feedId,
+        new FeedUpdateRequest("수정 내용"),
+        currentUserId
+    )).isInstanceOf(FeedForbiddenException.class);
+
+    verify(feedMapper, never()).toDto(any(), any(), anyList(), anyMap(), anyMap(), anyBoolean());
+  }
+
+  @Test
+  @DisplayName("피드 삭제 실패 - 작성자가 아님")
+  void deleteFeed_forbidden() {
+    UUID feedId = UUID.randomUUID();
+    UUID authorId = UUID.randomUUID();
+    UUID currentUserId = UUID.randomUUID();
+
+    User author = User.create("author@test.com", "author", "password");
+    ReflectionTestUtils.setField(author, "id", authorId);
+
+    Feed feed = Feed.create(
+        author,
+        mock(Weather.class),
+        objectMapper.createObjectNode(),
+        "삭제 대상 피드"
+    );
+
+    given(feedRepository.findByIdAndDeletedAtIsNull(feedId)).willReturn(Optional.of(feed));
+
+    assertThatThrownBy(() -> feedCommandService.deleteFeed(feedId, currentUserId))
+        .isInstanceOf(FeedForbiddenException.class);
+
+    assertThat(feed.getDeletedAt()).isNull();
   }
 }

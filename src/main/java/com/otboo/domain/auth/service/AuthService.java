@@ -4,14 +4,18 @@ import com.otboo.domain.auth.dto.JwtDto;
 import com.otboo.domain.auth.dto.ResetPasswordRequest;
 import com.otboo.domain.auth.dto.SignInRequest;
 import com.otboo.domain.auth.exception.InvalidCredentialsException;
+import com.otboo.domain.auth.exception.TooManyLoginAttemptsException;
+import com.otboo.domain.auth.exception.WeakAdminPasswordException;
 import com.otboo.domain.auth.jwt.JwtProvider;
 import com.otboo.domain.auth.token.PasswordResetService;
 import com.otboo.domain.auth.token.RefreshTokenService;
 import com.otboo.domain.user.dto.ChangePasswordRequest;
 import com.otboo.domain.user.dto.UserDto;
 import com.otboo.domain.user.entity.User;
+import com.otboo.domain.user.entity.UserRole;
 import com.otboo.domain.user.exception.UserNotFoundException;
 import com.otboo.domain.user.repository.UserRepository;
+import com.otboo.global.validation.StrongPasswordPolicy;
 import jakarta.persistence.EntityManager;
 import java.util.Locale;
 import java.util.Optional;
@@ -37,21 +41,22 @@ public class AuthService {
   private final RefreshTokenService refreshTokenService;
   private final PasswordResetService passwordResetService;
   private final EntityManager entityManager;
+  private final LoginAttemptService loginAttemptService;
 
   @Transactional
   public SignInResult signIn(SignInRequest request) {
     String normalizedEmail = request.username().toLowerCase(Locale.ROOT);
 
-    Optional<User> userOptional = userRepository.findByEmail(normalizedEmail);
+    if (loginAttemptService.isBlocked(normalizedEmail)) {
+      throw new TooManyLoginAttemptsException();
+    }
 
+    Optional<User> userOptional = userRepository.findByEmail(normalizedEmail);
     String passwordHashToCheck = userOptional
         .map(User::getPasswordHash)
         .orElse(DUMMY_PASSWORD_HASH);
     boolean passwordMatches = passwordEncoder.matches(request.password(), passwordHashToCheck);
 
-    // 기존 비밀번호가 일치하지 않을 때만 임시비밀번호(Redis)를 확인합니다.
-    // Redis 장애 시에도 정상 비밀번호로 로그인하는 사용자는 영향받지
-    // 않도록, 불필요한 경우 Redis 조회를 하지 않습니다.
     boolean tempPasswordMatches = !passwordMatches && userOptional
         .flatMap(user -> passwordResetService.find(user.getId()))
         .map(tempPassword -> tempPassword.equals(request.password()))
@@ -62,9 +67,12 @@ public class AuthService {
     boolean accountLocked = userOptional.map(User::isLocked).orElse(false);
 
     if (emailNotFound || passwordInvalid || accountLocked) {
+      loginAttemptService.recordFailure(normalizedEmail);
       log.info("로그인 실패");
       throw new InvalidCredentialsException();
     }
+
+    loginAttemptService.recordSuccess(normalizedEmail);
 
     User user = userOptional.get();
     userRepository.incrementTokenVersion(user.getId());  // DB에서 원자적으로 +1
@@ -128,6 +136,12 @@ public class AuthService {
   public void changePassword(UUID userId, ChangePasswordRequest request) {
     User user = userRepository.findById(userId)
         .orElseThrow(() -> new UserNotFoundException(userId));
+
+    if (user.getRole() == UserRole.ADMIN
+        && !StrongPasswordPolicy.isSatisfiedBy(request.password())) {
+      throw new WeakAdminPasswordException();
+    }
+
     String encodedPassword = passwordEncoder.encode(request.password());
     user.changePassword(encodedPassword);
     userRepository.incrementTokenVersion(userId);
