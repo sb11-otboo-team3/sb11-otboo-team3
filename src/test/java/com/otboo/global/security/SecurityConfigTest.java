@@ -8,8 +8,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.assertj.core.api.Assertions.assertThat;
 
 import jakarta.servlet.http.Cookie;
+
 import java.util.List;
 import java.util.stream.Collectors;
+
 import org.springframework.test.web.servlet.MvcResult;
 import com.otboo.domain.auth.jwt.JwtProvider;
 import com.otboo.domain.auth.jwt.JwtAuthenticationFilter;
@@ -23,6 +25,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.session.DisableEncodeUrlFilter;
 import org.springframework.security.web.FilterChainProxy;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -353,7 +356,7 @@ class SecurityConfigTest {
     }
 
     @Test
-    @DisplayName("MDC 필터는 Request ID -> JWT 인증 -> User ID 순서로 동작한다")
+    @DisplayName("MDC 필터는 Request ID -> 보안 체인 -> JWT 인증 -> User ID 순서로 동작한다")
     void mdcFiltersAreRegisteredInCorrectOrder() {
         // given
         List<Class<?>> filterClasses = springSecurityFilterChain.getFilterChains()
@@ -365,12 +368,14 @@ class SecurityConfigTest {
 
         // when
         int requestIdFilterIndex = filterClasses.indexOf(RequestIdMdcFilter.class);
+        int disableEncodeUrlFilterIndex = filterClasses.indexOf(DisableEncodeUrlFilter.class);
         int jwtFilterIndex = filterClasses.indexOf(JwtAuthenticationFilter.class);
         int userIdFilterIndex = filterClasses.indexOf(UserIdMdcFilter.class);
 
         // then
         assertThat(requestIdFilterIndex).isGreaterThanOrEqualTo(0);
-        assertThat(jwtFilterIndex).isGreaterThan(requestIdFilterIndex);
+        assertThat(disableEncodeUrlFilterIndex).isGreaterThan(requestIdFilterIndex);
+        assertThat(jwtFilterIndex).isGreaterThan(disableEncodeUrlFilterIndex);
         assertThat(userIdFilterIndex).isGreaterThan(jwtFilterIndex);
     }
 

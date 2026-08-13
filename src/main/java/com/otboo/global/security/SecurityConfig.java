@@ -16,6 +16,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.session.DisableEncodeUrlFilter;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
@@ -91,7 +92,7 @@ public class SecurityConfig {
                 )
                 .addFilterBefore(
                         new RequestIdMdcFilter(),
-                        JwtAuthenticationFilter.class
+                        DisableEncodeUrlFilter.class
                 )
                 .addFilterAfter(
                         new UserIdMdcFilter(),
