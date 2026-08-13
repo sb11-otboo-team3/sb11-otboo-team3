@@ -2256,11 +2256,20 @@ Repository의 Task Definition 기준 파일도 동일한 값으로 변경했습�
 infra/ecs/task-definition-prod.json
 ```
 
+`infra/ecs/task-definition-prod.json`은 운영 Task Definition 구조를
+저장소에서 확인하기 위한 참조용 파일입니다.
+
+AWS Account ID 등 계정 식별정보는 `<AWS_ACCOUNT_ID>` placeholder로 관리하며,
+실제 계정 식별정보는 Git 저장소에 기록하지 않습니다.
+
 현재 GitHub Actions ECS 배포는 Repository의 Task Definition JSON을
 직접 등록하는 방식이 아니라 현재 ECS Service가 사용하는
 Task Definition Revision을 기준으로 Backend 이미지 URI만 변경합니다.
 
-따라서 운영 환경에는 기존 실행 Task Definition을 기준으로
+따라서 실제 자동 배포에서는 현재 ECS Service의 Live Task Definition을 기준으로
+환경변수, Secret 참조, IAM Role 등 기존 운영 설정을 승계합니다.
+
+운영 환경에는 기존 실행 Task Definition을 기준으로
 WebSocket Origin 값만 변경한 새 Revision을 등록하고
 ECS Service를 해당 Revision으로 갱신했습니다.
 
