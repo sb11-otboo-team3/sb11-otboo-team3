@@ -34,7 +34,8 @@ jwt:
 app:
   websocket:
     allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://localhost:3000,http://localhost:8080}
-
+  admin:
+    init-password: ${ADMIN_INIT_PASSWORD:local-admin-password}
 
 kakao:
   local:

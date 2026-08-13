@@ -5,14 +5,17 @@ import com.otboo.domain.auth.dto.ResetPasswordRequest;
 import com.otboo.domain.auth.dto.SignInRequest;
 import com.otboo.domain.auth.exception.InvalidCredentialsException;
 import com.otboo.domain.auth.exception.TooManyLoginAttemptsException;
+import com.otboo.domain.auth.exception.WeakAdminPasswordException;
 import com.otboo.domain.auth.jwt.JwtProvider;
 import com.otboo.domain.auth.token.PasswordResetService;
 import com.otboo.domain.auth.token.RefreshTokenService;
 import com.otboo.domain.user.dto.ChangePasswordRequest;
 import com.otboo.domain.user.dto.UserDto;
 import com.otboo.domain.user.entity.User;
+import com.otboo.domain.user.entity.UserRole;
 import com.otboo.domain.user.exception.UserNotFoundException;
 import com.otboo.domain.user.repository.UserRepository;
+import com.otboo.global.validation.StrongPasswordPolicy;
 import jakarta.persistence.EntityManager;
 import java.util.Locale;
 import java.util.Optional;
@@ -133,6 +136,12 @@ public class AuthService {
   public void changePassword(UUID userId, ChangePasswordRequest request) {
     User user = userRepository.findById(userId)
         .orElseThrow(() -> new UserNotFoundException(userId));
+
+    if (user.getRole() == UserRole.ADMIN
+        && !StrongPasswordPolicy.isSatisfiedBy(request.password())) {
+      throw new WeakAdminPasswordException();
+    }
+
     String encodedPassword = passwordEncoder.encode(request.password());
     user.changePassword(encodedPassword);
     userRepository.incrementTokenVersion(userId);

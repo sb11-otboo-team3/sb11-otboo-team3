@@ -137,7 +137,8 @@ DB_PASSWORD
 
 `DB_HOST`, `DB_PORT`, `DB_NAME`은 ECS 일반 환경변수로 관리합니다.
 
-`DB_USERNAME`, `DB_PASSWORD`는 AWS Secrets Manager 또는 SSM Parameter Store의 `SecureString`으로 관리합니다.
+`DB_USERNAME`, `DB_PASSWORD`는 운영 환경에서 AWS Secrets Manager로 관리하고,
+ECS Task Definition의 `secrets`를 통해 컨테이너에 주입합니다.
 
 운영 DB 스키마 생성은 별도의 Flyway 작업에서 진행합니다. 실제 RDS 연결은 Flyway 작업과 ECS 구성이 완료된 후 검증합니다.
 

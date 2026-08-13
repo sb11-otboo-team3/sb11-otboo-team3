@@ -320,6 +320,8 @@ AWS_REGION
 S3_BUCKET
 JWT 만료 시간
 WEBSOCKET_ALLOWED_ORIGIN_PATTERNS
+ADMIN_INIT_EMAIL
+ADMIN_INIT_NAME
 ```
 
 민감정보는 Task Definition의 `secrets`로 전달합니다.
@@ -331,12 +333,17 @@ REDIS_PASSWORD
 JWT_SECRET
 KAKAO_REST_API_KEY
 KMA_API_KEY
+ADMIN_INIT_PASSWORD
 ```
 
 RDS 사용자 정보는 Secrets Manager에서 관리합니다.
 
 Redis AUTH Token, JWT Secret, Kakao REST API Key,
-기상청 API Key는 Parameter Store에서 관리합니다.
+기상청 API Key와 초기 운영 어드민 비밀번호는
+Parameter Store의 `SecureString`으로 관리합니다.
+
+초기 운영 어드민 이메일과 이름은 비민감 설정값이므로
+Task Definition의 일반 환경변수로 관리합니다.
 
 실제 Secret 값은 다음 위치에 포함하지 않습니다.
 
@@ -2249,11 +2256,20 @@ Repository의 Task Definition 기준 파일도 동일한 값으로 변경했습�
 infra/ecs/task-definition-prod.json
 ```
 
+`infra/ecs/task-definition-prod.json`은 운영 Task Definition 구조를
+저장소에서 확인하기 위한 참조용 파일입니다.
+
+AWS Account ID 등 계정 식별정보는 `<AWS_ACCOUNT_ID>` placeholder로 관리하며,
+실제 계정 식별정보는 Git 저장소에 기록하지 않습니다.
+
 현재 GitHub Actions ECS 배포는 Repository의 Task Definition JSON을
 직접 등록하는 방식이 아니라 현재 ECS Service가 사용하는
 Task Definition Revision을 기준으로 Backend 이미지 URI만 변경합니다.
 
-따라서 운영 환경에는 기존 실행 Task Definition을 기준으로
+따라서 실제 자동 배포에서는 현재 ECS Service의 Live Task Definition을 기준으로
+환경변수, Secret 참조, IAM Role 등 기존 운영 설정을 승계합니다.
+
+운영 환경에는 기존 실행 Task Definition을 기준으로
 WebSocket Origin 값만 변경한 새 Revision을 등록하고
 ECS Service를 해당 Revision으로 갱신했습니다.
 
