@@ -75,6 +75,12 @@ class ProfileUpdateTransactionalServiceIntegrationTest {
     // then
     assertThat(result.profileImageUrl()).contains(newImageKey);
 
+    // DB에 실제로 새 이미지 키가 저장됐는지 다시 조회해서 확인한다.
+    // (profile.updateImageKey(newImageKey) 호출이 누락되어도 응답 DTO만으로는
+    // 이를 탐지할 수 없으므로, 영속화된 상태를 직접 검증한다.)
+    Profile updatedProfile = profileRepository.findById(userId).orElseThrow();
+    assertThat(updatedProfile.getImageKey()).isEqualTo(newImageKey);
+
     // @TransactionalEventListener(AFTER_COMMIT)는 별도 @Async 처리가 없어
     // 트랜잭션 커밋 직후 같은 스레드에서 동기적으로 실행된다.
     verify(fileStorage).delete("profiles/" + userId + "/old-key.png");
