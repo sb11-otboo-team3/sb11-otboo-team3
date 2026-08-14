@@ -3,6 +3,8 @@ package com.otboo.domain.follow.cache;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.follow.dto.response.FollowListResponse;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,7 +26,8 @@ public class RedisFollowListCache implements FollowListCache{
   private static final String FOLLOWINGS_KEY_PREFIX = "follow:list:followings:";
   private static final String FOLLOWERS_KEY_PREFIX = "follow:list:followers:";
   private static final String DELIMITER = ":";
-  private static final String NULL_VALUE = "_";
+  private static final String NULL_VALUE = "__OTBOO_NULL__";
+  private static final String BLANK_VALUE = "__OTBOO_BLANK__";
   private static final Duration TTL = Duration.ofMinutes(5); // TTL 5분
   private static final long SCAN_COUNT = 500;
 
@@ -186,10 +189,13 @@ public class RedisFollowListCache implements FollowListCache{
     String stringValue = value.toString();
 
     if (stringValue.isBlank()) {
-      return NULL_VALUE;
+      return BLANK_VALUE;
     }
 
-    return stringValue.trim().toLowerCase();
+    return URLEncoder.encode(
+        stringValue.trim().toLowerCase(),
+        StandardCharsets.UTF_8
+    );
   }
 
   private void deleteByPattern(String pattern) {

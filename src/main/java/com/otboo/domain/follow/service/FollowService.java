@@ -26,6 +26,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @RequiredArgsConstructor
@@ -67,10 +69,7 @@ public class FollowService {
     Follow savedFollow = followRepository.save(follow);
 
     // 오래된 캐시 삭제(교체 작업)
-    followSummaryCache.evictRelatedTo(follower.getId());
-    followSummaryCache.evictRelatedTo(followee.getId());
-    followListCache.evictFollowings(follower.getId());
-    followListCache.evictFollowers(followee.getId());
+    evictFollowCacheAfterCommit(follower.getId(), followee.getId());
 
     eventPublisher.publishEvent(
         new NotificationEvent(
@@ -96,10 +95,10 @@ public class FollowService {
     followRepository.delete(follow);
 
     // 캐시 삭제
-    followSummaryCache.evictRelatedTo(follow.getFollower().getId());
-    followSummaryCache.evictRelatedTo(follow.getFollowee().getId());
-    followListCache.evictFollowings(follow.getFollower().getId());
-    followListCache.evictFollowers(follow.getFollowee().getId());
+    evictFollowCacheAfterCommit(
+        follow.getFollower().getId(),
+        follow.getFollowee().getId()
+    );
   }
 
   public FollowListResponse getFollowings(
@@ -299,5 +298,26 @@ public class FollowService {
     if (hasCursor != hasIdAfter) {
       throw new InvalidFollowCursorException();
     }
+  }
+
+  private void evictFollowCacheAfterCommit(UUID followerId, UUID followeeId) {
+    Runnable evict = () -> {
+      followSummaryCache.evictRelatedTo(followerId);
+      followSummaryCache.evictRelatedTo(followeeId);
+      followListCache.evictFollowings(followerId);
+      followListCache.evictFollowers(followeeId);
+    };
+
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+          evict.run();
+        }
+      });
+      return;
+    }
+
+    evict.run();
   }
 }

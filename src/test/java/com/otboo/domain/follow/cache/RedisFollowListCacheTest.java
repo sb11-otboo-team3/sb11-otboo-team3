@@ -52,7 +52,8 @@ class RedisFollowListCacheTest {
     ArgumentCaptor<String> jsonCaptor = ArgumentCaptor.forClass(String.class);
 
     verify(valueOperations).set(
-        eq("follow:list:followings:" + followerId + ":_:_:20:_"),
+        eq("follow:list:followings:" + followerId
+            + ":__OTBOO_NULL__:__OTBOO_NULL__:20:__OTBOO_NULL__"),
         jsonCaptor.capture(),
         eq(Duration.ofMinutes(5))
     );
@@ -71,8 +72,10 @@ class RedisFollowListCacheTest {
     String json = objectMapper.writeValueAsString(response);
 
     given(redisTemplate.opsForValue()).willReturn(valueOperations);
-    given(valueOperations.get("follow:list:followings:" + followerId + ":_:_:20:_"))
-        .willReturn(json);
+    given(valueOperations.get(
+        "follow:list:followings:" + followerId
+            + ":__OTBOO_NULL__:__OTBOO_NULL__:20:__OTBOO_NULL__"
+    )).willReturn(json);
 
     Optional<FollowListResponse> result = cache.findFollowings(
         followerId,
@@ -95,8 +98,10 @@ class RedisFollowListCacheTest {
     String json = objectMapper.writeValueAsString(response);
 
     given(redisTemplate.opsForValue()).willReturn(valueOperations);
-    given(valueOperations.get("follow:list:followers:" + followeeId + ":_:_:20:_"))
-        .willReturn(json);
+    given(valueOperations.get(
+        "follow:list:followers:" + followeeId
+            + ":__OTBOO_NULL__:__OTBOO_NULL__:20:__OTBOO_NULL__"
+    )).willReturn(json);
 
     Optional<FollowListResponse> result = cache.findFollowers(
         followeeId,
@@ -116,8 +121,10 @@ class RedisFollowListCacheTest {
     UUID followerId = UUID.randomUUID();
 
     given(redisTemplate.opsForValue()).willReturn(valueOperations);
-    given(valueOperations.get("follow:list:followings:" + followerId + ":_:_:20:_"))
-        .willReturn(null);
+    given(valueOperations.get(
+        "follow:list:followings:" + followerId
+            + ":__OTBOO_NULL__:__OTBOO_NULL__:20:__OTBOO_NULL__"
+    )).willReturn(null);
 
     Optional<FollowListResponse> result = cache.findFollowings(
         followerId,
@@ -155,8 +162,10 @@ class RedisFollowListCacheTest {
     UUID followerId = UUID.randomUUID();
 
     given(redisTemplate.opsForValue()).willReturn(valueOperations);
-    given(valueOperations.get("follow:list:followings:" + followerId + ":_:_:20:_"))
-        .willReturn("invalid-json");
+    given(valueOperations.get(
+        "follow:list:followings:" + followerId
+            + ":__OTBOO_NULL__:__OTBOO_NULL__:20:__OTBOO_NULL__"
+    )).willReturn("invalid-json");
 
     Optional<FollowListResponse> result = cache.findFollowings(
         followerId,
