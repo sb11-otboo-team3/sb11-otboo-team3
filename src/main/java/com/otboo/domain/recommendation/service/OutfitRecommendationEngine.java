@@ -22,6 +22,8 @@ public class OutfitRecommendationEngine {
     private static final Set<ClothesType> COMBINATION_TYPES = Set.of(
             ClothesType.TOP, ClothesType.BOTTOM, ClothesType.DRESS, ClothesType.OUTER, ClothesType.SHOES);
 
+    private static final double MINIMUM_INCLUSION_SCORE = 0.0;
+
     private final RecommendationCandidateService candidateService;
     private final OutfitCombinationRule combinationRule;
     private final ClothesScoreCalculator scoreCalculator;
@@ -31,7 +33,8 @@ public class OutfitRecommendationEngine {
             double minTemperature,
             double maxTemperature,
             PrecipitationType precipitationType,
-            int temperatureSensitivity
+            int temperatureSensitivity,
+            Set<UUID> excludeClothesIds
     ) {
         Map<ClothesType, List<Clothes>> candidatedByType =
                 combinationRule.apply(candidateService.getCandidatesByType(ownerId));
@@ -42,15 +45,16 @@ public class OutfitRecommendationEngine {
                 continue;
             }
 
-            pickBest(entry.getValue(), minTemperature, maxTemperature, precipitationType, temperatureSensitivity)
+            List<Clothes> candidates = entry.getValue().stream()
+                            .filter(clothes -> !excludeClothesIds.contains(clothes.getId()))
+                                    .toList();
+
+            pickBest(candidates, minTemperature, maxTemperature, precipitationType, temperatureSensitivity)
                     .ifPresent(combination::add);
         }
 
         return combination;
     }
-
-    // 점수가 0이면 "안 입어도 되는" 상태(예: 더운 날의 아우터)라 조합에서 아예 제외한다.
-    private static final double MINIMUM_INCLUSION_SCORE = 0.0;
 
     private Optional<Clothes> pickBest(
             List<Clothes> candidates,
