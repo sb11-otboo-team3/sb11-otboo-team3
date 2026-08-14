@@ -9,6 +9,7 @@ import com.otboo.domain.feed.comment.exception.InvalidFeedCommentCursorException
 import com.otboo.domain.feed.comment.exception.InvalidFeedCommentRequestException;
 import com.otboo.domain.feed.comment.mapper.FeedCommentMapper;
 import com.otboo.domain.feed.comment.repository.FeedCommentRepository;
+import com.otboo.domain.feed.core.cache.FeedAuthorListCache;
 import com.otboo.domain.feed.core.entity.Feed;
 import com.otboo.domain.feed.core.exception.FeedNotFoundException;
 import com.otboo.domain.feed.core.exception.FeedUserNotFoundException;
@@ -25,6 +26,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +37,7 @@ public class FeedCommentService {
   private final UserRepository userRepository;
   private final FeedRepository feedRepository;
   private final FeedCommentRepository feedCommentRepository;
+  private final FeedAuthorListCache feedAuthorListCache;
   private final FeedCommentMapper feedCommentMapper;
   private final ApplicationEventPublisher eventPublisher;
 
@@ -61,6 +65,8 @@ public class FeedCommentService {
     Comment savedComment = feedCommentRepository.save(comment);
 
     feedRepository.increaseCommentCount(feedId);
+
+    evictAuthorFeedsAfterCommit(feed.getAuthor().getId());
 
     if (!feed.getAuthor().getId().equals(currentUserId)) {
       eventPublisher.publishEvent(
@@ -142,5 +148,21 @@ public class FeedCommentService {
         throw new InvalidFeedCommentCursorException();
       }
     }
+  }
+
+  private void evictAuthorFeedsAfterCommit(UUID authorId) {
+    Runnable evict = () -> feedAuthorListCache.evictAuthorFeeds(authorId);
+
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+          evict.run();
+        }
+      });
+      return;
+    }
+
+    evict.run();
   }
 }

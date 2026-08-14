@@ -12,6 +12,7 @@ import com.otboo.domain.clothes.repository.ClothesRepository;
 import com.otboo.domain.feed.clothes.entity.FeedClothes;
 import com.otboo.domain.feed.clothes.exception.FeedClothesNotFoundException;
 import com.otboo.domain.feed.clothes.repository.FeedClothesRepository;
+import com.otboo.domain.feed.core.cache.FeedAuthorListCache;
 import com.otboo.domain.feed.core.dto.request.FeedCreateRequest;
 import com.otboo.domain.feed.core.dto.request.FeedUpdateRequest;
 import com.otboo.domain.feed.core.dto.response.FeedDto;
@@ -40,6 +41,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @RequiredArgsConstructor
@@ -57,6 +60,7 @@ public class FeedCommandService {
   private final FeedLikeRepository feedLikeRepository;
   private final ApplicationEventPublisher eventPublisher;
   private final FollowRepository followRepository;
+  private final FeedAuthorListCache feedAuthorListCache;
   private final FeedMapper feedMapper;
   private final ObjectMapper objectMapper;
 
@@ -98,6 +102,8 @@ public class FeedCommandService {
 
     feedClothesRepository.saveAll(feedClothes);
 
+    evictAuthorFeedsAfterCommit(author.getId());
+
     followRepository.findFollowerIdsByFolloweeId(author.getId()).stream()
         .filter(followerId -> !followerId.equals(author.getId()))
         .forEach(followerId ->
@@ -127,6 +133,8 @@ public class FeedCommandService {
 
     feed.updateContent(request.content());
 
+    evictAuthorFeedsAfterCommit(feed.getAuthor().getId());
+
     boolean likedByMe = feedLikeRepository.existsByFeedIdAndUserId(feedId, currentUserId);
 
     return toFeedDto(feed, likedByMe);
@@ -142,6 +150,8 @@ public class FeedCommandService {
     }
 
     feed.delete();
+
+    evictAuthorFeedsAfterCommit(feed.getAuthor().getId());
   }
 
   private FeedDto toFeedDto(Feed feed, boolean likedByMe) {
@@ -183,5 +193,21 @@ public class FeedCommandService {
         selectableValuesByDefinitionId,
         likedByMe
     );
+  }
+
+  private void evictAuthorFeedsAfterCommit(UUID authorId) {
+    Runnable evict = () -> feedAuthorListCache.evictAuthorFeeds(authorId);
+
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+          evict.run();
+        }
+      });
+      return;
+    }
+
+    evict.run();
   }
 }

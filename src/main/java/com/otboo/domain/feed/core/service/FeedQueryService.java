@@ -10,6 +10,7 @@ import com.otboo.domain.clothes.repository.ClothesAttributeRepository;
 import com.otboo.domain.feed.clothes.entity.FeedClothes;
 import com.otboo.domain.feed.clothes.repository.FeedClothesRepository;
 import com.otboo.domain.feed.comment.exception.InvalidFeedCommentCursorException;
+import com.otboo.domain.feed.core.cache.FeedAuthorListCache;
 import com.otboo.domain.feed.core.dto.request.SortBy;
 import com.otboo.domain.feed.core.dto.request.SortDirection;
 import com.otboo.domain.feed.core.dto.response.FeedDto;
@@ -26,6 +27,7 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +44,7 @@ public class FeedQueryService {
   private final FeedLikeRepository feedLikeRepository;
   private final ClothesAttributeRepository clothesAttributeRepository;
   private final AttributeSelectableValueRepository attributeSelectableValueRepository;
+  private final FeedAuthorListCache feedAuthorListCache;
   private final FeedMapper feedMapper;
   private final ObjectMapper objectMapper;
 
@@ -58,6 +61,29 @@ public class FeedQueryService {
       UUID currentUserId
   ) {
     validateCursor(cursor, idAfter, sortBy);
+
+    // 피드 목록 조회를 Redis 캐시 대상으로 할지 판단
+    boolean cacheableAuthorFeeds = authorIdEqual != null
+        && keywordLike == null
+        && skyStatusEqual == null
+        && precipitationTypeEqual == null
+        && sortBy == SortBy.createdAt
+        && sortDirection == SortDirection.DESCENDING;
+
+    if (cacheableAuthorFeeds) {
+      Optional<FeedDtoCursorResponse> cachedResponse =
+          feedAuthorListCache.findAuthorFeeds(
+              authorIdEqual,
+              currentUserId,
+              cursor,
+              idAfter,
+              limit
+          );
+
+      if (cachedResponse.isPresent()) {
+        return cachedResponse.get();
+      }
+    }
 
     List<Feed> feeds = feedRepository.findFeeds(
         cursor,
@@ -103,7 +129,7 @@ public class FeedQueryService {
         authorIdEqual
     );
 
-    return new FeedDtoCursorResponse(
+    FeedDtoCursorResponse response = new FeedDtoCursorResponse(
         data,
         nextCursor,
         nextIdAfter,
@@ -112,6 +138,19 @@ public class FeedQueryService {
         sortBy.name(),
         sortDirection.name()
     );
+
+    if (cacheableAuthorFeeds) {
+      feedAuthorListCache.saveAuthorFeeds(
+          authorIdEqual,
+          currentUserId,
+          cursor,
+          idAfter,
+          limit,
+          response
+      );
+    }
+
+    return response;
   }
 
   // cursor와 idAfter는 둘 다 있거나 둘 다 없어야 함
