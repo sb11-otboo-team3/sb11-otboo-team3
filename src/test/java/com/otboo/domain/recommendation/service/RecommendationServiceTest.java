@@ -22,6 +22,7 @@ import com.otboo.domain.weather.service.WeatherService;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -56,7 +57,7 @@ class RecommendationServiceTest {
         given(profileRepository.findById(userId)).willReturn(Optional.empty());
 
         //when & then
-        assertThatThrownBy(() -> service.recommend(userId))
+        assertThatThrownBy(() -> service.recommend(userId, Set.of()))
                 .isInstanceOf(ProfileNotFoundException.class);
     }
 
@@ -70,7 +71,7 @@ class RecommendationServiceTest {
         given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
 
         //when & then
-        assertThatThrownBy(() -> service.recommend(userId))
+        assertThatThrownBy(() -> service.recommend(userId, Set.of()))
                 .isInstanceOf(LocationNotSetException.class);
     }
 
@@ -87,7 +88,7 @@ class RecommendationServiceTest {
         given(weatherService.getWeathers(37.5, 127.0)).willReturn(Mono.just(List.of()));
 
         //when & then
-        assertThatThrownBy(() -> service.recommend(userId))
+        assertThatThrownBy(() -> service.recommend(userId, Set.of()))
                 .isInstanceOf(WeatherUnavailableException.class);
     }
 
@@ -105,7 +106,7 @@ class RecommendationServiceTest {
                 .willReturn(Mono.error(new RuntimeException("기상청 API 호출 실패")));
 
         //when & then
-        assertThatThrownBy(() -> service.recommend(userId))
+        assertThatThrownBy(() -> service.recommend(userId, Set.of()))
                 .isInstanceOf(WeatherUnavailableException.class);
     }
 
@@ -123,15 +124,15 @@ class RecommendationServiceTest {
 
         given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
         given(weatherService.getWeathers(37.5, 127.0)).willReturn(Mono.just(List.of(weatherDto)));
-        given(recommendationTransactionalService.recommend(userId, 5.0, 10.0, PrecipitationType.NONE, 3))
+        given(recommendationTransactionalService.recommend(userId, 5.0, 10.0, PrecipitationType.NONE, 3, Set.of()))
                 .willReturn(List.of());
 
         //when
-        service.recommend(userId);
+        service.recommend(userId, Set.of());
 
         //then
         verify(recommendationTransactionalService)
-                .recommend(userId, 5.0, 10.0, PrecipitationType.NONE, 3);
+                .recommend(userId, 5.0, 10.0, PrecipitationType.NONE, 3, Set.of());
     }
 
     @Test
@@ -153,11 +154,11 @@ class RecommendationServiceTest {
 
         given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
         given(weatherService.getWeathers(37.5, 127.0)).willReturn(Mono.just(List.of(weatherDto)));
-        given(recommendationTransactionalService.recommend(userId, 5.0, 10.0, PrecipitationType.RAIN, 4))
+        given(recommendationTransactionalService.recommend(userId, 5.0, 10.0, PrecipitationType.RAIN, 4, Set.of()))
                 .willReturn(List.of(clothesResponse));
 
         //when
-        RecommendationResponse response = service.recommend(userId);
+        RecommendationResponse response = service.recommend(userId, Set.of());
 
         //then
         assertThat(response.weatherId()).isEqualTo(weatherId);

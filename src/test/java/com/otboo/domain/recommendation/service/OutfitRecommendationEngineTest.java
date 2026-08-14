@@ -15,6 +15,7 @@ import com.otboo.domain.weather.entity.PrecipitationType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -46,8 +47,10 @@ class OutfitRecommendationEngineTest {
         //given
         UUID ownerId = UUID.randomUUID();
         Clothes older = new Clothes(owner, "옷1", null, ClothesType.TOP);
+        ReflectionTestUtils.setField(older, "id", UUID.randomUUID());
         ReflectionTestUtils.setField(older, "createdAt", Instant.now().minusSeconds(60));
         Clothes newer = new Clothes(owner, "옷2", null, ClothesType.TOP);
+        ReflectionTestUtils.setField(newer, "id", UUID.randomUUID());
         ReflectionTestUtils.setField(newer, "createdAt", Instant.now());
 
         Map<ClothesType, List<Clothes>> candidatesByType =
@@ -59,7 +62,8 @@ class OutfitRecommendationEngineTest {
                 .willReturn(1.0);
 
         //when
-        List<Clothes> result = engine.recommend(ownerId, 10.0, 15.0, PrecipitationType.NONE, 3);
+        List<Clothes> result = engine.recommend(ownerId, 10.0, 15.0,
+                PrecipitationType.NONE, 3,  Set.of());
 
         //then
         assertThat(result).containsExactly(newer);
@@ -80,7 +84,7 @@ class OutfitRecommendationEngineTest {
 
         //when
         List<Clothes> result = engine.recommend(ownerId, 10.0, 15.0,
-                PrecipitationType.NONE, 3);
+                PrecipitationType.NONE, 3, Set.of());
 
         //then
         assertThat(result).isEmpty();
@@ -97,7 +101,7 @@ class OutfitRecommendationEngineTest {
 
         //when
         List<Clothes> result = engine.recommend(ownerId, 10.0, 15.0,
-                PrecipitationType.NONE, 3);
+                PrecipitationType.NONE, 3, Set.of());
 
         //then
         assertThat(result).isEmpty();
@@ -108,10 +112,13 @@ class OutfitRecommendationEngineTest {
         //given
         UUID ownerId = UUID.randomUUID();
         Clothes top = new Clothes(owner, "상의", null, ClothesType.TOP);
+        ReflectionTestUtils.setField(top, "id", UUID.randomUUID());
         Clothes bottom = new Clothes(owner, "하의", null,
                 ClothesType.BOTTOM);
+        ReflectionTestUtils.setField(bottom, "id", UUID.randomUUID());
         Clothes shoes = new Clothes(owner, "신발", null,
                 ClothesType.SHOES);
+        ReflectionTestUtils.setField(shoes, "id", UUID.randomUUID());
 
         Map<ClothesType, List<Clothes>> candidatesByType = Map.of(
                 ClothesType.TOP, List.of(top),
@@ -127,7 +134,7 @@ class OutfitRecommendationEngineTest {
 
         //when
         List<Clothes> result = engine.recommend(ownerId, 10.0, 15.0,
-                PrecipitationType.NONE, 3);
+                PrecipitationType.NONE, 3, Set.of());
 
         //then
         assertThat(result).containsExactlyInAnyOrder(top, bottom,
@@ -139,7 +146,9 @@ class OutfitRecommendationEngineTest {
         //given
         UUID ownerId = UUID.randomUUID();
         Clothes top = new Clothes(owner, "상의", null, ClothesType.TOP);
+        ReflectionTestUtils.setField(top, "id", UUID.randomUUID());
         Clothes outer = new Clothes(owner, "패딩", null, ClothesType.OUTER);
+        ReflectionTestUtils.setField(outer, "id", UUID.randomUUID());
 
         Map<ClothesType, List<Clothes>> candidatesByType = Map.of(
                 ClothesType.TOP, List.of(top),
@@ -154,10 +163,59 @@ class OutfitRecommendationEngineTest {
                 .willReturn(0.0);
 
         //when
-        List<Clothes> result = engine.recommend(ownerId, 25.0, 28.0, PrecipitationType.NONE, 3);
+        List<Clothes> result = engine.recommend(ownerId, 25.0, 28.0,
+                PrecipitationType.NONE, 3, Set.of());
 
         //then
         assertThat(result).containsExactly(top);
     }
+
+    @Test
+    void 제외할_의상_ID가_있으면_해당_후보는_선택되지_않는다() {
+        //given
+        UUID ownerId = UUID.randomUUID();
+        Clothes excluded = new Clothes(owner, "옷1", null, ClothesType.TOP);
+        ReflectionTestUtils.setField(excluded, "id", UUID.randomUUID());
+        Clothes remaining = new Clothes(owner, "옷2", null, ClothesType.TOP);
+        ReflectionTestUtils.setField(remaining, "id", UUID.randomUUID());
+
+    Map<ClothesType, List<Clothes>> candidatesByType = Map.of(ClothesType.TOP, List.of(excluded, remaining));
+
+    given(candidateService.getCandidatesByType(ownerId)).willReturn(candidatesByType);
+    given(combinationRule.apply(candidatesByType)).willReturn(candidatesByType);
+    given(scoreCalculator.calculateScore(eq(ClothesType.TOP), anyDouble(), anyDouble(), any(), anyInt()))
+            .willReturn(1.0);
+
+    //when
+        List<Clothes> result = engine.recommend(
+                ownerId, 10.0,15.0, PrecipitationType.NONE,
+                3, Set.of(excluded.getId())
+        );
+
+        //then
+        assertThat(result).containsExactly(remaining);
+    }
+
+    @Test
+    void 유일한_후보를_제외하면_해당_타입은_조합에서_빠진다() {
+        //given
+        UUID ownerId = UUID.randomUUID();
+        Clothes onlyTop = new Clothes(owner, "옷1", null, ClothesType.TOP);
+        ReflectionTestUtils.setField(onlyTop, "id", UUID.randomUUID());
+
+        Map<ClothesType, List<Clothes>> candidatesByType = Map.of(ClothesType.TOP, List.of(onlyTop));
+
+        given(candidateService.getCandidatesByType(ownerId)).willReturn(candidatesByType);
+        given(combinationRule.apply(candidatesByType)).willReturn(candidatesByType);
+
+        //when
+        List<Clothes> result = engine.recommend(ownerId, 10.0, 15.0,
+                PrecipitationType.NONE, 3, Set.of(onlyTop.getId())
+        );
+
+        //then
+        assertThat(result).isEmpty();
+    }
+
 
 }
