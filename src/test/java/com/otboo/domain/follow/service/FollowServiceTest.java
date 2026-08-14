@@ -525,7 +525,7 @@ class FollowServiceTest {
     given(followRepository.countFollowings(userId, null)).willReturn(0L);
     given(followSummaryCache.find(userId, currentUserId))
         .willReturn(Optional.empty());
-    
+
     FollowSummaryDto result = followService.getFollowSummary(userId, currentUserId);
 
     assertThat(result.followeeId()).isEqualTo(userId);
@@ -598,5 +598,135 @@ class FollowServiceTest {
     )).isInstanceOf(InvalidFollowCursorException.class);
 
     verifyNoInteractions(userRepository, followRepository);
+  }
+
+  @Test
+  @DisplayName("팔로우 요약 조회 - 캐시 hit이면 DB 조회 없이 캐시 응답 반환")
+  void getFollowSummary_cacheHit_returnsCachedResponse() {
+    UUID userId = UUID.randomUUID();
+    UUID currentUserId = UUID.randomUUID();
+    UUID followedByMeId = UUID.randomUUID();
+
+    FollowSummaryDto cachedResponse = new FollowSummaryDto(
+        userId,
+        10L,
+        3L,
+        true,
+        followedByMeId,
+        false
+    );
+
+    given(userRepository.existsById(userId)).willReturn(true);
+    given(followSummaryCache.find(userId, currentUserId))
+        .willReturn(Optional.of(cachedResponse));
+
+    FollowSummaryDto result = followService.getFollowSummary(userId, currentUserId);
+
+    assertThat(result).isEqualTo(cachedResponse);
+
+    verify(userRepository).existsById(userId);
+    verify(followSummaryCache).find(userId, currentUserId);
+    verify(followSummaryCache, never()).save(any(), any(), any(FollowSummaryDto.class));
+    verifyNoInteractions(followRepository, followMapper);
+  }
+
+  @Test
+  @DisplayName("팔로잉 목록 조회 - 캐시 hit이면 DB 조회 없이 캐시 응답 반환")
+  void getFollowings_cacheHit_returnsCachedResponse() {
+    UUID followerId = UUID.randomUUID();
+    UUID followeeId = UUID.randomUUID();
+    UUID followId = UUID.randomUUID();
+
+    FollowDto followDto = new FollowDto(
+        followId,
+        new UserSummary(followeeId, "followee", null),
+        new UserSummary(followerId, "follower", null)
+    );
+
+    FollowListResponse cachedResponse = new FollowListResponse(
+        List.of(followDto),
+        null,
+        null,
+        false,
+        1L,
+        "name",
+        "ASCENDING"
+    );
+
+    given(userRepository.existsById(followerId)).willReturn(true);
+    given(followListCache.findFollowings(followerId, null, null, 20, null))
+        .willReturn(Optional.of(cachedResponse));
+
+    FollowListResponse result = followService.getFollowings(
+        followerId,
+        null,
+        null,
+        20,
+        null
+    );
+
+    assertThat(result).isEqualTo(cachedResponse);
+
+    verify(userRepository).existsById(followerId);
+    verify(followListCache).findFollowings(followerId, null, null, 20, null);
+    verify(followListCache, never()).saveFollowings(
+        any(),
+        any(),
+        any(),
+        anyInt(),
+        any(),
+        any(FollowListResponse.class)
+    );
+    verifyNoInteractions(followRepository, followMapper);
+  }
+
+  @Test
+  @DisplayName("팔로워 목록 조회 - 캐시 hit이면 DB 조회 없이 캐시 응답 반환")
+  void getFollowers_cacheHit_returnsCachedResponse() {
+    UUID followeeId = UUID.randomUUID();
+    UUID followerId = UUID.randomUUID();
+    UUID followId = UUID.randomUUID();
+
+    FollowDto followDto = new FollowDto(
+        followId,
+        new UserSummary(followeeId, "followee", null),
+        new UserSummary(followerId, "follower", null)
+    );
+
+    FollowListResponse cachedResponse = new FollowListResponse(
+        List.of(followDto),
+        null,
+        null,
+        false,
+        1L,
+        "name",
+        "ASCENDING"
+    );
+
+    given(userRepository.existsById(followeeId)).willReturn(true);
+    given(followListCache.findFollowers(followeeId, null, null, 20, null))
+        .willReturn(Optional.of(cachedResponse));
+
+    FollowListResponse result = followService.getFollowers(
+        followeeId,
+        null,
+        null,
+        20,
+        null
+    );
+
+    assertThat(result).isEqualTo(cachedResponse);
+
+    verify(userRepository).existsById(followeeId);
+    verify(followListCache).findFollowers(followeeId, null, null, 20, null);
+    verify(followListCache, never()).saveFollowers(
+        any(),
+        any(),
+        any(),
+        anyInt(),
+        any(),
+        any(FollowListResponse.class)
+    );
+    verifyNoInteractions(followRepository, followMapper);
   }
 }
