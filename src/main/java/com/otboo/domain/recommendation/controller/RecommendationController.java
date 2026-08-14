@@ -3,6 +3,8 @@ package com.otboo.domain.recommendation.controller;
 import com.otboo.domain.recommendation.dto.response.RecommendationResponse;
 import com.otboo.domain.recommendation.service.RecommendationService;
 
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import lombok.RequiredArgsConstructor;
@@ -10,7 +12,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
 
 @RestController
 @RequestMapping("/api/recommendations")
@@ -21,9 +25,11 @@ public class RecommendationController {
 
     @GetMapping
     public ResponseEntity<RecommendationResponse> recommend(
-            @AuthenticationPrincipal UUID currentUserId
+            @AuthenticationPrincipal UUID currentUserId,
+            @RequestParam(required = false) List<UUID> excludeClothesIds
     ) {
-        RecommendationResponse response = recommendationService.recommend(currentUserId);
+        Set<UUID> excluded = excludeClothesIds == null ? Set.of() : Set.copyOf(excludeClothesIds);
+        RecommendationResponse response = recommendationService.recommend(currentUserId, excluded);
         return ResponseEntity.ok(response);
     }
 }
