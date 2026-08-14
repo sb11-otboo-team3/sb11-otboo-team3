@@ -19,6 +19,13 @@ repositories {
 	mavenCentral()
 }
 
+// macOS Apple Silicon에서 Reactor Netty가 macOS native DNS resolver를
+// 정상적으로 사용할 수 있도록 아키텍처별 native artifact를 추가
+def currentOs = System.getProperty('os.name').toLowerCase()
+def currentArch = System.getProperty('os.arch').toLowerCase()
+def isMacArm = currentOs.contains('mac') &&
+		(currentArch == 'aarch64' || currentArch == 'arm64')
+
 dependencies {
 	// Web
 	implementation 'org.springframework.boot:spring-boot-starter-web'
@@ -44,6 +51,15 @@ dependencies {
 	// Reactive HTTP client (WebClient) - 서블릿 웹서버는 그대로 두고 WebClient만 쓰기 위함
 	implementation 'org.springframework.boot:spring-boot-starter-webflux'
 
+	// macOS Apple Silicon용 Netty native DNS resolver
+	if (isMacArm) {
+		runtimeOnly('io.netty:netty-resolver-dns-native-macos') {
+			artifact {
+				classifier = 'osx-aarch_64'
+			}
+		}
+	}
+
 	// Cache
 	implementation 'org.springframework.boot:spring-boot-starter-cache'
 	implementation 'com.github.ben-manes.caffeine:caffeine'
@@ -64,6 +80,9 @@ dependencies {
 
 	// Redis
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+	// Kafka
+	implementation 'org.springframework.kafka:spring-kafka'
 
 	// Retry (파일 삭제 등 부수 작업 재시도)
 	implementation 'org.springframework.retry:spring-retry'
@@ -95,6 +114,7 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.security:spring-security-test'
 	testImplementation 'org.springframework.batch:spring-batch-test'
+	testImplementation 'org.springframework.kafka:spring-kafka-test'
 
 	// Test database
 	testRuntimeOnly 'com.h2database:h2'

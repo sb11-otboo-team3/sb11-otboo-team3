@@ -21,6 +21,17 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+
   batch:
     jdbc:
       initialize-schema: never
@@ -35,7 +46,7 @@ app:
   websocket:
     allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://localhost:3000,http://localhost:8080}
   admin:
-    init-password: ${ADMIN_INIT_PASSWORD:local-admin-password}
+    init-password: ${ADMIN_INIT_PASSWORD:LocalAdmin1234!}
 
 kakao:
   local:
