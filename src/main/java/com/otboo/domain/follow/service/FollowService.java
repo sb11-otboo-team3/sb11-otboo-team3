@@ -1,5 +1,7 @@
 package com.otboo.domain.follow.service;
 
+import com.otboo.domain.follow.cache.FollowListCache;
+import com.otboo.domain.follow.cache.FollowSummaryCache;
 import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.follow.dto.response.FollowListResponse;
@@ -13,7 +15,6 @@ import com.otboo.domain.follow.exception.InvalidFollowCursorException;
 import com.otboo.domain.follow.exception.SelfFollowNotAllowedException;
 import com.otboo.domain.follow.mapper.FollowMapper;
 import com.otboo.domain.follow.repository.FollowRepository;
-import com.otboo.domain.notification.entity.Notification;
 import com.otboo.domain.notification.entity.NotificationLevel;
 import com.otboo.domain.notification.event.NotificationEvent;
 import com.otboo.domain.user.entity.User;
@@ -25,6 +26,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @RequiredArgsConstructor
@@ -33,6 +36,8 @@ public class FollowService {
 
   private final FollowRepository followRepository;
   private final UserRepository userRepository;
+  private final FollowSummaryCache followSummaryCache;
+  private final FollowListCache followListCache;
   private final ApplicationEventPublisher eventPublisher;
   private final FollowMapper followMapper;
 
@@ -63,6 +68,9 @@ public class FollowService {
     Follow follow = Follow.create(follower, followee);
     Follow savedFollow = followRepository.save(follow);
 
+    // 오래된 캐시 삭제(교체 작업)
+    evictFollowCacheAfterCommit(follower.getId(), followee.getId());
+
     eventPublisher.publishEvent(
         new NotificationEvent(
             followee.getId(),
@@ -85,6 +93,12 @@ public class FollowService {
     }
 
     followRepository.delete(follow);
+
+    // 캐시 삭제
+    evictFollowCacheAfterCommit(
+        follow.getFollower().getId(),
+        follow.getFollowee().getId()
+    );
   }
 
   public FollowListResponse getFollowings(
@@ -98,6 +112,18 @@ public class FollowService {
 
     if (!userRepository.existsById(followerId)) {
       throw new FollowUserNotFoundException(followerId);
+    }
+
+    Optional<FollowListResponse> cachedResponse = followListCache.findFollowings(
+        followerId,
+        cursor,
+        idAfter,
+        limit,
+        nameLike
+    );
+
+    if (cachedResponse.isPresent()) {
+      return cachedResponse.get();
     }
 
     List<Follow> follows = followRepository.findFollowings(
@@ -127,7 +153,7 @@ public class FollowService {
 
     long totalCount = followRepository.countFollowings(followerId, nameLike);
 
-    return new FollowListResponse(
+    FollowListResponse response = new FollowListResponse(
         data,
         nextCursor,
         nextIdAfter,
@@ -136,6 +162,17 @@ public class FollowService {
         "name",
         "ASCENDING"
     );
+
+    followListCache.saveFollowings(
+        followerId,
+        cursor,
+        idAfter,
+        limit,
+        nameLike,
+        response
+    );
+
+    return response;
   }
 
   public FollowListResponse getFollowers(
@@ -149,6 +186,18 @@ public class FollowService {
 
     if (!userRepository.existsById(followeeId)) {
       throw new FollowUserNotFoundException(followeeId);
+    }
+
+    Optional<FollowListResponse> cachedResponse = followListCache.findFollowers(
+        followeeId,
+        cursor,
+        idAfter,
+        limit,
+        nameLike
+    );
+
+    if (cachedResponse.isPresent()) {
+      return cachedResponse.get();
     }
 
     List<Follow> follows = followRepository.findFollowers(
@@ -179,7 +228,7 @@ public class FollowService {
 
     long totalCount = followRepository.countFollowers(followeeId, nameLike);
 
-    return new FollowListResponse(
+    FollowListResponse response = new FollowListResponse(
         data,
         nextCursor,
         nextIdAfter,
@@ -188,12 +237,29 @@ public class FollowService {
         "name",
         "ASCENDING"
     );
+
+    followListCache.saveFollowers(
+        followeeId,
+        cursor,
+        idAfter,
+        limit,
+        nameLike,
+        response
+    );
+
+    return response;
   }
 
   public FollowSummaryDto getFollowSummary(UUID userId, UUID currentUserId){
     // 조회하려는 userId가 존재하는지 여부
     if (!userRepository.existsById(userId)) {
       throw new FollowUserNotFoundException(userId);
+    }
+
+    Optional<FollowSummaryDto> cachedSummary = followSummaryCache.find(userId, currentUserId);
+
+    if(cachedSummary.isPresent()){
+      return cachedSummary.get();
     }
 
     Follow followedByMeFollow = followRepository
@@ -210,7 +276,7 @@ public class FollowService {
         currentUserId
     );
 
-    return new FollowSummaryDto(
+    FollowSummaryDto summary = new FollowSummaryDto(
         userId,
         followRepository.countFollowers(userId, null),
         followRepository.countFollowings(userId, null),
@@ -218,6 +284,10 @@ public class FollowService {
         followedByMeId,
         followingMe
     );
+
+    followSummaryCache.save(userId, currentUserId, summary);
+
+    return summary;
   }
 
   // cursor와 idAfter는 둘 다 있거나 둘 다 없어야 함
@@ -228,5 +298,26 @@ public class FollowService {
     if (hasCursor != hasIdAfter) {
       throw new InvalidFollowCursorException();
     }
+  }
+
+  private void evictFollowCacheAfterCommit(UUID followerId, UUID followeeId) {
+    Runnable evict = () -> {
+      followSummaryCache.evictRelatedTo(followerId);
+      followSummaryCache.evictRelatedTo(followeeId);
+      followListCache.evictFollowings(followerId);
+      followListCache.evictFollowers(followeeId);
+    };
+
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+          evict.run();
+        }
+      });
+      return;
+    }
+
+    evict.run();
   }
 }
