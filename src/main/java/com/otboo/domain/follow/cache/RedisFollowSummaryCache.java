@@ -1,4 +1,4 @@
-package com.otboo.domain.follow.cache.FollowSummaryCache;
+package com.otboo.domain.follow.cache;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;

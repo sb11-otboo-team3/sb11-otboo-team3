@@ -1,4 +1,4 @@
-package com.otboo.domain.follow.cache.FollowSummaryCache;
+package com.otboo.domain.follow.cache;
 
 import com.otboo.domain.follow.dto.response.FollowSummaryDto;
 import java.util.Optional;

@@ -1,5 +1,6 @@
 package com.otboo.domain.follow.service;
 
+import com.otboo.domain.follow.cache.FollowSummaryCache;
 import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.follow.dto.response.FollowListResponse;
@@ -13,7 +14,6 @@ import com.otboo.domain.follow.exception.InvalidFollowCursorException;
 import com.otboo.domain.follow.exception.SelfFollowNotAllowedException;
 import com.otboo.domain.follow.mapper.FollowMapper;
 import com.otboo.domain.follow.repository.FollowRepository;
-import com.otboo.domain.notification.entity.Notification;
 import com.otboo.domain.notification.entity.NotificationLevel;
 import com.otboo.domain.notification.event.NotificationEvent;
 import com.otboo.domain.user.entity.User;
@@ -33,6 +33,7 @@ public class FollowService {
 
   private final FollowRepository followRepository;
   private final UserRepository userRepository;
+  private final FollowSummaryCache followSummaryCache;
   private final ApplicationEventPublisher eventPublisher;
   private final FollowMapper followMapper;
 
@@ -63,6 +64,10 @@ public class FollowService {
     Follow follow = Follow.create(follower, followee);
     Follow savedFollow = followRepository.save(follow);
 
+    // 오래된 캐시 삭제(교체 작업)
+    followSummaryCache.evictRelatedTo(follower.getId());
+    followSummaryCache.evictRelatedTo(followee.getId());
+
     eventPublisher.publishEvent(
         new NotificationEvent(
             followee.getId(),
@@ -85,6 +90,10 @@ public class FollowService {
     }
 
     followRepository.delete(follow);
+
+    // 캐시 삭제
+    followSummaryCache.evictRelatedTo(follow.getFollower().getId());
+    followSummaryCache.evictRelatedTo(follow.getFollowee().getId());
   }
 
   public FollowListResponse getFollowings(
@@ -196,6 +205,11 @@ public class FollowService {
       throw new FollowUserNotFoundException(userId);
     }
 
+    Optional<FollowSummaryDto> cachedSummary = followSummaryCache.find(userId, currentUserId);
+    if(cachedSummary.isPresent()){
+      return cachedSummary.get();
+    }
+
     Follow followedByMeFollow = followRepository
         .findByFollowerIdAndFolloweeId(currentUserId, userId)
         .orElse(null);
@@ -210,7 +224,7 @@ public class FollowService {
         currentUserId
     );
 
-    return new FollowSummaryDto(
+    FollowSummaryDto summary = new FollowSummaryDto(
         userId,
         followRepository.countFollowers(userId, null),
         followRepository.countFollowings(userId, null),
@@ -218,6 +232,10 @@ public class FollowService {
         followedByMeId,
         followingMe
     );
+
+    followSummaryCache.save(userId, currentUserId, summary);
+
+    return summary;
   }
 
   // cursor와 idAfter는 둘 다 있거나 둘 다 없어야 함

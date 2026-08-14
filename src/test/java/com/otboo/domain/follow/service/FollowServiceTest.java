@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.otboo.domain.follow.cache.FollowSummaryCache;
 import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
 import com.otboo.domain.follow.dto.response.FollowListResponse;
@@ -52,6 +53,9 @@ class FollowServiceTest {
 
   @Mock
   private FollowMapper followMapper;
+
+  @Mock
+  private FollowSummaryCache followSummaryCache;
 
   @InjectMocks
   private FollowService followService;
