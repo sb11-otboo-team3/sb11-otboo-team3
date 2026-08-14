@@ -33,7 +33,8 @@ import org.springframework.test.context.ActiveProfiles;
         partitions = 1,
         topics = {
                 KafkaIntegrationTest.TOPIC,
-                KafkaIntegrationTest.FAILURE_TOPIC
+                KafkaIntegrationTest.FAILURE_TOPIC,
+                KafkaIntegrationTest.FAILURE_DLT_TOPIC
         },
         kraft = true
 )
@@ -42,7 +43,10 @@ import org.springframework.test.context.ActiveProfiles;
 class KafkaIntegrationTest {
 
     static final String TOPIC = "otboo.kafka.smoke-test.v1";
+
     static final String FAILURE_TOPIC = "otboo.kafka.retry-test.v1";
+
+    static final String FAILURE_DLT_TOPIC = FAILURE_TOPIC + ".dlt";
 
     @Autowired
     private KafkaTemplate<String, String> kafkaTemplate;
@@ -52,6 +56,9 @@ class KafkaIntegrationTest {
 
     @Autowired
     private FailingKafkaConsumer failingKafkaConsumer;
+
+    @Autowired
+    private DltKafkaConsumer dltKafkaConsumer;
 
     @Test
     @DisplayName("Producer가 전송한 메시지를 Consumer가 정상적으로 수신한다")
@@ -70,8 +77,8 @@ class KafkaIntegrationTest {
     }
 
     @Test
-    @DisplayName("Consumer 처리 실패 시 최초 처리 후 2회 재시도한다")
-    void retryTwiceWhenConsumerProcessingFails() throws Exception {
+    @DisplayName("Consumer 처리 실패가 재시도 횟수를 초과하면 메시지를 DLT로 전송한다")
+    void sendToDltAfterRetryFailure() throws Exception {
         // given
         String message = "kafka-retry-test";
 
@@ -80,9 +87,13 @@ class KafkaIntegrationTest {
 
         // then
         boolean retried = failingKafkaConsumer.await(5, TimeUnit.SECONDS);
+        boolean sentToDlt = dltKafkaConsumer.await(5, TimeUnit.SECONDS);
 
         assertThat(retried).isTrue();
         assertThat(failingKafkaConsumer.getAttemptCount()).isEqualTo(3);
+
+        assertThat(sentToDlt).isTrue();
+        assertThat(dltKafkaConsumer.getMessage()).isEqualTo(message);
     }
 
     @TestConfiguration
@@ -98,11 +109,17 @@ class KafkaIntegrationTest {
         FailingKafkaConsumer failingKafkaConsumer() {
             return new FailingKafkaConsumer();
         }
+
+        @Bean
+        DltKafkaConsumer dltKafkaConsumer() {
+            return new DltKafkaConsumer();
+        }
     }
 
     static class TestKafkaConsumer {
 
         private final CountDownLatch latch = new CountDownLatch(1);
+
         private final AtomicReference<String> message = new AtomicReference<>();
 
         @KafkaListener(
@@ -126,6 +143,7 @@ class KafkaIntegrationTest {
     static class FailingKafkaConsumer {
 
         private final CountDownLatch latch = new CountDownLatch(3);
+
         private final AtomicInteger attemptCount = new AtomicInteger();
 
         @KafkaListener(
@@ -145,6 +163,30 @@ class KafkaIntegrationTest {
 
         int getAttemptCount() {
             return attemptCount.get();
+        }
+    }
+
+    static class DltKafkaConsumer {
+
+        private final CountDownLatch latch = new CountDownLatch(1);
+
+        private final AtomicReference<String> message = new AtomicReference<>();
+
+        @KafkaListener(
+                topics = FAILURE_DLT_TOPIC,
+                groupId = "otboo-kafka-dlt-test-consumer"
+        )
+        void consume(String payload) {
+            message.set(payload);
+            latch.countDown();
+        }
+
+        boolean await(long timeout, TimeUnit timeUnit) throws InterruptedException {
+            return latch.await(timeout, timeUnit);
+        }
+
+        String getMessage() {
+            return message.get();
         }
     }
 }
