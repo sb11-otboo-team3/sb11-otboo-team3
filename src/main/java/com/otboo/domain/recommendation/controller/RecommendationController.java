@@ -26,10 +26,11 @@ public class RecommendationController {
     @GetMapping
     public ResponseEntity<RecommendationResponse> recommend(
             @AuthenticationPrincipal UUID currentUserId,
-            @RequestParam(required = false) List<UUID> excludeClothesIds
+            @RequestParam(required = false) List<UUID> excludeClothesIds,
+            @RequestParam(required = false) UUID weatherId
     ) {
         Set<UUID> excluded = excludeClothesIds == null ? Set.of() : Set.copyOf(excludeClothesIds);
-        RecommendationResponse response = recommendationService.recommend(currentUserId, excluded);
+        RecommendationResponse response = recommendationService.recommend(currentUserId, excluded, weatherId);
         return ResponseEntity.ok(response);
     }
 }
