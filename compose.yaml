@@ -12,9 +12,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test:
-        - CMD-SHELL
-        - pg_isready -U ${DB_USERNAME:-otboo} -d ${DB_NAME:-otboo}
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-otboo} -d ${DB_NAME:-otboo}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -25,14 +23,16 @@ services:
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     healthcheck:
-      test:
-        - CMD
-        - redis-cli
-        - ping
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
       start_period: 5s
+
+  kafka:
+    image: apache/kafka:3.9.2
+    ports:
+      - "127.0.0.1:${KAFKA_PORT:-9092}:9092"
 
   # 로컬 부하테스트용. 앱 자체는 여기 안 담겨있고, 이미 로컬에서 ./gradlew bootRun(local 프로필)으로
   # 떠 있는 앱의 /actuator/prometheus를 스크래핑하는 용도.
