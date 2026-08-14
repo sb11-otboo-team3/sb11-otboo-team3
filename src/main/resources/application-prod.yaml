@@ -58,6 +58,10 @@ jwt:
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
   admin-access-expiration: ${JWT_ADMIN_ACCESS_EXPIRATION:300000}
 app:
+  kafka:
+    smoke:
+      enabled: ${KAFKA_SMOKE_ENABLED:false}
+      topic: ${KAFKA_SMOKE_TOPIC:otboo.infrastructure.connectivity-checked.v1}
   websocket:
     allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS}
   storage:
