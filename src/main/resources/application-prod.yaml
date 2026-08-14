@@ -28,6 +28,22 @@ spring:
   batch:
     jdbc:
       initialize-schema: never
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    security:
+      protocol: SASL_SSL
+    properties:
+      "[sasl.mechanism]": AWS_MSK_IAM
+      "[sasl.jaas.config]": "software.amazon.msk.auth.iam.IAMLoginModule required;"
+      "[sasl.client.callback.handler.class]": software.amazon.msk.auth.iam.IAMClientCallbackHandler
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
 springdoc:
   api-docs:
     enabled: false
