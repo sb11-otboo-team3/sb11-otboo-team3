@@ -12,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 
 import com.otboo.domain.feed.clothes.exception.FeedClothesNotFoundException;
+import com.otboo.domain.feed.core.cache.FeedAuthorListCache;
 import com.otboo.domain.feed.core.exception.FeedForbiddenException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.clothes.entity.Clothes;
@@ -84,6 +85,9 @@ class FeedCommandServiceTest {
 
   @Mock
   private FeedMapper feedMapper;
+
+  @Mock
+  private FeedAuthorListCache feedAuthorListCache;
 
   @Spy
   private ObjectMapper objectMapper = new ObjectMapper();

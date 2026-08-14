@@ -18,6 +18,7 @@ import com.otboo.domain.feed.comment.dto.response.FeedCommentDtoCursorResponse;
 import com.otboo.domain.feed.comment.entity.Comment;
 import com.otboo.domain.feed.comment.mapper.FeedCommentMapper;
 import com.otboo.domain.feed.comment.repository.FeedCommentRepository;
+import com.otboo.domain.feed.core.cache.FeedAuthorListCache;
 import com.otboo.domain.feed.core.entity.Feed;
 import com.otboo.domain.feed.core.repository.FeedRepository;
 import com.otboo.domain.user.entity.User;
@@ -51,6 +52,9 @@ class FeedCommentServiceTest {
 
   @Mock
   private FeedCommentMapper feedCommentMapper;
+
+  @Mock
+  private FeedAuthorListCache feedAuthorListCache;
 
   @Spy
   private ObjectMapper objectMapper = new ObjectMapper();
