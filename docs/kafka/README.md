@@ -78,7 +78,19 @@ otboo.notification.created.v1
 → otboo.notification.created.v1.dlt
 ```
 
-이를 통해 원본 Topic과 실패 Topic의 관계를 쉽게 식별할 수 있도록 합니다.
+DLT는 실패한 메시지의 원본 Partition을 유지하도록 구성합니다.
+
+따라서 DLT의 Partition 수는 원본 Topic의 Partition 수 이상으로 구성합니다.
+
+```text
+Source Topic Partition 수 <= DLT Partition 수
+```
+
+예를 들어 원본 Topic이 3개의 Partition을 사용한다면
+해당 DLT도 최소 3개의 Partition을 사용합니다.
+
+이를 통해 원본 Topic과 실패 Topic의 관계뿐 아니라
+실패 메시지의 Partition 매핑도 일관되게 유지합니다.
 
 ---
 

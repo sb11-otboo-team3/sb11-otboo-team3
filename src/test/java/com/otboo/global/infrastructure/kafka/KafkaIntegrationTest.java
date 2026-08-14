@@ -20,6 +20,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 @SpringBootTest(properties = {
         "spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer",
@@ -30,7 +31,7 @@ import org.springframework.test.context.ActiveProfiles;
 })
 @ActiveProfiles("test")
 @EmbeddedKafka(
-        partitions = 1,
+        partitions = 2,
         topics = {
                 KafkaIntegrationTest.TOPIC,
                 KafkaIntegrationTest.FAILURE_TOPIC,
@@ -77,13 +78,15 @@ class KafkaIntegrationTest {
     }
 
     @Test
-    @DisplayName("Consumer 처리 실패가 재시도 횟수를 초과하면 메시지를 DLT로 전송한다")
+    @DisplayName("Consumer 처리 실패가 재시도 횟수를 초과하면 같은 Partition의 DLT로 전송한다")
     void sendToDltAfterRetryFailure() throws Exception {
         // given
         String message = "kafka-retry-test";
+        int partition = 1;
 
         // when
-        kafkaTemplate.send(FAILURE_TOPIC, message).get(5, TimeUnit.SECONDS);
+        kafkaTemplate.send(FAILURE_TOPIC, partition, null, message)
+                .get(5, TimeUnit.SECONDS);
 
         // then
         boolean retried = failingKafkaConsumer.await(5, TimeUnit.SECONDS);
@@ -94,6 +97,7 @@ class KafkaIntegrationTest {
 
         assertThat(sentToDlt).isTrue();
         assertThat(dltKafkaConsumer.getMessage()).isEqualTo(message);
+        assertThat(dltKafkaConsumer.getPartition()).isEqualTo(partition);
     }
 
     @TestConfiguration
@@ -172,12 +176,15 @@ class KafkaIntegrationTest {
 
         private final AtomicReference<String> message = new AtomicReference<>();
 
+        private final AtomicInteger partition = new AtomicInteger(-1);
+
         @KafkaListener(
                 topics = FAILURE_DLT_TOPIC,
                 groupId = "otboo-kafka-dlt-test-consumer"
         )
-        void consume(String payload) {
-            message.set(payload);
+        void consume(ConsumerRecord<String, String> record) {
+            message.set(record.value());
+            partition.set(record.partition());
             latch.countDown();
         }
 
@@ -187,6 +194,10 @@ class KafkaIntegrationTest {
 
         String getMessage() {
             return message.get();
+        }
+
+        int getPartition() {
+            return partition.get();
         }
     }
 }
