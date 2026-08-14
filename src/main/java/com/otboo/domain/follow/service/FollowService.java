@@ -1,5 +1,6 @@
 package com.otboo.domain.follow.service;
 
+import com.otboo.domain.follow.cache.FollowListCache;
 import com.otboo.domain.follow.cache.FollowSummaryCache;
 import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
@@ -34,6 +35,7 @@ public class FollowService {
   private final FollowRepository followRepository;
   private final UserRepository userRepository;
   private final FollowSummaryCache followSummaryCache;
+  private final FollowListCache followListCache;
   private final ApplicationEventPublisher eventPublisher;
   private final FollowMapper followMapper;
 
@@ -67,6 +69,8 @@ public class FollowService {
     // 오래된 캐시 삭제(교체 작업)
     followSummaryCache.evictRelatedTo(follower.getId());
     followSummaryCache.evictRelatedTo(followee.getId());
+    followListCache.evictFollowings(follower.getId());
+    followListCache.evictFollowers(followee.getId());
 
     eventPublisher.publishEvent(
         new NotificationEvent(
@@ -94,6 +98,8 @@ public class FollowService {
     // 캐시 삭제
     followSummaryCache.evictRelatedTo(follow.getFollower().getId());
     followSummaryCache.evictRelatedTo(follow.getFollowee().getId());
+    followListCache.evictFollowings(follow.getFollower().getId());
+    followListCache.evictFollowers(follow.getFollowee().getId());
   }
 
   public FollowListResponse getFollowings(
@@ -107,6 +113,18 @@ public class FollowService {
 
     if (!userRepository.existsById(followerId)) {
       throw new FollowUserNotFoundException(followerId);
+    }
+
+    Optional<FollowListResponse> cachedResponse = followListCache.findFollowings(
+        followerId,
+        cursor,
+        idAfter,
+        limit,
+        nameLike
+    );
+
+    if (cachedResponse.isPresent()) {
+      return cachedResponse.get();
     }
 
     List<Follow> follows = followRepository.findFollowings(
@@ -136,7 +154,7 @@ public class FollowService {
 
     long totalCount = followRepository.countFollowings(followerId, nameLike);
 
-    return new FollowListResponse(
+    FollowListResponse response = new FollowListResponse(
         data,
         nextCursor,
         nextIdAfter,
@@ -145,6 +163,17 @@ public class FollowService {
         "name",
         "ASCENDING"
     );
+
+    followListCache.saveFollowings(
+        followerId,
+        cursor,
+        idAfter,
+        limit,
+        nameLike,
+        response
+    );
+
+    return response;
   }
 
   public FollowListResponse getFollowers(
@@ -158,6 +187,18 @@ public class FollowService {
 
     if (!userRepository.existsById(followeeId)) {
       throw new FollowUserNotFoundException(followeeId);
+    }
+
+    Optional<FollowListResponse> cachedResponse = followListCache.findFollowers(
+        followeeId,
+        cursor,
+        idAfter,
+        limit,
+        nameLike
+    );
+
+    if (cachedResponse.isPresent()) {
+      return cachedResponse.get();
     }
 
     List<Follow> follows = followRepository.findFollowers(
@@ -188,7 +229,7 @@ public class FollowService {
 
     long totalCount = followRepository.countFollowers(followeeId, nameLike);
 
-    return new FollowListResponse(
+    FollowListResponse response = new FollowListResponse(
         data,
         nextCursor,
         nextIdAfter,
@@ -197,6 +238,17 @@ public class FollowService {
         "name",
         "ASCENDING"
     );
+
+    followListCache.saveFollowers(
+        followeeId,
+        cursor,
+        idAfter,
+        limit,
+        nameLike,
+        response
+    );
+
+    return response;
   }
 
   public FollowSummaryDto getFollowSummary(UUID userId, UUID currentUserId){
@@ -206,6 +258,7 @@ public class FollowService {
     }
 
     Optional<FollowSummaryDto> cachedSummary = followSummaryCache.find(userId, currentUserId);
+
     if(cachedSummary.isPresent()){
       return cachedSummary.get();
     }

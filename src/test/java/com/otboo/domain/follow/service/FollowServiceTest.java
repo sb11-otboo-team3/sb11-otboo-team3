@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.otboo.domain.follow.cache.FollowListCache;
 import com.otboo.domain.follow.cache.FollowSummaryCache;
 import com.otboo.domain.follow.dto.request.FollowCreateRequest;
 import com.otboo.domain.follow.dto.response.FollowDto;
@@ -56,6 +57,9 @@ class FollowServiceTest {
 
   @Mock
   private FollowSummaryCache followSummaryCache;
+
+  @Mock
+  private FollowListCache followListCache;
 
   @InjectMocks
   private FollowService followService;
@@ -171,11 +175,13 @@ class FollowServiceTest {
   void cancelFollow_success() {
     UUID followId = UUID.randomUUID();
     UUID currentUserId = UUID.randomUUID();
+    UUID followeeId = UUID.randomUUID();
 
     User follower = User.create("follower@test.com", "follower", "password");
     User followee = User.create("followee@test.com", "followee", "password");
 
     ReflectionTestUtils.setField(follower, "id", currentUserId);
+    ReflectionTestUtils.setField(followee, "id", followeeId);
 
     Follow follow = Follow.create(follower, followee);
 
@@ -184,6 +190,10 @@ class FollowServiceTest {
     followService.cancelFollow(followId, follower.getId());
 
     verify(followRepository).delete(follow);
+    verify(followSummaryCache).evictRelatedTo(currentUserId);
+    verify(followSummaryCache).evictRelatedTo(followeeId);
+    verify(followListCache).evictFollowings(currentUserId);
+    verify(followListCache).evictFollowers(followeeId);
   }
 
   @Test
@@ -252,6 +262,8 @@ class FollowServiceTest {
     );
 
     given(userRepository.existsById(followerId)).willReturn(true);
+    given(followListCache.findFollowings(followerId, null, null, 2, null))
+        .willReturn(Optional.empty());
     given(followRepository.findFollowings(followerId, null, null, 3, null))
         .willReturn(List.of(follow1, follow2, follow3));
     given(followMapper.toDtos(List.of(follow1, follow2)))
@@ -277,6 +289,7 @@ class FollowServiceTest {
 
     verify(followRepository).findFollowings(followerId, null, null, 3, null);
     verify(followRepository).countFollowings(followerId, null);
+    verify(followListCache).saveFollowings(followerId, null, null, 2, null, result);
   }
 
   @Test
@@ -303,6 +316,8 @@ class FollowServiceTest {
         .willReturn(List.of(followDto));
     given(followRepository.countFollowings(followerId, null))
         .willReturn(1L);
+    given(followListCache.findFollowings(followerId, null, null, 2, null))
+        .willReturn(Optional.empty());
 
     FollowListResponse result = followService.getFollowings(
         followerId,
@@ -374,6 +389,8 @@ class FollowServiceTest {
         .willReturn(List.of(followDto1, followDto2));
     given(followRepository.countFollowers(followeeId, null))
         .willReturn(3L);
+    given(followListCache.findFollowers(followeeId, null, null, 2, null))
+        .willReturn(Optional.empty());
 
     FollowListResponse result = followService.getFollowers(
         followeeId,
@@ -411,6 +428,8 @@ class FollowServiceTest {
     );
 
     given(userRepository.existsById(followeeId)).willReturn(true);
+    given(followListCache.findFollowers(followeeId, null, null, 2, null))
+        .willReturn(Optional.empty());
     given(followRepository.findFollowers(followeeId, null, null, 3, null))
         .willReturn(List.of(follow));
     given(followMapper.toDtos(List.of(follow)))
@@ -431,6 +450,8 @@ class FollowServiceTest {
     assertThat(result.nextCursor()).isNull();
     assertThat(result.nextIdAfter()).isNull();
     assertThat(result.totalCount()).isEqualTo(1L);
+
+    verify(followListCache).saveFollowers(followeeId, null, null, 2, null, result);
   }
 
   @Test
@@ -476,6 +497,8 @@ class FollowServiceTest {
         .willReturn(true);
     given(followRepository.countFollowers(userId, null)).willReturn(5L);
     given(followRepository.countFollowings(userId, null)).willReturn(3L);
+    given(followSummaryCache.find(userId, currentUserId))
+        .willReturn(Optional.empty());
 
     FollowSummaryDto result = followService.getFollowSummary(userId, currentUserId);
 
@@ -500,7 +523,9 @@ class FollowServiceTest {
         .willReturn(false);
     given(followRepository.countFollowers(userId, null)).willReturn(0L);
     given(followRepository.countFollowings(userId, null)).willReturn(0L);
-
+    given(followSummaryCache.find(userId, currentUserId))
+        .willReturn(Optional.empty());
+    
     FollowSummaryDto result = followService.getFollowSummary(userId, currentUserId);
 
     assertThat(result.followeeId()).isEqualTo(userId);
