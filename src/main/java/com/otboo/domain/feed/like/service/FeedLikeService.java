@@ -1,5 +1,6 @@
 package com.otboo.domain.feed.like.service;
 
+import com.otboo.domain.feed.core.cache.FeedAuthorListCache;
 import com.otboo.domain.feed.core.entity.Feed;
 import com.otboo.domain.feed.core.exception.FeedNotFoundException;
 import com.otboo.domain.feed.core.exception.FeedUserNotFoundException;
@@ -18,6 +19,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @RequiredArgsConstructor
@@ -27,6 +30,7 @@ public class FeedLikeService {
   private final UserRepository userRepository;
   private final FeedRepository feedRepository;
   private final FeedLikeRepository feedLikeRepository;
+  private final FeedAuthorListCache feedAuthorListCache;
   private final ApplicationEventPublisher eventPublisher;
 
   @Transactional
@@ -41,7 +45,7 @@ public class FeedLikeService {
       FeedLike feedLike = FeedLike.create(feed, user);
       feedLikeRepository.saveAndFlush(feedLike);
       feedRepository.increaseLikeCount(feedId);
-
+      evictAuthorFeedsAfterCommit(feed.getAuthor().getId());
       if (!feed.getAuthor().getId().equals(currentUserId)) {
         eventPublisher.publishEvent(
             new NotificationEvent(
@@ -62,7 +66,7 @@ public class FeedLikeService {
     userRepository.findById(currentUserId)
         .orElseThrow(() -> new FeedUserNotFoundException(currentUserId));
 
-    feedRepository.findByIdAndDeletedAtIsNull(feedId)
+    Feed feed = feedRepository.findByIdAndDeletedAtIsNull(feedId)
         .orElseThrow(() -> new FeedNotFoundException(feedId));
 
     long deletedCount = feedLikeRepository.deleteByFeedIdAndUserId(feedId, currentUserId);
@@ -72,5 +76,23 @@ public class FeedLikeService {
     }
 
     feedRepository.decreaseLikeCount(feedId);
+
+    evictAuthorFeedsAfterCommit(feed.getAuthor().getId());
+  }
+
+  private void evictAuthorFeedsAfterCommit(UUID authorId) {
+    Runnable evict = () -> feedAuthorListCache.evictAuthorFeeds(authorId);
+
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+          evict.run();
+        }
+      });
+      return;
+    }
+
+    evict.run();
   }
 }

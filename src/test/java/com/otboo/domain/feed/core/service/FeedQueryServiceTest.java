@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 
+import com.otboo.domain.feed.core.cache.FeedAuthorListCache;
 import com.otboo.domain.feed.core.exception.InvalidFeedCursorException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
@@ -64,6 +65,9 @@ class FeedQueryServiceTest {
 
   @Mock
   private FeedMapper feedMapper;
+
+  @Mock
+  private FeedAuthorListCache feedAuthorListCache;
 
   @Spy
   private ObjectMapper objectMapper = new ObjectMapper();

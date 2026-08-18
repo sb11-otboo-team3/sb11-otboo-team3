@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
+import com.otboo.domain.feed.core.cache.FeedAuthorListCache;
 import com.otboo.domain.notification.event.NotificationEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import com.otboo.domain.feed.core.exception.FeedNotFoundException;
@@ -47,6 +48,9 @@ class FeedLikeServiceTest {
 
   @Mock
   private ApplicationEventPublisher eventPublisher;
+
+  @Mock
+  private FeedAuthorListCache feedAuthorListCache;
 
   @Spy
   private ObjectMapper objectMapper = new ObjectMapper();
