@@ -7,12 +7,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 
 @Service
@@ -23,6 +25,7 @@ public class OutfitRecommendationEngine {
             ClothesType.TOP, ClothesType.BOTTOM, ClothesType.DRESS, ClothesType.OUTER, ClothesType.SHOES);
 
     private static final double MINIMUM_INCLUSION_SCORE = 0.0;
+    private static final int TOP_CANDIDATE_COUNT = 3;
 
     private final RecommendationCandidateService candidateService;
     private final OutfitCombinationRule combinationRule;
@@ -33,8 +36,7 @@ public class OutfitRecommendationEngine {
             double minTemperature,
             double maxTemperature,
             PrecipitationType precipitationType,
-            int temperatureSensitivity,
-            Set<UUID> excludeClothesIds
+            int temperatureSensitivity
     ) {
         Map<ClothesType, List<Clothes>> candidatedByType =
                 combinationRule.apply(candidateService.getCandidatesByType(ownerId));
@@ -45,11 +47,7 @@ public class OutfitRecommendationEngine {
                 continue;
             }
 
-            List<Clothes> candidates = entry.getValue().stream()
-                            .filter(clothes -> !excludeClothesIds.contains(clothes.getId()))
-                                    .toList();
-
-            pickBest(candidates, minTemperature, maxTemperature, precipitationType, temperatureSensitivity)
+            pickBest(entry.getValue(), minTemperature, maxTemperature, precipitationType, temperatureSensitivity)
                     .ifPresent(combination::add);
         }
 
@@ -63,18 +61,30 @@ public class OutfitRecommendationEngine {
             PrecipitationType precipitationType,
             int temperatureSensitivity
     ) {
-        return candidates.stream()
+        List<ScoredClothes> scored = new ArrayList<>(candidates.stream()
                 .map(clothes -> new ScoredClothes(
                         clothes,
                         scoreCalculator.calculateScore(
                                 clothes.getType(), minTemperature, maxTemperature, precipitationType, temperatureSensitivity
                         )
                 ))
-                .filter(scored -> scored.score() > MINIMUM_INCLUSION_SCORE)
-                .max(Comparator
-                        .comparingDouble(ScoredClothes::score)
-                        .thenComparing(scored -> scored.clothes().getCreatedAt()))
-                .map(ScoredClothes::clothes);
+                .filter(s -> s.score() > MINIMUM_INCLUSION_SCORE)
+                .toList());
+
+        // 동점 후보가 항상 같은 순서로 잘리지 않도록, 점수 정렬 전에 먼저 섞는다.
+        Collections.shuffle(scored);
+
+        List<Clothes> topCandidates = scored.stream()
+                .sorted(Comparator.comparingDouble(ScoredClothes::score).reversed())
+                .map(ScoredClothes::clothes)
+                .limit(TOP_CANDIDATE_COUNT)
+                .toList();
+
+        if (topCandidates.isEmpty()) {
+            return Optional.empty();
+        }
+
+        return Optional.of(topCandidates.get(ThreadLocalRandom.current().nextInt(topCandidates.size())));
     }
 
     private record ScoredClothes(Clothes clothes, double score) {

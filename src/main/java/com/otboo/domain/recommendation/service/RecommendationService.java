@@ -15,7 +15,6 @@ import com.otboo.domain.weather.exception.WeatherNotFoundException;
 import com.otboo.domain.weather.service.WeatherService;
 
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 import lombok.RequiredArgsConstructor;
@@ -35,7 +34,7 @@ public class RecommendationService {
 
     // 날씨 API 블로킹 호출 중에는 DB 트랜잭션을 점유하지 않는다.
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public RecommendationResponse recommend(UUID userId, Set<UUID> excludeClothesIds, UUID weatherId) {
+    public RecommendationResponse recommend(UUID userId, UUID weatherId) {
         Profile profile = profileRepository.findById(userId)
                 .orElseThrow(() -> new ProfileNotFoundException(userId));
 
@@ -65,8 +64,7 @@ public class RecommendationService {
                         today.temperature().min(),
                         today.temperature().max(),
                         today.precipitation().type(),
-                        temperatureSensitivity,
-                        excludeClothesIds
+                        temperatureSensitivity
                 );
 
         return new RecommendationResponse(today.id(), userId, clothes);

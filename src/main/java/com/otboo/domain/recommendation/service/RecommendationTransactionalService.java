@@ -14,7 +14,6 @@ import com.otboo.domain.weather.entity.PrecipitationType;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -37,11 +36,10 @@ public class RecommendationTransactionalService {
             double minTemperature,
             double maxTemperature,
             PrecipitationType precipitationType,
-            int temperatureSensitivity,
-            Set<UUID> excludeClothesIds
+            int temperatureSensitivity
     ) {
         List<Clothes> combination = recommendationEngine.recommend(
-                ownerId, minTemperature, maxTemperature, precipitationType, temperatureSensitivity, excludeClothesIds
+                ownerId, minTemperature, maxTemperature, precipitationType, temperatureSensitivity
         );
 
         List<ClothesAttribute> attributes = clothesAttributeRepository.findByClothesIn(combination);
