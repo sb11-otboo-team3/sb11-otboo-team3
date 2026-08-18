@@ -9,6 +9,7 @@ import com.otboo.domain.feed.core.entity.Feed;
 import com.otboo.domain.feed.clothes.entity.FeedClothes;
 import com.otboo.domain.user.mapper.UserSummaryMapper;
 import com.otboo.domain.weather.dto.WeatherSummaryDto;
+import com.otboo.global.infrastructure.storage.FileStorage;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Component;
 public class FeedMapper {
 
   private final UserSummaryMapper userSummaryMapper;
+  private final FileStorage fileStorage;
 
   public FeedDto toDto(
       Feed feed,
@@ -67,7 +69,7 @@ public class FeedMapper {
     return new FeedOotdDto(
         clothes.getId(),
         clothes.getName(),
-        clothes.getImageKey(),
+        resolveImageUrl(clothes.getImageKey()),
         clothes.getType(),
         toAttributeResponses(
             attributesByClothesId.getOrDefault(clothes.getId(), List.of()),
@@ -97,5 +99,13 @@ public class FeedMapper {
         selectableValuesByDefinitionId.getOrDefault(definitionId, List.of()),
         attribute.getValue()
     );
+  }
+
+  private String resolveImageUrl(String imageKey) {
+    if (imageKey == null || imageKey.isBlank()) {
+      return null;
+    }
+
+    return fileStorage.generateReadUrl(imageKey);
   }
 }

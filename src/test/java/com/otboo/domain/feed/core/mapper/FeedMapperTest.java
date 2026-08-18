@@ -1,8 +1,10 @@
 package com.otboo.domain.feed.core.mapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,6 +26,7 @@ import com.otboo.domain.weather.dto.WeatherSummaryDto;
 import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
 import com.otboo.domain.weather.entity.Weather;
+import com.otboo.global.infrastructure.storage.FileStorage;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +44,9 @@ class FeedMapperTest {
 
   @Mock
   private UserSummaryMapper userSummaryMapper;
+
+  @Mock
+  private FileStorage fileStorage;
 
   @InjectMocks
   private FeedMapper feedMapper;
@@ -62,6 +68,8 @@ class FeedMapperTest {
 
     UserSummary authorSummary = new UserSummary(authorId, "author", "profile-image");
     given(userSummaryMapper.toUserSummary(author)).willReturn(authorSummary);
+    given(fileStorage.generateReadUrl("clothes-image-key"))
+        .willReturn("https://example.com/clothes-image.jpg");
 
     WeatherSummaryDto weatherSummary = new WeatherSummaryDto(
         weatherId,
@@ -121,7 +129,7 @@ class FeedMapperTest {
     FeedOotdDto ootd = result.ootds().get(0);
     assertThat(ootd.clothesId()).isEqualTo(clothesId);
     assertThat(ootd.name()).isEqualTo("테스트 상의");
-    assertThat(ootd.imageUrl()).isEqualTo("clothes-image-key");
+    assertThat(ootd.imageUrl()).isEqualTo("https://example.com/clothes-image.jpg");
     assertThat(ootd.type()).isEqualTo(ClothesType.TOP);
 
     assertThat(ootd.attributes()).hasSize(1);
@@ -133,6 +141,7 @@ class FeedMapperTest {
     assertThat(attributeResponse.value()).isEqualTo("빨강");
 
     verify(userSummaryMapper).toUserSummary(author);
+    verify(fileStorage).generateReadUrl("clothes-image-key");
   }
 
   @Test
@@ -174,6 +183,10 @@ class FeedMapperTest {
 
     assertThat(result.ootds()).hasSize(1);
     assertThat(result.ootds().get(0).attributes()).isEmpty();
+    assertThat(result.ootds().get(0).imageUrl()).isNull();
     assertThat(result.likedByMe()).isFalse();
+
+    verify(userSummaryMapper).toUserSummary(author);
+    verify(fileStorage, never()).generateReadUrl(any());
   }
 }
