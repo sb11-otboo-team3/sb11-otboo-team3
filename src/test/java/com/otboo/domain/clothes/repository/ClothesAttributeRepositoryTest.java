@@ -90,4 +90,52 @@ public class ClothesAttributeRepositoryTest {
         );
     }
 
+    @Test
+    void 속성_삭제_직후_flush_없이_같은_정의로_재저장하면_유니크_제약_위반이_발생한다() {
+        // 버그 재현: Hibernate는 기본적으로 INSERT를 DELETE보다 먼저 flush하므로,
+        // deleteByClothes() 다음에 flush 없이 바로 같은 정의로 저장하면 실패한다.
+        //given
+        User owner = userRepository.save(User.create(
+                "owner4@test.com", "철수", "hash"));
+        Clothes clothes = clothesRepository.save(new Clothes(
+                owner, "셔츠", null, ClothesType.TOP));
+        ClothesAttributeDefinition definition =
+                definitionRepository.save(new ClothesAttributeDefinition("핏"));
+        clothesAttributeRepository.saveAndFlush(new ClothesAttribute(clothes, definition, "슬림"));
+
+        //when
+        clothesAttributeRepository.deleteByClothes(clothes);
+
+        //then
+        assertThrows(DataIntegrityViolationException.class, () ->
+                clothesAttributeRepository.saveAndFlush(new ClothesAttribute(clothes, definition, "오버핏"))
+        );
+    }
+
+    @Test
+    void 속성_삭제_직후_flush하면_같은_정의로_재저장할_수_있다() {
+        // 수정 확인: deleteByClothes() 다음에 명시적으로 flush를 호출하면
+        // 삭제가 먼저 DB에 반영되어 같은 정의로도 정상 저장된다.
+        //given
+        User owner = userRepository.save(User.create(
+                "owner5@test.com", "철수", "hash"));
+        Clothes clothes = clothesRepository.save(new Clothes(
+                owner, "셔츠", null, ClothesType.TOP));
+        ClothesAttributeDefinition definition =
+                definitionRepository.save(new ClothesAttributeDefinition("핏"));
+        clothesAttributeRepository.saveAndFlush(new ClothesAttribute(clothes, definition, "슬림"));
+
+        //when
+        clothesAttributeRepository.deleteByClothes(clothes);
+        clothesAttributeRepository.flush();
+        ClothesAttribute saved = clothesAttributeRepository.saveAndFlush(
+                new ClothesAttribute(clothes, definition, "오버핏"));
+
+        //then
+        List<ClothesAttribute> result = clothesAttributeRepository.findByClothes(clothes);
+        assertEquals(1, result.size());
+        assertEquals(saved.getId(), result.get(0).getId());
+        assertEquals("오버핏", result.get(0).getValue());
+    }
+
 }

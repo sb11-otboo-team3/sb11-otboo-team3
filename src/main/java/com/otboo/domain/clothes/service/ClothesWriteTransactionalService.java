@@ -86,6 +86,9 @@ public class ClothesWriteTransactionalService {
 
         clothes.update(request.name().trim(), request.type());
         clothesAttributeRepository.deleteByClothes(clothes);
+        // Hibernate는 기본적으로 INSERT를 DELETE보다 먼저 flush하므로, 삭제를 즉시 반영해두지 않으면
+        // 기존과 동일한 (clothes_id, definition_id) 조합을 다시 저장할 때 유니크 제약 위반이 발생한다.
+        clothesAttributeRepository.flush();
 
         List<ClothesAttributeRequest> attributeRequests =
                 request.attributes() == null ? List.of() : request.attributes();
