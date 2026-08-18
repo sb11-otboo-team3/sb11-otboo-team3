@@ -179,15 +179,15 @@ Kafka를 기본 해결책으로 가정하지 않고 실제 검증 결과를 바�
 
 ## 9. 운영 환경
 
-운영 Kafka는 Amazon MSK Provisioned를 사용합니다.
+운영 Kafka는 Amazon MSK Provisioned Standard를 사용합니다.
 
-현재 프로젝트의 규모와 운영 기간을 고려하여 다음 구성을 기준으로 합니다.
+실제 운영 환경은 다음 구성으로 구축했습니다.
 
 ```text
-서비스: Amazon MSK Provisioned
+Service: Amazon MSK Provisioned
 Broker Type: Standard
 Kafka Version: 3.9.x
-Metadata Mode: KRaft
+Metadata Mode: ZooKeeper
 Broker Size: kafka.t3.small
 Availability Zones: 2
 Brokers per AZ: 1
@@ -196,11 +196,24 @@ Authentication: IAM
 Public Access: 비활성화
 ```
 
-MSK는 ECS 애플리케이션과 동일한 VPC 내부에서 연결하고,
-인터넷에 Broker를 직접 공개하지 않습니다.
+최초에는 `Kafka 3.9.x + KRaft + kafka.t3.small` 구성을 검토했으나,
+실제 MSK 생성 과정에서 해당 조합의 Instance Type이 지원되지 않는 것을 확인했습니다.
 
-애플리케이션의 Kafka 인증에는 별도의 사용자 이름과 비밀번호를 두지 않고
-ECS Task Role 기반 IAM 인증을 사용합니다.
+KRaft에서 사용할 수 있는 더 큰 Broker Instance는
+현재 프로젝트의 규모와 운영 기간에 비해 비용 증가 폭이 크다고 판단하여,
+최종 운영 환경은 `Kafka 3.9.x + ZooKeeper + kafka.t3.small × 2`로 구성했습니다.
+
+MSK는 ECS 애플리케이션과 동일한 VPC 내부에서 연결하며
+Broker를 Public Internet에 직접 공개하지 않습니다.
+
+IAM 인증 연결은 다음 구성을 사용합니다.
+
+```text
+Security Protocol: SASL_SSL
+SASL Mechanism: AWS_MSK_IAM
+Port: 9098
+Authentication Identity: ECS Task Role
+```
 
 운영 Kafka 연결 주소는 다음 환경변수로 주입합니다.
 
@@ -208,16 +221,13 @@ ECS Task Role 기반 IAM 인증을 사용합니다.
 KAFKA_BOOTSTRAP_SERVERS
 ```
 
-Broker 주소는 소스 코드에 직접 작성하지 않습니다.
+Broker 주소와 AWS 인증정보는 소스 코드에 직접 작성하지 않습니다.
 
-IAM 인증을 위한 권한은 ECS Task Role에 최소 권한으로 부여하며,
-Kafka Produce·Consume에 필요한 권한만 허용하는 것을 원칙으로 합니다.
+Consumer Group은 각 Consumer의 목적에 따라 결정하므로
+운영 공통 설정에는 전역 `group-id`를 지정하지 않습니다.
 
-IAM 인증을 사용하므로 Kafka 사용자 이름이나 비밀번호를
-Secrets Manager 또는 Parameter Store에 별도로 저장하지 않습니다.
+실제 MSK Cluster, Subnet, Security Group, IAM Policy,
+ECS 연결, 운영 Produce·Consume 검증, 모니터링 및 삭제 절차는
+다음 문서에서 관리합니다.
 
-실제 MSK Cluster, Subnet, Security Group, ECS 연결 및 Topic 생성은
-도메인 Kafka 적용 또는 운영 Kafka 구축 이슈에서 구성하고 검증합니다.
-
-MSK 실제 구축 시 `docs/aws/msk/README.md`를 생성하여
-AWS 리소스 구성과 검증 결과를 별도로 기록합니다.
+[Amazon MSK Provisioned 운영 Kafka 구성](../aws/msk/README.md)

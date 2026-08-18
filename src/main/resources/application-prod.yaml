@@ -28,6 +28,22 @@ spring:
   batch:
     jdbc:
       initialize-schema: never
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    security:
+      protocol: SASL_SSL
+    properties:
+      "[sasl.mechanism]": AWS_MSK_IAM
+      "[sasl.jaas.config]": "software.amazon.msk.auth.iam.IAMLoginModule required;"
+      "[sasl.client.callback.handler.class]": software.amazon.msk.auth.iam.IAMClientCallbackHandler
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
 springdoc:
   api-docs:
     enabled: false
@@ -42,6 +58,10 @@ jwt:
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
   admin-access-expiration: ${JWT_ADMIN_ACCESS_EXPIRATION:300000}
 app:
+  kafka:
+    smoke:
+      enabled: ${KAFKA_SMOKE_ENABLED:false}
+      topic: ${KAFKA_SMOKE_TOPIC:otboo.infrastructure.connectivity-checked.v1}
   websocket:
     allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS}
   storage:

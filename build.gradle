@@ -84,6 +84,9 @@ dependencies {
 	// Kafka
 	implementation 'org.springframework.kafka:spring-kafka'
 
+	// Amazon MSK IAM 인증
+	implementation 'software.amazon.msk:aws-msk-iam-auth:2.3.6'
+
 	// Retry (파일 삭제 등 부수 작업 재시도)
 	implementation 'org.springframework.retry:spring-retry'
 	implementation 'org.springframework.boot:spring-boot-starter-aop'
