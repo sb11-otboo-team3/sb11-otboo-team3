@@ -317,7 +317,7 @@ docs/kafka/README.md
 
 ### 운영 연결 검증 Topic
 
-MSK 연결 검증에는 다음 Topic을 사용했습니다.
+MSK 연결 검증에는 다음 Topic을 사용합니다.
 
 ```text
 otboo.infrastructure.connectivity-checked.v1
@@ -329,6 +329,39 @@ otboo.infrastructure.connectivity-checked.v1
 Partition Count: 1
 Replication Factor: 2
 ```
+
+Smoke Test를 실행하기 전에 운영자 권한으로
+해당 Topic이 존재하며 기대한 구성인지 확인합니다.
+
+```bash
+aws kafka describe-topic \
+  --cluster-arn "$MSK_CLUSTER_ARN" \
+  --topic-name otboo.infrastructure.connectivity-checked.v1 \
+  --profile otboo \
+  --region ap-northeast-2 \
+  --query '{
+    TopicName:TopicName,
+    Status:Status,
+    PartitionCount:PartitionCount,
+    ReplicationFactor:ReplicationFactor
+  }' \
+  --output table
+```
+
+다음 상태를 확인한 후 one-off ECS Task를 실행합니다.
+
+```text
+TopicName: otboo.infrastructure.connectivity-checked.v1
+Status: ACTIVE
+PartitionCount: 1
+ReplicationFactor: 2
+```
+
+Topic이 존재하지 않거나 설정이 다르면
+Smoke Task를 실행하지 않고 운영자 권한으로 Topic 구성을 먼저 수정합니다.
+
+애플리케이션 Task Role에는 `CreateTopic` 권한을 제공하지 않으므로
+Topic 생성 및 수정은 운영자 권한으로 수행합니다.
 
 이 Topic은 특정 비즈니스 도메인에 종속되지 않고
 인프라 연결 상태를 확인하기 위한 목적으로 사용합니다.
@@ -779,14 +812,36 @@ MSK Cluster는 바로 삭제하지 않습니다.
 
 Cluster 이름을 기준으로 ARN을 조회합니다.
 
-```bash
-MSK_CLUSTER_ARN=$(aws kafka list-clusters-v2 \
-  --cluster-name-filter otboo-prod-msk \
-  --profile otboo \
-  --region ap-northeast-2 \
-  --query 'ClusterInfoList[0].ClusterArn' \
-  --output text)
-```
+MSK_CLUSTER_NAME="otboo-prod-msk"
+
+MSK_CLUSTER_ARNS="$(
+aws kafka list-clusters-v2 \
+--cluster-name-filter "$MSK_CLUSTER_NAME" \
+--cluster-type-filter PROVISIONED \
+--profile otboo \
+--region ap-northeast-2 \
+--query "ClusterInfoList[?ClusterName=='${MSK_CLUSTER_NAME}'].ClusterArn" \
+--output text
+)"
+
+MSK_CLUSTER_COUNT="$(
+printf '%s\n' "$MSK_CLUSTER_ARNS" \
+| tr '\t' '\n' \
+| sed '/^$/d;/^None$/d' \
+| wc -l \
+| tr -d ' '
+)"
+
+if [ "$MSK_CLUSTER_COUNT" -ne 1 ]; then
+echo "MSK Cluster가 정확히 1개 조회되지 않았습니다."
+exit 1
+fi
+
+MSK_CLUSTER_ARN="$(
+printf '%s\n' "$MSK_CLUSTER_ARNS" \
+| tr '\t' '\n' \
+| sed '/^$/d;/^None$/d'
+)"
 
 값 자체를 README나 Issue에 복사하지 않습니다.
 
