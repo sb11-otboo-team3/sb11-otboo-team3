@@ -9,6 +9,7 @@ import com.otboo.domain.clothes.mapper.ClothesMapper;
 import
         com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeRepository;
+import com.otboo.domain.recommendation.dto.response.RecommendationClothesResponse;
 import com.otboo.domain.weather.entity.PrecipitationType;
 
 import java.util.List;
@@ -30,7 +31,7 @@ public class RecommendationTransactionalService {
     private final ClothesMapper clothesMapper;
 
     @Transactional(readOnly = true)
-    public List<ClothesResponse> recommend(
+    public List<RecommendationClothesResponse> recommend(
             UUID ownerId,
             double minTemperature,
             double maxTemperature,
@@ -53,18 +54,28 @@ public class RecommendationTransactionalService {
                         .distinct()
                         .toList();
         Map<UUID, List<String>> selectableValuesByDefinitionId = selectableValueRepository
-                        .findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(definitions)
-                        .stream()
-                        .collect(Collectors.groupingBy(
-                                value -> value.getDefinition().getId(),
-
-                                Collectors.mapping(AttributeSelectableValue::getValue,
-                                        Collectors.toList())
-                        ));
+                .findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(definitions)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        value -> value.getDefinition().getId(),
+                        Collectors.mapping(AttributeSelectableValue::getValue,
+                                Collectors.toList())
+                ));
         return combination.stream()
                 .map(clothes -> clothesMapper.toResponse(
                         clothes, attributesByClothesId.getOrDefault(clothes.getId(), List.of()), selectableValuesByDefinitionId
                 ))
+                .map(this::toRecommendationClothesResponse)
                 .toList();
+    }
+
+    private RecommendationClothesResponse toRecommendationClothesResponse(ClothesResponse response) {
+        return new RecommendationClothesResponse(
+                response.id(),
+                response.name(),
+                response.imageUrl(),
+                response.type(),
+                response.attributes()
+        );
     }
 }

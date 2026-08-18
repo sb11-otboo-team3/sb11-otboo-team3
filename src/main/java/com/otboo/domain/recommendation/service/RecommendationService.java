@@ -1,9 +1,9 @@
 package com.otboo.domain.recommendation.service;
 
-import com.otboo.domain.clothes.dto.response.ClothesResponse;
 import com.otboo.domain.profile.entity.Profile;
 import com.otboo.domain.profile.exception.ProfileNotFoundException;
 import com.otboo.domain.profile.repository.ProfileRepository;
+import com.otboo.domain.recommendation.dto.response.RecommendationClothesResponse;
 import
         com.otboo.domain.recommendation.dto.response.RecommendationResponse;
 import
@@ -11,6 +11,7 @@ import
 import
         com.otboo.domain.recommendation.exception.WeatherUnavailableException;
 import com.otboo.domain.weather.dto.WeatherDto;
+import com.otboo.domain.weather.exception.WeatherNotFoundException;
 import com.otboo.domain.weather.service.WeatherService;
 
 import java.util.List;
@@ -29,12 +30,11 @@ public class RecommendationService {
 
     private final ProfileRepository profileRepository;
     private final WeatherService weatherService;
-    private final RecommendationTransactionalService
-            recommendationTransactionalService;
+    private final RecommendationTransactionalService recommendationTransactionalService;
 
     // 날씨 API 블로킹 호출 중에는 DB 트랜잭션을 점유하지 않는다.
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public RecommendationResponse recommend(UUID userId) {
+    public RecommendationResponse recommend(UUID userId, UUID weatherId) {
         Profile profile = profileRepository.findById(userId)
                 .orElseThrow(() -> new ProfileNotFoundException(userId));
 
@@ -52,13 +52,13 @@ public class RecommendationService {
         if (weathers == null || weathers.isEmpty()) {
             throw new WeatherUnavailableException(userId);
         }
-        WeatherDto today = weathers.get(0);
+        WeatherDto today = resolveWeather(weathers, weatherId);
 
         int temperatureSensitivity = profile.getTemperatureSensitivity() != null
                 ? profile.getTemperatureSensitivity()
                 : DEFAULT_TEMPERATURE_SENSITIVITY;
 
-        List<ClothesResponse> clothes =
+        List<RecommendationClothesResponse> clothes =
                 recommendationTransactionalService.recommend(
                         userId,
                         today.temperature().min(),
@@ -67,6 +67,13 @@ public class RecommendationService {
                         temperatureSensitivity
                 );
 
-        return new RecommendationResponse(today.id(), clothes);
+        return new RecommendationResponse(today.id(), userId, clothes);
+    }
+
+    private WeatherDto resolveWeather(List<WeatherDto> weathers, UUID weatherId) {
+        return weathers.stream()
+                .filter(weather -> weatherId.equals(weather.id()))
+                .findFirst()
+                .orElseThrow(() -> new WeatherNotFoundException(weatherId));
     }
 }

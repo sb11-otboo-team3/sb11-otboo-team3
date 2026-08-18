@@ -5,11 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
-import com.otboo.domain.clothes.dto.response.ClothesResponse;
 import com.otboo.domain.clothes.entity.ClothesType;
 import com.otboo.domain.profile.entity.Profile;
 import com.otboo.domain.profile.exception.ProfileNotFoundException;
 import com.otboo.domain.profile.repository.ProfileRepository;
+import com.otboo.domain.recommendation.dto.response.RecommendationClothesResponse;
 import com.otboo.domain.recommendation.dto.response.RecommendationResponse;
 import com.otboo.domain.recommendation.exception.LocationNotSetException;
 import com.otboo.domain.recommendation.exception.WeatherUnavailableException;
@@ -18,6 +18,7 @@ import com.otboo.domain.weather.dto.PrecipitationDto;
 import com.otboo.domain.weather.dto.TemperatureDto;
 import com.otboo.domain.weather.dto.WeatherDto;
 import com.otboo.domain.weather.entity.PrecipitationType;
+import com.otboo.domain.weather.exception.WeatherNotFoundException;
 import com.otboo.domain.weather.service.WeatherService;
 
 import java.util.List;
@@ -56,7 +57,7 @@ class RecommendationServiceTest {
         given(profileRepository.findById(userId)).willReturn(Optional.empty());
 
         //when & then
-        assertThatThrownBy(() -> service.recommend(userId))
+        assertThatThrownBy(() -> service.recommend(userId, null))
                 .isInstanceOf(ProfileNotFoundException.class);
     }
 
@@ -70,7 +71,7 @@ class RecommendationServiceTest {
         given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
 
         //when & then
-        assertThatThrownBy(() -> service.recommend(userId))
+        assertThatThrownBy(() -> service.recommend(userId, null))
                 .isInstanceOf(LocationNotSetException.class);
     }
 
@@ -87,7 +88,7 @@ class RecommendationServiceTest {
         given(weatherService.getWeathers(37.5, 127.0)).willReturn(Mono.just(List.of()));
 
         //when & then
-        assertThatThrownBy(() -> service.recommend(userId))
+        assertThatThrownBy(() -> service.recommend(userId, null))
                 .isInstanceOf(WeatherUnavailableException.class);
     }
 
@@ -105,7 +106,7 @@ class RecommendationServiceTest {
                 .willReturn(Mono.error(new RuntimeException("기상청 API 호출 실패")));
 
         //when & then
-        assertThatThrownBy(() -> service.recommend(userId))
+        assertThatThrownBy(() -> service.recommend(userId, null))
                 .isInstanceOf(WeatherUnavailableException.class);
     }
 
@@ -119,7 +120,8 @@ class RecommendationServiceTest {
         ReflectionTestUtils.setField(profile, "longitude", 127.0);
         // temperatureSensitivity는 세팅하지 않아 null로 남는다
 
-        WeatherDto weatherDto = weatherDto(UUID.randomUUID(), 5.0, 10.0, PrecipitationType.NONE);
+        UUID weatherId = UUID.randomUUID();
+        WeatherDto weatherDto = weatherDto(weatherId, 5.0, 10.0, PrecipitationType.NONE);
 
         given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
         given(weatherService.getWeathers(37.5, 127.0)).willReturn(Mono.just(List.of(weatherDto)));
@@ -127,7 +129,7 @@ class RecommendationServiceTest {
                 .willReturn(List.of());
 
         //when
-        service.recommend(userId);
+        service.recommend(userId, weatherId);
 
         //then
         verify(recommendationTransactionalService)
@@ -147,8 +149,8 @@ class RecommendationServiceTest {
         UUID weatherId = UUID.randomUUID();
         WeatherDto weatherDto = weatherDto(weatherId, 5.0, 10.0, PrecipitationType.RAIN);
 
-        ClothesResponse clothesResponse = new ClothesResponse(
-                UUID.randomUUID(), userId, "코트", null, ClothesType.OUTER, List.of()
+        RecommendationClothesResponse clothesResponse = new RecommendationClothesResponse(
+                UUID.randomUUID(), "코트", null, ClothesType.OUTER, List.of()
         );
 
         given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
@@ -157,11 +159,62 @@ class RecommendationServiceTest {
                 .willReturn(List.of(clothesResponse));
 
         //when
-        RecommendationResponse response = service.recommend(userId);
+        RecommendationResponse response = service.recommend(userId, weatherId);
 
         //then
         assertThat(response.weatherId()).isEqualTo(weatherId);
+        assertThat(response.userId()).isEqualTo(userId);
         assertThat(response.clothes()).containsExactly(clothesResponse);
+    }
+
+    @Test
+    void 특정_weatherId를_지정하면_해당_날씨_기준으로_추천한다() {
+        //given
+        UUID userId = UUID.randomUUID();
+        Profile profile = Profile.createDefault(owner);
+        ReflectionTestUtils.setField(profile, "userId", userId);
+        ReflectionTestUtils.setField(profile, "latitude", 37.5);
+        ReflectionTestUtils.setField(profile, "longitude", 127.0);
+        ReflectionTestUtils.setField(profile, "temperatureSensitivity", 3);
+
+        UUID firstWeatherId = UUID.randomUUID();
+        UUID selectedWeatherId = UUID.randomUUID();
+        WeatherDto firstWeather = weatherDto(firstWeatherId, 0.0, 5.0, PrecipitationType.NONE);
+        WeatherDto selectedWeather = weatherDto(selectedWeatherId, 10.0, 15.0, PrecipitationType.RAIN);
+
+        given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
+        given(weatherService.getWeathers(37.5, 127.0))
+                .willReturn(Mono.just(List.of(firstWeather, selectedWeather)));
+        given(recommendationTransactionalService.recommend(userId, 10.0, 15.0, PrecipitationType.RAIN, 3))
+                .willReturn(List.of());
+
+        //when
+        RecommendationResponse response = service.recommend(userId, selectedWeatherId);
+
+        //then
+        assertThat(response.weatherId()).isEqualTo(selectedWeatherId);
+        verify(recommendationTransactionalService)
+                .recommend(userId, 10.0, 15.0, PrecipitationType.RAIN, 3);
+    }
+
+    @Test
+    void 존재하지_않는_weatherId면_WeatherNotFoundException이_발생한다() {
+        //given
+        UUID userId = UUID.randomUUID();
+        Profile profile = Profile.createDefault(owner);
+        ReflectionTestUtils.setField(profile, "userId", userId);
+        ReflectionTestUtils.setField(profile, "latitude", 37.5);
+        ReflectionTestUtils.setField(profile, "longitude", 127.0);
+
+        WeatherDto weatherDto = weatherDto(UUID.randomUUID(), 5.0, 10.0, PrecipitationType.NONE);
+        UUID unknownWeatherId = UUID.randomUUID();
+
+        given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
+        given(weatherService.getWeathers(37.5, 127.0)).willReturn(Mono.just(List.of(weatherDto)));
+
+        //when & then
+        assertThatThrownBy(() -> service.recommend(userId, unknownWeatherId))
+                .isInstanceOf(WeatherNotFoundException.class);
     }
 
     private WeatherDto weatherDto(UUID id, double min, double max, PrecipitationType precipitationType) {
