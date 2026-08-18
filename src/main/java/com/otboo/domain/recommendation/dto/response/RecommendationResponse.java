@@ -5,6 +5,7 @@ import java.util.UUID;
 
 public record RecommendationResponse(
         UUID weatherId,
+        UUID userId,
         List<RecommendationClothesResponse> clothes
 ) {
 }

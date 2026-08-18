@@ -8,7 +8,6 @@ import java.util.UUID;
 
 public record RecommendationClothesResponse(
         UUID clothesId,
-        UUID ownerId,
         String name,
         String imageUrl,
         ClothesType type,

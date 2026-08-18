@@ -27,7 +27,7 @@ public class RecommendationController {
     public ResponseEntity<RecommendationResponse> recommend(
             @AuthenticationPrincipal UUID currentUserId,
             @RequestParam(required = false) List<UUID> excludeClothesIds,
-            @RequestParam(required = false) UUID weatherId
+            @RequestParam UUID weatherId
     ) {
         Set<UUID> excluded = excludeClothesIds == null ? Set.of() : Set.copyOf(excludeClothesIds);
         RecommendationResponse response = recommendationService.recommend(currentUserId, excluded, weatherId);

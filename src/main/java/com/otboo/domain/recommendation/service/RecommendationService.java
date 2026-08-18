@@ -69,13 +69,10 @@ public class RecommendationService {
                         excludeClothesIds
                 );
 
-        return new RecommendationResponse(today.id(), clothes);
+        return new RecommendationResponse(today.id(), userId, clothes);
     }
 
     private WeatherDto resolveWeather(List<WeatherDto> weathers, UUID weatherId) {
-        if (weatherId == null) {
-            return weathers.get(0);
-        }
         return weathers.stream()
                 .filter(weather -> weatherId.equals(weather.id()))
                 .findFirst()

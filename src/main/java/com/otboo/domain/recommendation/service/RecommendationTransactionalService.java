@@ -74,7 +74,6 @@ public class RecommendationTransactionalService {
     private RecommendationClothesResponse toRecommendationClothesResponse(ClothesResponse response) {
         return new RecommendationClothesResponse(
                 response.id(),
-                response.ownerId(),
                 response.name(),
                 response.imageUrl(),
                 response.type(),

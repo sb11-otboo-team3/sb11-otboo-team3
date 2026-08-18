@@ -121,7 +121,8 @@ class RecommendationServiceTest {
         ReflectionTestUtils.setField(profile, "longitude", 127.0);
         // temperatureSensitivity는 세팅하지 않아 null로 남는다
 
-        WeatherDto weatherDto = weatherDto(UUID.randomUUID(), 5.0, 10.0, PrecipitationType.NONE);
+        UUID weatherId = UUID.randomUUID();
+        WeatherDto weatherDto = weatherDto(weatherId, 5.0, 10.0, PrecipitationType.NONE);
 
         given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
         given(weatherService.getWeathers(37.5, 127.0)).willReturn(Mono.just(List.of(weatherDto)));
@@ -129,7 +130,7 @@ class RecommendationServiceTest {
                 .willReturn(List.of());
 
         //when
-        service.recommend(userId, Set.of(), null);
+        service.recommend(userId, Set.of(), weatherId);
 
         //then
         verify(recommendationTransactionalService)
@@ -150,7 +151,7 @@ class RecommendationServiceTest {
         WeatherDto weatherDto = weatherDto(weatherId, 5.0, 10.0, PrecipitationType.RAIN);
 
         RecommendationClothesResponse clothesResponse = new RecommendationClothesResponse(
-                UUID.randomUUID(), userId, "코트", null, ClothesType.OUTER, List.of()
+                UUID.randomUUID(), "코트", null, ClothesType.OUTER, List.of()
         );
 
         given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
@@ -159,10 +160,11 @@ class RecommendationServiceTest {
                 .willReturn(List.of(clothesResponse));
 
         //when
-        RecommendationResponse response = service.recommend(userId, Set.of(), null);
+        RecommendationResponse response = service.recommend(userId, Set.of(), weatherId);
 
         //then
         assertThat(response.weatherId()).isEqualTo(weatherId);
+        assertThat(response.userId()).isEqualTo(userId);
         assertThat(response.clothes()).containsExactly(clothesResponse);
     }
 
