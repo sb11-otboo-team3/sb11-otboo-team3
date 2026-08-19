@@ -1,5 +1,6 @@
 package com.otboo.domain.weather.service;
 
+import com.otboo.domain.weather.dto.KakaoRegion;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
 import com.otboo.domain.weather.dto.WeatherDto;
 import java.util.List;
@@ -24,10 +25,14 @@ import reactor.core.publisher.Mono;
   }
 
   @Override
-  public Mono<List<WeatherDto>> getWeathers(double latitude, double longitude) {
-    // 위치 가져오기(카카오 호출 포함 - 논블로킹).
-    //TODO: 프로필에 있으면 프로필 위치 정보 가져오기
-    return locationResolver.resolve(latitude, longitude)
+  public Mono<List<WeatherDto>> getWeathers(
+      double latitude, double longitude, String province, String city, String district) {
+    // province가 있으면 이미 검증된 지역명으로 보고 카카오 호출을 생략한다.
+    KakaoRegion knownRegion = (province == null || province.isBlank())
+        ? null
+        : new KakaoRegion(province, city, district);
+
+    return locationResolver.resolve(latitude, longitude, knownRegion)
         .flatMap(weatherForecastFinder::find);
   }
 }

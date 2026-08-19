@@ -5,6 +5,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
 import com.otboo.domain.weather.dto.HumidityDto;
+import com.otboo.domain.weather.dto.KakaoRegion;
 import com.otboo.domain.weather.dto.PrecipitationDto;
 import com.otboo.domain.weather.dto.TemperatureDto;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
@@ -65,14 +66,8 @@ class WeatherServiceImplTest {
     verify(locationResolver).resolve(latitude, longitude);
   }
 
-  @Test
-  @DisplayName("getWeathers는 위치를 해석한 뒤 WeatherForecastFinder에게 위임한다")
-  void getWeathersDelegatesToWeatherForecastFinderAfterResolvingLocation() {
-    // given
-    double latitude = 37.5665;
-    double longitude = 126.9780;
-    WeatherAPILocation location = location(latitude, longitude);
-    WeatherDto dto = new WeatherDto(
+  private WeatherDto weatherDto(WeatherAPILocation location) {
+    return new WeatherDto(
         UUID.randomUUID(),
         Instant.parse("2026-07-30T00:00:00Z"),
         Instant.parse("2026-07-30T09:00:00Z"),
@@ -83,8 +78,18 @@ class WeatherServiceImplTest {
         new TemperatureDto(23.0, 0.0, 20.0, 26.0),
         new WindSpeedDto(2.3, WindStrength.WEAK)
     );
+  }
 
-    given(locationResolver.resolve(latitude, longitude)).willReturn(Mono.just(location));
+  @Test
+  @DisplayName("위경도만으로 호출하면 알려진 지역명 없이 위치를 해석한 뒤 WeatherForecastFinder에게 위임한다")
+  void getWeathersDelegatesWithoutKnownRegionWhenCalledWithLatLngOnly() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    WeatherAPILocation location = location(latitude, longitude);
+    WeatherDto dto = weatherDto(location);
+
+    given(locationResolver.resolve(latitude, longitude, null)).willReturn(Mono.just(location));
     given(weatherForecastFinder.find(location)).willReturn(Mono.just(List.of(dto)));
 
     // when
@@ -92,6 +97,72 @@ class WeatherServiceImplTest {
 
     // then
     assertThat(result).containsExactly(dto);
+    verify(locationResolver).resolve(latitude, longitude, null);
     verify(weatherForecastFinder).find(location);
+  }
+
+  @Test
+  @DisplayName("province가 주어지면 LocationResolver에 알려진 지역명으로 위임해 카카오 호출을 생략시킨다")
+  void getWeathersUsesKnownRegionWhenProvinceIsGiven() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    WeatherAPILocation location = location(latitude, longitude);
+    WeatherDto dto = weatherDto(location);
+    KakaoRegion knownRegion = new KakaoRegion("서울특별시", "강서구", "마곡동");
+
+    given(locationResolver.resolve(latitude, longitude, knownRegion)).willReturn(Mono.just(location));
+    given(weatherForecastFinder.find(location)).willReturn(Mono.just(List.of(dto)));
+
+    // when
+    List<WeatherDto> result = weatherService.getWeathers(
+        latitude, longitude, "서울특별시", "강서구", "마곡동").block();
+
+    // then
+    assertThat(result).containsExactly(dto);
+    verify(locationResolver).resolve(latitude, longitude, knownRegion);
+  }
+
+  @Test
+  @DisplayName("city가 없어도(세종시 등 중간 행정구역이 없는 경우) province만 있으면 알려진 지역명으로 위임한다")
+  void getWeathersUsesKnownRegionEvenWhenCityIsMissing() {
+    // given
+    double latitude = 36.48;
+    double longitude = 127.29;
+    WeatherAPILocation location = location(latitude, longitude);
+    WeatherDto dto = weatherDto(location);
+    KakaoRegion knownRegion = new KakaoRegion("세종특별자치시", null, "조치원읍");
+
+    given(locationResolver.resolve(latitude, longitude, knownRegion)).willReturn(Mono.just(location));
+    given(weatherForecastFinder.find(location)).willReturn(Mono.just(List.of(dto)));
+
+    // when
+    List<WeatherDto> result = weatherService.getWeathers(
+        latitude, longitude, "세종특별자치시", null, "조치원읍").block();
+
+    // then
+    assertThat(result).containsExactly(dto);
+    verify(locationResolver).resolve(latitude, longitude, knownRegion);
+  }
+
+  @Test
+  @DisplayName("province가 빈 문자열이면 지역명이 없는 것으로 보고 카카오 호출 경로로 위임한다")
+  void getWeathersTreatsBlankProvinceAsMissing() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    WeatherAPILocation location = location(latitude, longitude);
+    WeatherDto dto = weatherDto(location);
+
+    given(locationResolver.resolve(latitude, longitude, null)).willReturn(Mono.just(location));
+    given(weatherForecastFinder.find(location)).willReturn(Mono.just(List.of(dto)));
+
+    // when
+    List<WeatherDto> result = weatherService.getWeathers(
+        latitude, longitude, "", "강서구", "마곡동").block();
+
+    // then
+    assertThat(result).containsExactly(dto);
+    verify(locationResolver).resolve(latitude, longitude, null);
   }
 }

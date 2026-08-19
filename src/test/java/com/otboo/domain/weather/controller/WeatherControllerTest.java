@@ -147,7 +147,8 @@ class WeatherControllerTest {
           new TemperatureDto(23.5, 1.2, 18.0, 26.0),
           new WindSpeedDto(2.3, WindStrength.WEAK)
       );
-      given(weatherService.getWeathers(37.5665, 126.9780)).willReturn(Mono.just(List.of(weather)));
+      given(weatherService.getWeathers(37.5665, 126.9780, null, null, null))
+          .willReturn(Mono.just(List.of(weather)));
 
       // when & then
       MvcResult mvcResult = mockMvc.perform(get("/api/weathers")
@@ -166,12 +167,49 @@ class WeatherControllerTest {
     }
 
     @Test
+    @DisplayName("province/city/district가 함께 오면 그대로 WeatherService에 전달한다")
+    @WithMockUser
+    void passesKnownRegionQueryParamsThrough() throws Exception {
+      // given
+      WeatherAPILocation location = new WeatherAPILocation(
+          37.5665, 126.9780, 60, 127, List.of("서울특별시", "강서구", "마곡동"));
+      WeatherDto weather = new WeatherDto(
+          UUID.fromString("3fa85f64-5717-4562-b3fc-2c963f66afa6"),
+          Instant.parse("2026-07-30T00:00:00Z"),
+          Instant.parse("2026-07-30T09:00:00Z"),
+          location,
+          SkyStatus.CLEAR,
+          new PrecipitationDto(PrecipitationType.NONE, 0.0, 10.0),
+          new HumidityDto(55.0, -3.0),
+          new TemperatureDto(23.5, 1.2, 18.0, 26.0),
+          new WindSpeedDto(2.3, WindStrength.WEAK)
+      );
+      given(weatherService.getWeathers(37.5665, 126.9780, "서울특별시", "강서구", "마곡동"))
+          .willReturn(Mono.just(List.of(weather)));
+
+      // when & then
+      MvcResult mvcResult = mockMvc.perform(get("/api/weathers")
+              .param("latitude", "37.5665")
+              .param("longitude", "126.9780")
+              .param("province", "서울특별시")
+              .param("city", "강서구")
+              .param("district", "마곡동")
+              .with(csrf()))
+          .andExpect(request().asyncStarted())
+          .andReturn();
+
+      mockMvc.perform(asyncDispatch(mvcResult))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$[0].location.locationNames[1]").value("강서구"));
+    }
+
+    @Test
     @DisplayName("Mono가 기상청 호출 실패로 에러 완료되면, 비동기 디스패치 이후에도 GlobalExceptionHandler가 잡아 400을 반환한다")
     @WithMockUser
     void returns400WhenWeathersMonoCompletesWithError() throws Exception {
       // given
       VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
-      given(weatherService.getWeathers(37.5665, 126.9780))
+      given(weatherService.getWeathers(37.5665, 126.9780, null, null, null))
           .willReturn(Mono.error(new KmaApiException(60, 127, baseTime, new RuntimeException("기상청 장애"))));
 
       // when & then
