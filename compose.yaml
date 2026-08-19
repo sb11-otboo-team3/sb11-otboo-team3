@@ -34,6 +34,28 @@ services:
     ports:
       - "127.0.0.1:9092:9092"
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch-oss:7.10.2
+    environment:
+      - discovery.type=single-node
+      - cluster.name=otboo-local-search
+      - node.name=otboo-local-elasticsearch
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "127.0.0.1:${ELASTICSEARCH_PORT:-9200}:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://localhost:9200/_cluster/health >/dev/null || exit 1"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
   # 로컬 부하테스트용. 앱 자체는 여기 안 담겨있고, 이미 로컬에서 ./gradlew bootRun(local 프로필)으로
   # 떠 있는 앱의 /actuator/prometheus를 스크래핑하는 용도.
   prometheus:
@@ -62,5 +84,6 @@ services:
 
 volumes:
   postgres-data:
+  elasticsearch-data:
   prometheus-data:
   grafana-data:
