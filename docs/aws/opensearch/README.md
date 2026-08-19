@@ -50,6 +50,21 @@ Spring Boot에서 제공하는 최신 Elasticsearch Client를 그대로 사용�
 로컬 Elasticsearch OSS 7.10.2와 운영 OpenSearch 1.x 사이의 호환성을 고려하여
 Elasticsearch OSS 7.10.2 계열 Client를 명시적으로 사용합니다.
 
+### 버전 지원 기준
+
+OpenSearch 오픈소스 프로젝트의 1.x maintenance는 종료되었지만,
+운영 환경은 self-managed OpenSearch가 아닌 Amazon OpenSearch Service를 사용합니다.
+
+현재 AWS OpenSearch Service 지원 정책상 OpenSearch 1.3의
+Standard Support 종료 일정은 발표되지 않았습니다.
+
+Elasticsearch REST High Level Client는 deprecated 상태이므로
+현재 구성은 로컬 Elasticsearch OSS 7.10.2와 운영 OpenSearch 1.3 간
+호환성을 우선한 프로젝트 범위의 구성으로 사용합니다.
+
+장기 운영 또는 검색 인프라 업그레이드 시에는
+OpenSearch Java Client와 최신 OpenSearch 버전으로의 전환을 검토합니다.
+
 ---
 
 ## 3. 로컬 Elasticsearch
