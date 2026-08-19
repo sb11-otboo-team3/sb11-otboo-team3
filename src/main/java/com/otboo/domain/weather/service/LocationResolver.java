@@ -73,12 +73,18 @@ public class LocationResolver {
   private WeatherAPILocation toDto(
       double latitude, double longitude, WeatherGrid grid, KakaoRegion region
   ) {
+    // List.of는 null 요소를 허용하지 않는데, city(구)가 없는 세종시 같은 지역은
+    // knownRegion.city()가 null로 넘어올 수 있어(WeatherServiceImpl 참고) 빈 문자열로 보정한다.
     return new WeatherAPILocation(
         latitude,
         longitude,
         grid.x(),
         grid.y(),
-        List.of(region.province(), region.city(), region.district())
+        List.of(orEmpty(region.province()), orEmpty(region.city()), orEmpty(region.district()))
     );
+  }
+
+  private String orEmpty(String value) {
+    return value != null ? value : "";
   }
 }

@@ -179,6 +179,24 @@ class LocationResolverTest {
   }
 
   @Test
+  @DisplayName("알고 있는 지역명의 city가 null이어도(세종시 등) 예외 없이 빈 문자열로 응답한다")
+  void handlesKnownRegionWithNullCityWithoutThrowing() {
+    // given
+    double latitude = 36.48;
+    double longitude = 127.29;
+    KakaoRegion knownRegion = new KakaoRegion("세종특별자치시", null, "조치원읍");
+
+    given(gridResolver.findOrRegister(any())).willReturn(grid(66, 103));
+
+    // when
+    WeatherAPILocation result = locationResolver.resolve(latitude, longitude, knownRegion).block();
+
+    // then
+    assertThat(result.locationNames()).containsExactly("세종특별자치시", "", "조치원읍");
+    verifyNoInteractions(kakaoLocationClient);
+  }
+
+  @Test
   @DisplayName("카카오 호출이 즉시 실패해도 격자 레지스트리 갱신은 취소되지 않고 끝까지 실행된다")
   void gridRegistryUpdateStillCompletesEvenWhenKakaoFailsImmediately() {
     // given: Mono.zip이었다면 카카오가 즉시 실패할 때 아직 시작 안 한 격자 갱신 작업이
