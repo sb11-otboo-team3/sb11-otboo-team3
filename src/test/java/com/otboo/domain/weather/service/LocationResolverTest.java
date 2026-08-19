@@ -141,6 +141,44 @@ class LocationResolverTest {
   }
 
   @Test
+  @DisplayName("이미 알고 있는 지역명이 주어지면 카카오를 호출하지 않고 그 값을 그대로 쓴다")
+  void skipsKakaoWhenKnownRegionIsGiven() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    KakaoRegion knownRegion = new KakaoRegion("서울특별시", "강서구", "마곡동");
+
+    given(gridResolver.findOrRegister(any())).willReturn(grid(60, 127));
+
+    // when
+    WeatherAPILocation result = locationResolver.resolve(latitude, longitude, knownRegion).block();
+
+    // then
+    assertThat(result.locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
+    verifyNoInteractions(kakaoLocationClient);
+  }
+
+  @Test
+  @DisplayName("이미 알고 있는 지역명을 쓸 때도 격자 레지스트리 갱신은 그대로 실행된다")
+  void stillUpdatesGridRegistryWhenUsingKnownRegion() {
+    // given
+    double latitude = 37.5665;
+    double longitude = 126.9780;
+    KakaoRegion knownRegion = new KakaoRegion("서울특별시", "강서구", "마곡동");
+    Grid resolved = Mockito.spy(grid(60, 127));
+
+    given(gridResolver.findOrRegister(new WeatherGrid(60, 127))).willReturn(resolved);
+
+    // when
+    locationResolver.resolve(latitude, longitude, knownRegion).block();
+
+    // then
+    verify(resolved).refreshRequestedAt();
+    verify(gridRepository).save(resolved);
+    verify(gridRecencyCache).markConfirmed(any());
+  }
+
+  @Test
   @DisplayName("카카오 호출이 즉시 실패해도 격자 레지스트리 갱신은 취소되지 않고 끝까지 실행된다")
   void gridRegistryUpdateStillCompletesEvenWhenKakaoFailsImmediately() {
     // given: Mono.zip이었다면 카카오가 즉시 실패할 때 아직 시작 안 한 격자 갱신 작업이

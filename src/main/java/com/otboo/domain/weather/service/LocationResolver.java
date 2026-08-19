@@ -27,10 +27,18 @@ public class LocationResolver {
   private final GridResolver gridResolver;
 
   public Mono<WeatherAPILocation> resolve(double latitude, double longitude) {
+    return resolve(latitude, longitude, null);
+  }
+
+  // knownRegion: 호출부가 이미 검증된 지역명을 갖고 있으면 카카오 호출을 생략하고 그대로 쓴다.
+  // null이면 지금까지와 동일하게 매번 카카오를 호출한다. 격자 레지스트리 갱신은 두 경우 모두 동일하게 실행된다.
+  public Mono<WeatherAPILocation> resolve(double latitude, double longitude, KakaoRegion knownRegion) {
     WeatherGrid grid = gridConverter.convert(latitude, longitude);
 
     // 카카오 호출과 격자 레지스트리 갱신(DB/캐시)은 서로 결과를 필요로 하지 않는 독립적인 작업이라 동시에 실행한다.
-    Mono<KakaoRegion> regionMono = kakaoLocationClient.getRegion(latitude, longitude);
+    Mono<KakaoRegion> regionMono = knownRegion != null
+        ? Mono.just(knownRegion)
+        : kakaoLocationClient.getRegion(latitude, longitude);
 
     // 격자 레지스트리 갱신은 JPA(블로킹) 호출이라, 이벤트 루프 스레드가 아니라 별도 스레드풀(boundedElastic)에서 실행한다.
     Mono<Boolean> gridRegistryMono = Mono.fromCallable(() -> {
