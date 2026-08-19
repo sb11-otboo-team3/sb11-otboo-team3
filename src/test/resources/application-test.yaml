@@ -2,6 +2,9 @@ spring:
   config:
     activate:
       on-profile: test
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchRestClientAutoConfiguration
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -78,6 +81,9 @@ kma:
     base-url: https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0
 
 app:
+  # Client 생성만 하며 실제 Elasticsearch 접속은 발생하지 않는다.
+  search:
+    endpoint: http://localhost:9200
   websocket:
     allowed-origin-patterns: http://localhost:5173,http://localhost:3000,http://localhost:8080
 

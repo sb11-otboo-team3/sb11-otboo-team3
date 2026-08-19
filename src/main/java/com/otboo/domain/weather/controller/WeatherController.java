@@ -21,7 +21,10 @@ public interface WeatherController {
   @GetMapping
   Mono<ResponseEntity<List<WeatherDto>>> getWeathers(
       @RequestParam double latitude,
-      @RequestParam double longitude
+      @RequestParam double longitude,
+      @RequestParam(required = false) String province,
+      @RequestParam(required = false) String city,
+      @RequestParam(required = false) String district
   );
 }
 

@@ -67,6 +67,8 @@ jwt:
   admin-access-expiration: ${JWT_ADMIN_ACCESS_EXPIRATION:300000}
 
 app:
+  search:
+    endpoint: ${SEARCH_ENDPOINT:http://localhost:9200}
   websocket:
     allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://localhost:3000,http://localhost:8080}
   admin:

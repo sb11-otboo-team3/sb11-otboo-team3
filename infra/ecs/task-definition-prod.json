@@ -60,6 +60,10 @@
           "value": "true"
         },
         {
+          "name": "SEARCH_ENDPOINT",
+          "value": "https://<OPENSEARCH_VPC_ENDPOINT>"
+        },
+        {
           "name": "AWS_REGION",
           "value": "ap-northeast-2"
         },

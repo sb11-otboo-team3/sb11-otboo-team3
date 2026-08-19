@@ -23,7 +23,9 @@ public class WeatherControllerImpl implements WeatherController {
 
   @Override
   //기상청 api를 통해 현재 위치의 날씨를 가져오는 api
-  public Mono<ResponseEntity<List<WeatherDto>>> getWeathers(double latitude, double longitude) {
-    return weatherService.getWeathers(latitude, longitude).map(ResponseEntity::ok);
+  public Mono<ResponseEntity<List<WeatherDto>>> getWeathers(
+      double latitude, double longitude, String province, String city, String district) {
+    return weatherService.getWeathers(latitude, longitude, province, city, district)
+        .map(ResponseEntity::ok);
   }
 }
