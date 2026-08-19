@@ -20,6 +20,10 @@ spring:
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+      # Elasticsearch 7.10.2 / OpenSearch 1.x 호환을 위해
+      # SearchConfig에서 RestHighLevelClient를 직접 구성하므로
+      # Spring Boot의 별도 RestClient 자동 구성을 사용하지 않는다.
+      - org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchRestClientAutoConfiguration
 management:
   endpoints:
     web:
