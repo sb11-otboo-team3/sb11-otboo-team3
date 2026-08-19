@@ -8,8 +8,6 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
@@ -40,16 +38,20 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
     );
     String refreshToken = refreshTokenService.issue(user.getId(), user.getTokenVersion());
 
-    // Refresh Token은 일반 로그인과 동일하게 HttpOnly 쿠키로 내려준다.
-    Cookie refreshTokenCookie = new Cookie("REFRESH_TOKEN", refreshToken);
-    refreshTokenCookie.setHttpOnly(true);
-    refreshTokenCookie.setSecure(request.isSecure());
-    refreshTokenCookie.setPath("/");
-    response.addCookie(refreshTokenCookie);
+    // AccessToken, RefreshToken 둘 다 HttpOnly 쿠키로 내려준다.
+    // URL 파라미터로 토큰을 노출하지 않기 위함이며, 프론트가 별도로
+    // 토큰을 받아 저장하는 로직 없이도 이후 요청에 자동으로 실려간다.
+    setTokenCookie(response, "ACCESS_TOKEN", accessToken, request.isSecure());
+    setTokenCookie(response, "REFRESH_TOKEN", refreshToken, request.isSecure());
 
-    String targetUrl = redirectUri + "?accessToken="
-        + URLEncoder.encode(accessToken, StandardCharsets.UTF_8);
+    getRedirectStrategy().sendRedirect(request, response, redirectUri);
+  }
 
-    getRedirectStrategy().sendRedirect(request, response, targetUrl);
+  private void setTokenCookie(HttpServletResponse response, String name, String value, boolean secure) {
+    Cookie cookie = new Cookie(name, value);
+    cookie.setHttpOnly(true);
+    cookie.setSecure(secure);
+    cookie.setPath("/");
+    response.addCookie(cookie);
   }
 }
