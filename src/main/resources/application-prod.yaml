@@ -58,6 +58,8 @@ jwt:
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
   admin-access-expiration: ${JWT_ADMIN_ACCESS_EXPIRATION:300000}
 app:
+  search:
+    endpoint: ${SEARCH_ENDPOINT}
   kafka:
     smoke:
       enabled: ${KAFKA_SMOKE_ENABLED:false}
