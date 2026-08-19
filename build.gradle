@@ -81,6 +81,10 @@ dependencies {
 	// Redis
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
+	// 로컬 Elasticsearch OSS 7.10.2와 운영 OpenSearch 1.x의 공통 호환 Client
+	implementation 'org.elasticsearch.client:elasticsearch-rest-high-level-client:7.10.2'
+	implementation 'org.elasticsearch.client:elasticsearch-rest-client:7.10.2'
+
 	// Kafka
 	implementation 'org.springframework.kafka:spring-kafka'
 
