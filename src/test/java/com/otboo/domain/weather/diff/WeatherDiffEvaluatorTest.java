@@ -2,8 +2,13 @@ package com.otboo.domain.weather.diff;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.otboo.domain.weather.entity.Grid;
 import com.otboo.domain.weather.entity.PrecipitationType;
+import com.otboo.domain.weather.entity.SkyStatus;
+import com.otboo.domain.weather.entity.Weather;
 import java.time.Instant;
+import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -148,5 +153,155 @@ class WeatherDiffEvaluatorTest {
 
     // then
     assertThat(within).isFalse();
+  }
+
+  // ===== 일일별: 기온 시간당 변화율 =====
+
+  @Test
+  @DisplayName("1시간 간격에서 시간당 변화율이 임계값 미만이면 급변으로 판정하지 않는다")
+  void notTriggeredByRateWhenOneHourGapBelowThreshold() {
+    // when: Δ2 / 1h = 2°C/h < 3°C/h
+    boolean triggered = evaluator.isTemperatureTriggeredByRate(20.0, 22.0, 1.0, properties);
+
+    // then
+    assertThat(triggered).isFalse();
+  }
+
+  @Test
+  @DisplayName("1시간 간격에서 시간당 변화율이 임계값과 같으면 급변으로 판정한다")
+  void triggeredByRateWhenOneHourGapAtThreshold() {
+    // when: Δ3 / 1h = 3°C/h == 3°C/h
+    boolean triggered = evaluator.isTemperatureTriggeredByRate(20.0, 23.0, 1.0, properties);
+
+    // then
+    assertThat(triggered).isTrue();
+  }
+
+  @Test
+  @DisplayName("3시간 간격이라도 시간당 변화율이 임계값과 같으면 급변으로 판정한다")
+  void triggeredByRateWhenThreeHourGapAtThreshold() {
+    // when: Δ9 / 3h = 3°C/h == 3°C/h - 같은 절대값(9도)이라도 간격이 넓으면 다르게 판정돼야 함을 증명
+    boolean triggered = evaluator.isTemperatureTriggeredByRate(15.0, 24.0, 3.0, properties);
+
+    // then
+    assertThat(triggered).isTrue();
+  }
+
+  @Test
+  @DisplayName("3시간 간격에서는 절대값이 커도 시간당 변화율이 임계값 미만이면 급변으로 판정하지 않는다")
+  void notTriggeredByRateWhenThreeHourGapBelowThreshold() {
+    // when: Δ8 / 3h ≈ 2.67°C/h < 3°C/h - 1시간 기준으론 컸을 Δ지만 3시간에 걸쳐 일어난 거라 급변 아님
+    boolean triggered = evaluator.isTemperatureTriggeredByRate(15.0, 23.0, 3.0, properties);
+
+    // then
+    assertThat(triggered).isFalse();
+  }
+
+  // ===== 일일별: 하루치 인접 슬롯 스캔 =====
+
+  private Weather slot(Instant forecastAt, double temperature, PrecipitationType precipitationType, double windSpeed) {
+    return Weather.builder()
+        .grid(Grid.builder().x(60).y(127).build())
+        .forecastedAt(forecastAt)
+        .forecastAt(forecastAt)
+        .skyStatus(SkyStatus.CLEAR)
+        .precipitationType(precipitationType)
+        .temperatureCurrent(temperature)
+        .windSpeed(windSpeed)
+        .build();
+  }
+
+  @Test
+  @DisplayName("행이 하나 이하면 비교할 인접 쌍이 없어 빈 집합을 반환한다")
+  void evaluateDailyDiffReturnsEmptyWhenFewerThanTwoRows() {
+    // given
+    List<Weather> single = List.of(slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 2.0));
+
+    // when
+    Set<DiffCategory> result = evaluator.evaluateDailyDiff(single, properties);
+
+    // then
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  @DisplayName("인접 슬롯 간 기온 변화율이 임계값을 넘으면 TEMPERATURE를 담아 반환한다")
+  void evaluateDailyDiffDetectsTemperature() {
+    // given: 1시간 간격, Δ4 -> 4°C/h ≥ 3°C/h
+    List<Weather> rows = List.of(
+        slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(Instant.parse("2026-07-30T01:00:00Z"), 24.0, PrecipitationType.NONE, 2.0)
+    );
+
+    // when
+    Set<DiffCategory> result = evaluator.evaluateDailyDiff(rows, properties);
+
+    // then
+    assertThat(result).containsExactly(DiffCategory.TEMPERATURE);
+  }
+
+  @Test
+  @DisplayName("인접 슬롯 간 강수형태가 NONE에서 강수로 바뀌면 PRECIPITATION을 담아 반환한다")
+  void evaluateDailyDiffDetectsPrecipitation() {
+    // given
+    List<Weather> rows = List.of(
+        slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(Instant.parse("2026-07-30T01:00:00Z"), 20.0, PrecipitationType.RAIN, 2.0)
+    );
+
+    // when
+    Set<DiffCategory> result = evaluator.evaluateDailyDiff(rows, properties);
+
+    // then
+    assertThat(result).containsExactly(DiffCategory.PRECIPITATION);
+  }
+
+  @Test
+  @DisplayName("인접 슬롯 간 풍속 등급이 오르면 WIND를 담아 반환한다")
+  void evaluateDailyDiffDetectsWind() {
+    // given
+    List<Weather> rows = List.of(
+        slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(Instant.parse("2026-07-30T01:00:00Z"), 20.0, PrecipitationType.NONE, 10.0)
+    );
+
+    // when
+    Set<DiffCategory> result = evaluator.evaluateDailyDiff(rows, properties);
+
+    // then
+    assertThat(result).containsExactly(DiffCategory.WIND);
+  }
+
+  @Test
+  @DisplayName("첫 인접 쌍은 안 걸려도 다음 인접 쌍이 걸리면 그 카테고리를 담아 반환한다")
+  void evaluateDailyDiffDetectsTriggerInAnySubsequentPair() {
+    // given: 00시->01시는 변화 없음, 01시->02시에 기온만 크게 뜀
+    List<Weather> rows = List.of(
+        slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(Instant.parse("2026-07-30T01:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(Instant.parse("2026-07-30T02:00:00Z"), 25.0, PrecipitationType.NONE, 2.0)
+    );
+
+    // when
+    Set<DiffCategory> result = evaluator.evaluateDailyDiff(rows, properties);
+
+    // then
+    assertThat(result).containsExactly(DiffCategory.TEMPERATURE);
+  }
+
+  @Test
+  @DisplayName("어느 인접 쌍도 걸리지 않으면 빈 집합을 반환한다")
+  void evaluateDailyDiffReturnsEmptyWhenNoPairTriggers() {
+    // given
+    List<Weather> rows = List.of(
+        slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(Instant.parse("2026-07-30T01:00:00Z"), 21.0, PrecipitationType.NONE, 2.0)
+    );
+
+    // when
+    Set<DiffCategory> result = evaluator.evaluateDailyDiff(rows, properties);
+
+    // then
+    assertThat(result).isEmpty();
   }
 }
