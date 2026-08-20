@@ -6,6 +6,8 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.otboo.domain.profile.entity.Profile;
+import com.otboo.domain.profile.repository.ProfileRepository;
 import com.otboo.domain.user.entity.OAuthAccount;
 import com.otboo.domain.user.entity.OAuthProvider;
 import com.otboo.domain.user.entity.User;
@@ -37,6 +39,9 @@ class CustomOAuth2UserServiceTest {
 
   @InjectMocks
   private CustomOAuth2UserService customOAuth2UserService;
+
+  @Mock
+  private ProfileRepository profileRepository;
 
   @Test
   @DisplayName("이미 이 Provider로 연동된 계정이 있으면 기존 계정을 그대로 반환한다")
@@ -139,6 +144,25 @@ class CustomOAuth2UserServiceTest {
       @Override
       public String getName() {
         return name;
+      }
+
+      @Test
+      @DisplayName("신규 계정 생성 시 기본 프로필도 함께 생성된다")
+      void createNewUserAlsoCreatesDefaultProfile() {
+        // given
+        OAuth2UserInfo userInfo = fakeUserInfo("google-id-4", "profile-check@otboo.io", "프로필체크");
+
+        given(oAuthAccountRepository.findByProviderAndProviderUserId(OAuthProvider.GOOGLE, "google-id-4"))
+            .willReturn(Optional.empty());
+        given(userRepository.findByEmail("profile-check@otboo.io")).willReturn(Optional.empty());
+        given(passwordEncoder.encode(any())).willReturn("encoded-random-password");
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        customOAuth2UserService.findOrCreateUser(OAuthProvider.GOOGLE, userInfo);
+
+        // then
+        verify(profileRepository).save(any(Profile.class));
       }
     };
   }
