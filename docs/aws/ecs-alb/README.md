@@ -34,6 +34,8 @@ ALB DNS의 루트 `/` 경로에서 프론트엔드와 백엔드 API를 함께 �
 - Issue #157: 운영 도메인 DNS 연결
 - Issue #160: HTTPS 및 운영 Secure Cookie 적용
 - Issue #163: HTTPS 운영 도메인 외부 서비스 경로 검증
+- Issue #223: ECS 실패 배포 자동·수동 롤백 검증
+  - 상세 절차: [`rollback-runbook/README.md`](./rollback-runbook/README.md)
 - [AWS 기본 운영 기준](../README.md)
 - [Amazon ECR 구성 및 이미지 검증](../ecr/README.md)
 - [RDS PostgreSQL 및 S3 구성](../rds-s3/README.md)

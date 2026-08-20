@@ -6,6 +6,11 @@ spring:
   mvc:
     async:
       request-timeout: 3600000
+  task:
+    scheduling:
+      pool:
+        size: 4
+      thread-name-prefix: otboo-scheduler-
   jpa:
     open-in-view: false
   security:

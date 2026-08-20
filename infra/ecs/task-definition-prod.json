@@ -98,6 +98,14 @@
         {
           "name": "ADMIN_INIT_NAME",
           "value": "admin"
+        },
+        {
+          "name": "GOOGLE_CLIENT_ID",
+          "value": "<GOOGLE_CLIENT_ID>"
+        },
+        {
+          "name": "KAKAO_CLIENT_ID",
+          "value": "<KAKAO_CLIENT_ID>"
         }
       ],
       "secrets": [
@@ -128,6 +136,14 @@
         {
           "name": "ADMIN_INIT_PASSWORD",
           "valueFrom": "arn:aws:ssm:ap-northeast-2:<AWS_ACCOUNT_ID>:parameter/otboo/prod/admin/init-password"
+        },
+        {
+          "name": "GOOGLE_CLIENT_SECRET",
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:<AWS_ACCOUNT_ID>:parameter/otboo/prod/oauth/google/client-secret"
+        },
+        {
+          "name": "KAKAO_CLIENT_SECRET",
+          "valueFrom": "arn:aws:ssm:ap-northeast-2:<AWS_ACCOUNT_ID>:parameter/otboo/prod/oauth/kakao/client-secret"
         }
       ],
       "logConfiguration": {
