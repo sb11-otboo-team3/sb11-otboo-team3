@@ -2,6 +2,7 @@ package com.otboo.domain.weather.diff;
 
 import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.WindStrength;
+import java.time.Instant;
 import org.springframework.stereotype.Component;
 
 // 급변 카테고리별 순수 판정 로직. DB/Spring 컨텍스트 없이 이전/현재 값만 비교한다 -
@@ -26,5 +27,11 @@ public class WeatherDiffEvaluator {
     WindStrength previous = WindStrength.fromSpeed(previousSpeed);
     WindStrength current = WindStrength.fromSpeed(currentSpeed);
     return current.ordinal() > previous.ordinal();
+  }
+
+  // 발표별 비교 대상은 "다음 발표 전에 일어나는 시간대"로 제한한다 - 그보다 먼 미래는 다음 배치가
+  // 다시 검증할 기회가 있으므로 지금 당장 볼 필요가 없다(WeatherPersister에서 사용).
+  public boolean isWithinNextAnnouncementWindow(Instant forecastAt, Instant nextAnnouncementAt) {
+    return forecastAt.isBefore(nextAnnouncementAt);
   }
 }

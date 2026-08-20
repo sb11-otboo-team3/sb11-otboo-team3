@@ -3,6 +3,7 @@ package com.otboo.domain.weather.diff;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.otboo.domain.weather.entity.PrecipitationType;
+import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -119,5 +120,33 @@ class WeatherDiffEvaluatorTest {
 
     // then
     assertThat(triggered).isFalse();
+  }
+
+  @Test
+  @DisplayName("forecastAt이 다음 발표 시각보다 이전이면 스코프 안에 든다")
+  void withinWindowWhenForecastAtBeforeNextAnnouncement() {
+    // given
+    Instant forecastAt = Instant.parse("2026-07-30T05:00:00Z");
+    Instant nextAnnouncementAt = Instant.parse("2026-07-30T08:00:00Z");
+
+    // when
+    boolean within = evaluator.isWithinNextAnnouncementWindow(forecastAt, nextAnnouncementAt);
+
+    // then
+    assertThat(within).isTrue();
+  }
+
+  @Test
+  @DisplayName("forecastAt이 다음 발표 시각과 같거나 이후면 스코프 밖이다")
+  void notWithinWindowWhenForecastAtAtOrAfterNextAnnouncement() {
+    // given
+    Instant forecastAt = Instant.parse("2026-07-30T08:00:00Z");
+    Instant nextAnnouncementAt = Instant.parse("2026-07-30T08:00:00Z");
+
+    // when
+    boolean within = evaluator.isWithinNextAnnouncementWindow(forecastAt, nextAnnouncementAt);
+
+    // then
+    assertThat(within).isFalse();
   }
 }

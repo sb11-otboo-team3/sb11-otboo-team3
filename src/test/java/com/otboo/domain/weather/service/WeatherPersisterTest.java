@@ -5,6 +5,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
+import com.otboo.domain.weather.diff.DiffCategory;
+import com.otboo.domain.weather.diff.WeatherAnnouncementDiffEvent;
+import com.otboo.domain.weather.diff.WeatherDiffEvaluator;
+import com.otboo.domain.weather.diff.WeatherDiffProperties;
 import com.otboo.domain.weather.dto.VilageFcstItem;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
 import com.otboo.domain.weather.dto.WeatherDto;
@@ -13,6 +17,7 @@ import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.repository.WeatherRepository;
+import com.otboo.domain.weather.util.VilageFcstBaseTimeResolver;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -28,6 +33,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class WeatherPersisterTest {
@@ -40,6 +46,14 @@ class WeatherPersisterTest {
   @Mock
   private WeatherSaver weatherSaver;
 
+  @Mock
+  private ApplicationEventPublisher eventPublisher;
+
+  // 순수 로직이라(의존성 없음) 목이 아니라 실제 인스턴스를 씀 - 이 테스트가 진짜 임계값 계산까지 검증하게 하려고.
+  private final WeatherDiffEvaluator weatherDiffEvaluator = new WeatherDiffEvaluator();
+  private final VilageFcstBaseTimeResolver baseTimeResolver = new VilageFcstBaseTimeResolver();
+  private final WeatherDiffProperties weatherDiffProperties = new WeatherDiffProperties(5.0, 3.0);
+
   private WeatherPersister weatherPersister;
 
   private final Grid grid = Grid.builder().x(60).y(127).build();
@@ -48,7 +62,8 @@ class WeatherPersisterTest {
 
   @BeforeEach
   void setUp() {
-    weatherPersister = new WeatherPersister(weatherRepository, weatherSaver);
+    weatherPersister = new WeatherPersister(
+        weatherRepository, weatherSaver, weatherDiffEvaluator, baseTimeResolver, weatherDiffProperties, eventPublisher);
   }
 
   private VilageFcstItem item(LocalDateTime forecastAt, SkyStatus skyStatus, PrecipitationType precipitationType) {
@@ -263,5 +278,153 @@ class WeatherPersisterTest {
 
     // then
     verify(weatherRepository).updateDailyTemperatureRange(grid, 18.0, 27.0, dayStart, dayEnd);
+  }
+
+  // 발표별 급변 - forecastedAt 05:00 기준 다음 발표는 08:00. forecastAt 07:00은 스코프 안, 09:00은 스코프 밖.
+  private VilageFcstItem announcementItem(LocalDateTime forecastAt, PrecipitationType precipitationType,
+      double temperature, double windSpeed) {
+    return new VilageFcstItem(
+        LocalDateTime.of(2026, 7, 30, 5, 0), forecastAt,
+        SkyStatus.CLEAR, precipitationType,
+        0.0, 20.0, 55.0, temperature, null, null, windSpeed
+    );
+  }
+
+  private Weather previousSlot(Instant forecastAt, PrecipitationType precipitationType,
+      double temperature, double windSpeed) {
+    return Weather.builder()
+        .grid(grid)
+        .forecastedAt(forecastAt)
+        .forecastAt(forecastAt)
+        .skyStatus(SkyStatus.CLEAR)
+        .precipitationType(precipitationType)
+        .temperatureCurrent(temperature)
+        .windSpeed(windSpeed)
+        .build();
+  }
+
+  @Test
+  @DisplayName("같은 시간대에 이전 발표 기록이 없으면 발표별 급변 이벤트를 발행하지 않는다")
+  void doesNotPublishAnnouncementDiffEventWhenNoPreviousRecord() {
+    // given: 다음 발표(08시) 전이지만 이전 기록 자체가 없음
+    VilageFcstItem item = announcementItem(LocalDateTime.of(2026, 7, 30, 7, 0), PrecipitationType.NONE, 26.0, 2.0);
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 7, 0).atZone(KST).toInstant();
+    Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 7, 0).atZone(KST).toInstant();
+    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt)).willReturn(Optional.empty());
+    given(weatherRepository.findByGridAndForecastAt(grid, forecastAt)).willReturn(Optional.empty());
+    given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
+        .willAnswer(invocation -> invocation.getArgument(0));
+
+    // when
+    weatherPersister.persist(item, grid);
+
+    // then
+    Mockito.verifyNoInteractions(eventPublisher);
+  }
+
+  @Test
+  @DisplayName("다음 발표 전 시간대가 아니면 이전 기록이 있어도 발표별 급변을 평가하지 않는다")
+  void doesNotPublishAnnouncementDiffEventWhenOutsideNextAnnouncementWindow() {
+    // given: forecastAt 09시는 다음 발표(08시) 이후라 스코프 밖. 기온은 5도→26도로 크게 다름에도 무시돼야 함.
+    VilageFcstItem item = announcementItem(LocalDateTime.of(2026, 7, 30, 9, 0), PrecipitationType.NONE, 26.0, 2.0);
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(KST).toInstant();
+    Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 9, 0).atZone(KST).toInstant();
+    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt)).willReturn(Optional.empty());
+    given(weatherRepository.findByGridAndForecastAt(grid, forecastAt))
+        .willReturn(Optional.of(previousSlot(forecastAt, PrecipitationType.NONE, 5.0, 2.0)));
+    given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
+        .willAnswer(invocation -> invocation.getArgument(0));
+
+    // when
+    weatherPersister.persist(item, grid);
+
+    // then
+    Mockito.verifyNoInteractions(eventPublisher);
+  }
+
+  @Test
+  @DisplayName("스코프 안에서 기온만 임계값 이상 바뀌면 TEMPERATURE만 담아 이벤트를 발행한다")
+  void publishesAnnouncementDiffEventWithTemperatureOnly() {
+    // given: 20도 -> 26도(Δ6 ≥ 5), 강수·풍속은 그대로
+    VilageFcstItem item = announcementItem(LocalDateTime.of(2026, 7, 30, 7, 0), PrecipitationType.NONE, 26.0, 2.0);
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 7, 0).atZone(KST).toInstant();
+    Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 7, 0).atZone(KST).toInstant();
+    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt)).willReturn(Optional.empty());
+    given(weatherRepository.findByGridAndForecastAt(grid, forecastAt))
+        .willReturn(Optional.of(previousSlot(forecastAt, PrecipitationType.NONE, 20.0, 2.0)));
+    given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
+        .willAnswer(invocation -> invocation.getArgument(0));
+
+    // when
+    weatherPersister.persist(item, grid);
+
+    // then
+    ArgumentCaptor<WeatherAnnouncementDiffEvent> captor = ArgumentCaptor.forClass(WeatherAnnouncementDiffEvent.class);
+    verify(eventPublisher).publishEvent(captor.capture());
+    assertThat(captor.getValue().triggeredCategories()).containsExactly(DiffCategory.TEMPERATURE);
+  }
+
+  @Test
+  @DisplayName("스코프 안에서 강수형태가 NONE에서 강수로 전환되면 PRECIPITATION만 담아 이벤트를 발행한다")
+  void publishesAnnouncementDiffEventWithPrecipitationOnly() {
+    // given: 기온·풍속은 그대로, 강수형태만 NONE -> RAIN
+    VilageFcstItem item = announcementItem(LocalDateTime.of(2026, 7, 30, 7, 0), PrecipitationType.RAIN, 20.0, 2.0);
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 7, 0).atZone(KST).toInstant();
+    Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 7, 0).atZone(KST).toInstant();
+    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt)).willReturn(Optional.empty());
+    given(weatherRepository.findByGridAndForecastAt(grid, forecastAt))
+        .willReturn(Optional.of(previousSlot(forecastAt, PrecipitationType.NONE, 20.0, 2.0)));
+    given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
+        .willAnswer(invocation -> invocation.getArgument(0));
+
+    // when
+    weatherPersister.persist(item, grid);
+
+    // then
+    ArgumentCaptor<WeatherAnnouncementDiffEvent> captor = ArgumentCaptor.forClass(WeatherAnnouncementDiffEvent.class);
+    verify(eventPublisher).publishEvent(captor.capture());
+    assertThat(captor.getValue().triggeredCategories()).containsExactly(DiffCategory.PRECIPITATION);
+  }
+
+  @Test
+  @DisplayName("스코프 안에서 풍속 등급이 오르면 WIND만 담아 이벤트를 발행한다")
+  void publishesAnnouncementDiffEventWithWindOnly() {
+    // given: 기온·강수는 그대로, 풍속만 2.0(WEAK) -> 10.0(STRONG)
+    VilageFcstItem item = announcementItem(LocalDateTime.of(2026, 7, 30, 7, 0), PrecipitationType.NONE, 20.0, 10.0);
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 7, 0).atZone(KST).toInstant();
+    Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 7, 0).atZone(KST).toInstant();
+    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt)).willReturn(Optional.empty());
+    given(weatherRepository.findByGridAndForecastAt(grid, forecastAt))
+        .willReturn(Optional.of(previousSlot(forecastAt, PrecipitationType.NONE, 20.0, 2.0)));
+    given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
+        .willAnswer(invocation -> invocation.getArgument(0));
+
+    // when
+    weatherPersister.persist(item, grid);
+
+    // then
+    ArgumentCaptor<WeatherAnnouncementDiffEvent> captor = ArgumentCaptor.forClass(WeatherAnnouncementDiffEvent.class);
+    verify(eventPublisher).publishEvent(captor.capture());
+    assertThat(captor.getValue().triggeredCategories()).containsExactly(DiffCategory.WIND);
+  }
+
+  @Test
+  @DisplayName("스코프 안이라도 아무 카테고리도 안 걸리면 이벤트를 발행하지 않는다")
+  void doesNotPublishAnnouncementDiffEventWhenNothingTriggered() {
+    // given: 기온 Δ1(임계값 미만), 강수·풍속 변화 없음
+    VilageFcstItem item = announcementItem(LocalDateTime.of(2026, 7, 30, 7, 0), PrecipitationType.NONE, 21.0, 2.0);
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 7, 0).atZone(KST).toInstant();
+    Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 7, 0).atZone(KST).toInstant();
+    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt)).willReturn(Optional.empty());
+    given(weatherRepository.findByGridAndForecastAt(grid, forecastAt))
+        .willReturn(Optional.of(previousSlot(forecastAt, PrecipitationType.NONE, 20.0, 2.0)));
+    given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
+        .willAnswer(invocation -> invocation.getArgument(0));
+
+    // when
+    weatherPersister.persist(item, grid);
+
+    // then
+    Mockito.verifyNoInteractions(eventPublisher);
   }
 }
