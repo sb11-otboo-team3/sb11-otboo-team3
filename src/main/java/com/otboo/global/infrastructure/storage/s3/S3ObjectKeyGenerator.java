@@ -32,4 +32,16 @@ public class S3ObjectKeyGenerator {
                 extension
         );
     }
+    public String generateThumbnail(
+        StorageDirectory directory,
+        UUID ownerId,
+        String extension
+    ) {
+        return "%s/%s/thumb_%s.%s".formatted(
+            directory.getPrefix(),
+            ownerId,
+            uuidSupplier.get(),
+            extension
+        );
+    }
 }

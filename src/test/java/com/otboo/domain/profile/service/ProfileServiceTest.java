@@ -413,7 +413,8 @@ class ProfileServiceTest {
     StoredFile storedFile = new StoredFile(
         "profiles/" + userId + "/new-key.png",
         "image/png",
-        13L
+        13L,
+        null
     );
     given(
         fileStorage.upload(
@@ -485,7 +486,8 @@ class ProfileServiceTest {
     StoredFile storedFile = new StoredFile(
         "profiles/" + userId + "/first-key.png",
         "image/png",
-        13L
+        13L,
+        null
     );
 
     given(
@@ -555,7 +557,8 @@ class ProfileServiceTest {
     StoredFile storedFile = new StoredFile(
         "profiles/" + userId + "/orphan-key.png",
         "image/png",
-        13L
+        13L,
+        null
     );
     given(
         fileStorage.upload(StorageDirectory.PROFILES, userId, image)
