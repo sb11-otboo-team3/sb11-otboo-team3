@@ -53,7 +53,7 @@ public class WeatherDailyDiffScheduler {
           .sorted(Comparator.comparing(Weather::getForecastAt))
           .toList();
 
-      Set<DiffCategory> triggeredCategories = weatherDiffEvaluator.evaluateDailyDiff(todaysWeather, weatherDiffProperties);
+      Set<DailyDiffTrigger> triggeredCategories = weatherDiffEvaluator.evaluateDailyDiff(todaysWeather, weatherDiffProperties);
       if (!triggeredCategories.isEmpty()) {
         eventPublisher.publishEvent(new WeatherDailyDiffEvent(grid, today, triggeredCategories));
       }

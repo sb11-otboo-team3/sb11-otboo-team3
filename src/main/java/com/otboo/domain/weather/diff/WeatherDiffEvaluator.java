@@ -6,6 +6,7 @@ import com.otboo.domain.weather.entity.WindStrength;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import org.springframework.stereotype.Component;
@@ -47,32 +48,41 @@ public class WeatherDiffEvaluator {
     return Math.abs(currentTemp - previousTemp) / gapHours >= properties.dailyTempRateThresholdPerHour();
   }
 
-  // 하루치(같은 forecastedAt, forecastAt으로 정렬된) row를 인접 쌍끼리 훑어서, 어느 한 쌍이라도 걸리면
-  // 그 카테고리를 결과에 담는다. 강수·풍속은 발표별과 같은 규칙을 그대로 재사용한다 - 카테고리 전환이면
-  // 간격 크기와 무관하게 이미 의미 있는 변화라 시간으로 나눌 필요가 없기 때문(기온과 다른 점).
-  public Set<DiffCategory> evaluateDailyDiff(List<Weather> sortedByForecastAt, WeatherDiffProperties properties) {
-    Set<DiffCategory> triggeredCategories = EnumSet.noneOf(DiffCategory.class);
+  // 하루치(같은 forecastedAt, forecastAt으로 정렬된) row를 인접 쌍끼리 훑어서, 카테고리별로 "가장 이른"
+  // 트리거 쌍 하나만 담는다(사용자에게는 "언제부터"가 제일 중요하므로) - 강수·풍속은 발표별과 같은 규칙을
+  // 그대로 재사용한다(카테고리 전환이면 간격 크기와 무관하게 이미 의미 있는 변화라 시간으로 나눌 필요 없음).
+  public Set<DailyDiffTrigger> evaluateDailyDiff(List<Weather> sortedByForecastAt, WeatherDiffProperties properties) {
+    Set<DailyDiffTrigger> triggers = new LinkedHashSet<>();
+    Set<DiffCategory> reportedCategories = EnumSet.noneOf(DiffCategory.class);
 
     for (int i = 1; i < sortedByForecastAt.size(); i++) {
       Weather previous = sortedByForecastAt.get(i - 1);
       Weather current = sortedByForecastAt.get(i);
+      Instant fromTime = previous.getForecastAt();
 
       double gapHours = Duration.between(previous.getForecastAt(), current.getForecastAt()).toMinutes() / 60.0;
 
-      if (previous.getTemperatureCurrent() != null && current.getTemperatureCurrent() != null
+      if (!reportedCategories.contains(DiffCategory.TEMPERATURE)
+          && previous.getTemperatureCurrent() != null && current.getTemperatureCurrent() != null
           && isTemperatureTriggeredByRate(
               previous.getTemperatureCurrent(), current.getTemperatureCurrent(), gapHours, properties)) {
-        triggeredCategories.add(DiffCategory.TEMPERATURE);
+        boolean rising = current.getTemperatureCurrent() > previous.getTemperatureCurrent();
+        triggers.add(new DailyDiffTrigger(DiffCategory.TEMPERATURE, fromTime, rising));
+        reportedCategories.add(DiffCategory.TEMPERATURE);
       }
-      if (isPrecipitationTriggered(previous.getPrecipitationType(), current.getPrecipitationType())) {
-        triggeredCategories.add(DiffCategory.PRECIPITATION);
+      if (!reportedCategories.contains(DiffCategory.PRECIPITATION)
+          && isPrecipitationTriggered(previous.getPrecipitationType(), current.getPrecipitationType())) {
+        triggers.add(new DailyDiffTrigger(DiffCategory.PRECIPITATION, fromTime, true));
+        reportedCategories.add(DiffCategory.PRECIPITATION);
       }
-      if (previous.getWindSpeed() != null && current.getWindSpeed() != null
+      if (!reportedCategories.contains(DiffCategory.WIND)
+          && previous.getWindSpeed() != null && current.getWindSpeed() != null
           && isWindTriggered(previous.getWindSpeed(), current.getWindSpeed())) {
-        triggeredCategories.add(DiffCategory.WIND);
+        triggers.add(new DailyDiffTrigger(DiffCategory.WIND, fromTime, true));
+        reportedCategories.add(DiffCategory.WIND);
       }
     }
 
-    return triggeredCategories;
+    return triggers;
   }
 }

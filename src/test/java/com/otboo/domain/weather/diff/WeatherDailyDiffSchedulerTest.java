@@ -104,6 +104,7 @@ class WeatherDailyDiffSchedulerTest {
     verify(eventPublisher).publishEvent(captor.capture());
     assertThat(captor.getValue().grid()).isEqualTo(grid);
     assertThat(captor.getValue().triggeredCategories())
+        .extracting(DailyDiffTrigger::category)
         .containsExactly(DiffCategory.TEMPERATURE);
   }
 

@@ -9,6 +9,6 @@ import java.util.Set;
 public record WeatherDailyDiffEvent(
     Grid grid,
     LocalDate date,
-    Set<DiffCategory> triggeredCategories
+    Set<DailyDiffTrigger> triggeredCategories
 ) {
 }
