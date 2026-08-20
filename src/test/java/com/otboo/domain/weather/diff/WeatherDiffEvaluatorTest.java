@@ -80,4 +80,44 @@ class WeatherDiffEvaluatorTest {
     // then
     assertThat(triggered).isFalse();
   }
+
+  @Test
+  @DisplayName("풍속 등급이 한 단계 오르면 급변으로 판정한다")
+  void triggeredWhenWindStrengthTierRisesOneStep() {
+    // when
+    boolean triggered = evaluator.isWindTriggered(3.0, 5.0); // WEAK -> MODERATE
+
+    // then
+    assertThat(triggered).isTrue();
+  }
+
+  @Test
+  @DisplayName("풍속 등급이 두 단계 올라도 급변으로 판정한다")
+  void triggeredWhenWindStrengthTierRisesTwoSteps() {
+    // when
+    boolean triggered = evaluator.isWindTriggered(3.0, 10.0); // WEAK -> STRONG
+
+    // then
+    assertThat(triggered).isTrue();
+  }
+
+  @Test
+  @DisplayName("풍속 등급이 내려가면 급변으로 판정하지 않는다")
+  void notTriggeredWhenWindStrengthTierFalls() {
+    // when
+    boolean triggered = evaluator.isWindTriggered(10.0, 3.0); // STRONG -> WEAK
+
+    // then
+    assertThat(triggered).isFalse();
+  }
+
+  @Test
+  @DisplayName("풍속 등급이 그대로면 급변으로 판정하지 않는다")
+  void notTriggeredWhenWindStrengthTierUnchanged() {
+    // when
+    boolean triggered = evaluator.isWindTriggered(2.0, 3.0); // 둘 다 WEAK
+
+    // then
+    assertThat(triggered).isFalse();
+  }
 }
