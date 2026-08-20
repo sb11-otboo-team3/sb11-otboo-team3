@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 class WeatherDiffEvaluatorTest {
 
   private final WeatherDiffEvaluator evaluator = new WeatherDiffEvaluator();
-  private final WeatherDiffProperties properties = new WeatherDiffProperties(5.0, 3.0, 40.0);
+  private final WeatherDiffProperties properties = new WeatherDiffProperties(5.0, 3.0);
 
   @Test
   @DisplayName("기온 변화가 임계값 미만이면 급변으로 판정하지 않는다")

@@ -32,7 +32,7 @@ class WeatherDiffPropertiesTest {
   @DisplayName("모든 임계값이 유효 범위면 검증을 통과한다")
   void validWhenAllThresholdsInRange() {
     // given
-    WeatherDiffProperties properties = new WeatherDiffProperties(5.0, 3.0, 40.0);
+    WeatherDiffProperties properties = new WeatherDiffProperties(5.0, 3.0);
 
     // when
     Set<ConstraintViolation<WeatherDiffProperties>> violations = validator.validate(properties);
@@ -45,7 +45,7 @@ class WeatherDiffPropertiesTest {
   @DisplayName("발표별 기온 임계값이 0 이하면 검증에 실패한다")
   void invalidWhenAnnouncementTempThresholdNotPositive() {
     // given
-    WeatherDiffProperties properties = new WeatherDiffProperties(0.0, 3.0, 40.0);
+    WeatherDiffProperties properties = new WeatherDiffProperties(0.0, 3.0);
 
     // when
     Set<ConstraintViolation<WeatherDiffProperties>> violations = validator.validate(properties);
@@ -58,33 +58,7 @@ class WeatherDiffPropertiesTest {
   @DisplayName("일일별 기온 시간당 임계값이 0 이하면 검증에 실패한다")
   void invalidWhenDailyTempRateThresholdNotPositive() {
     // given
-    WeatherDiffProperties properties = new WeatherDiffProperties(5.0, 0.0, 40.0);
-
-    // when
-    Set<ConstraintViolation<WeatherDiffProperties>> violations = validator.validate(properties);
-
-    // then
-    assertThat(violations).isNotEmpty();
-  }
-
-  @Test
-  @DisplayName("강수확률 임계값이 0 이하면 검증에 실패한다")
-  void invalidWhenPrecipitationProbabilityThresholdNotPositive() {
-    // given
-    WeatherDiffProperties properties = new WeatherDiffProperties(5.0, 3.0, 0.0);
-
-    // when
-    Set<ConstraintViolation<WeatherDiffProperties>> violations = validator.validate(properties);
-
-    // then
-    assertThat(violations).isNotEmpty();
-  }
-
-  @Test
-  @DisplayName("강수확률 임계값이 100을 초과하면 검증에 실패한다")
-  void invalidWhenPrecipitationProbabilityThresholdOver100() {
-    // given
-    WeatherDiffProperties properties = new WeatherDiffProperties(5.0, 3.0, 100.1);
+    WeatherDiffProperties properties = new WeatherDiffProperties(5.0, 0.0);
 
     // when
     Set<ConstraintViolation<WeatherDiffProperties>> violations = validator.validate(properties);

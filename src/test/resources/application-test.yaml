@@ -108,7 +108,6 @@ app:
     diff:
       announcement-temp-threshold: 5.0
       daily-temp-rate-threshold-per-hour: 3.0
-      precipitation-probability-threshold: 40.0
 
 logging:
   level:
