@@ -1,11 +1,9 @@
 package com.otboo.domain.notification.event;
 
 import static org.mockito.Mockito.verify;
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.mockito.BDDMockito.willThrow;
 
 import com.otboo.domain.notification.entity.NotificationLevel;
-import com.otboo.domain.notification.service.NotificationService;
+import com.otboo.domain.notification.outbox.NotificationOutboxService;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,18 +16,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class NotificationEventListenerTest {
 
   @Mock
-  private NotificationService notificationService;
+  private NotificationOutboxService notificationOutboxService;
 
   @InjectMocks
   private NotificationEventListener notificationEventListener;
 
   @Test
-  @DisplayName("들어온 이벤트를 서비스의 create로 생성하게 넘기기 테스트")
+  @DisplayName("알림 이벤트를 Outbox 저장 서비스로 전달한다")
   void handle_success() {
-    UUID receiverId = UUID.randomUUID();
-
     NotificationEvent event = new NotificationEvent(
-        receiverId,
+        UUID.randomUUID(),
         "새 알림",
         "알림 내용",
         NotificationLevel.INFO
@@ -37,43 +33,6 @@ class NotificationEventListenerTest {
 
     notificationEventListener.handle(event);
 
-    verify(notificationService).createNotification(
-        receiverId,
-        "새 알림",
-        "알림 내용",
-        NotificationLevel.INFO
-    );
-  }
-
-  @Test
-  @DisplayName("알림 이벤트 처리 중 예외가 발생해도 밖으로 전파하지 않는다")
-  void handle_exception_doesNotThrow() {
-    UUID receiverId = UUID.randomUUID();
-
-    NotificationEvent event = new NotificationEvent(
-        receiverId,
-        "알림 제목",
-        "알림 내용",
-        NotificationLevel.INFO
-    );
-
-    willThrow(new RuntimeException("알림 생성 실패"))
-        .given(notificationService)
-        .createNotification(
-            receiverId,
-            "알림 제목",
-            "알림 내용",
-            NotificationLevel.INFO
-        );
-
-    assertThatCode(() -> notificationEventListener.handle(event))
-        .doesNotThrowAnyException();
-
-    verify(notificationService).createNotification(
-        receiverId,
-        "알림 제목",
-        "알림 내용",
-        NotificationLevel.INFO
-    );
+    verify(notificationOutboxService).save(event);
   }
 }
