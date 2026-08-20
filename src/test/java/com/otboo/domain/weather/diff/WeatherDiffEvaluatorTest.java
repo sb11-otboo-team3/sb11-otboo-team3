@@ -2,6 +2,7 @@ package com.otboo.domain.weather.diff;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.otboo.domain.weather.entity.PrecipitationType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -38,5 +39,45 @@ class WeatherDiffEvaluatorTest {
 
     // then
     assertThat(triggered).isTrue();
+  }
+
+  @Test
+  @DisplayName("강수형태가 NONE에서 강수로 전환되면 급변으로 판정한다")
+  void triggeredWhenPrecipitationStartsFromNone() {
+    // when
+    boolean triggered = evaluator.isPrecipitationTriggered(PrecipitationType.NONE, PrecipitationType.RAIN);
+
+    // then
+    assertThat(triggered).isTrue();
+  }
+
+  @Test
+  @DisplayName("강수형태가 강수에서 NONE으로 전환되면 급변으로 판정하지 않는다")
+  void notTriggeredWhenPrecipitationStopsToNone() {
+    // when
+    boolean triggered = evaluator.isPrecipitationTriggered(PrecipitationType.RAIN, PrecipitationType.NONE);
+
+    // then
+    assertThat(triggered).isFalse();
+  }
+
+  @Test
+  @DisplayName("강수형태가 NONE으로 그대로면 급변으로 판정하지 않는다")
+  void notTriggeredWhenPrecipitationTypeUnchangedAsNone() {
+    // when
+    boolean triggered = evaluator.isPrecipitationTriggered(PrecipitationType.NONE, PrecipitationType.NONE);
+
+    // then
+    assertThat(triggered).isFalse();
+  }
+
+  @Test
+  @DisplayName("강수형태가 강수로 그대로면 급변으로 판정하지 않는다")
+  void notTriggeredWhenPrecipitationTypeUnchangedAsPrecipitating() {
+    // when
+    boolean triggered = evaluator.isPrecipitationTriggered(PrecipitationType.RAIN, PrecipitationType.RAIN);
+
+    // then
+    assertThat(triggered).isFalse();
   }
 }
