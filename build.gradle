@@ -40,6 +40,9 @@ dependencies {
 	// Security
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 
+    //OAuth2 Client
+	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+
 	// JWT
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
@@ -50,6 +53,9 @@ dependencies {
 
 	// Reactive HTTP client (WebClient) - 서블릿 웹서버는 그대로 두고 WebClient만 쓰기 위함
 	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+	// HTML 파싱 (구매 링크 추출) - 요청은 WebClient가 담당하고, Jsoup은 이미 받아온 HTML 파싱 전용으로만 사용
+	implementation 'org.jsoup:jsoup:1.18.3'
 
 	// macOS Apple Silicon용 Netty native DNS resolver
 	if (isMacArm) {
@@ -80,6 +86,10 @@ dependencies {
 
 	// Redis
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+	// 로컬 Elasticsearch OSS 7.10.2와 운영 OpenSearch 1.x의 공통 호환 Client
+	implementation 'org.elasticsearch.client:elasticsearch-rest-high-level-client:7.10.2'
+	implementation 'org.elasticsearch.client:elasticsearch-rest-client:7.10.2'
 
 	// Kafka
 	implementation 'org.springframework.kafka:spring-kafka'

@@ -2495,3 +2495,159 @@ OAuth 운영 Redirect 검증은
 - Deployment Circuit Breaker 및 Rollback 검증
 - ALB Health Check 운영 기준 재검증
 - CloudWatch 운영 모니터링 및 알림 구성
+---
+
+## 다중 Task 환경 WebSocket·SSE 정합성 검증 (Issue #190)
+
+Issue #190에서는 평상시 단일 ECS Task로 운영하는 현재 구조에서
+Rolling Update 중 일시적으로 복수 Task가 공존할 때
+WebSocket과 SSE 연결 및 실시간 이벤트 전달에 어떤 영향이 있는지 검증했습니다.
+
+현재 운영 기준은 다음과 같습니다.
+
+```text
+Normal Operation
+Desired Count: 1
+
+Rolling Update
+Old Task + New Task 일시 공존
+
+Deployment Complete
+Desired Count: 1
+```
+
+따라서 이번 검증의 목적은 상시 다중 Task 운영으로 전환하는 것이 아니라,
+배포 과정에서 일시적으로 발생하는 복수 Task 환경의 영향을 확인하는 것입니다.
+
+### SSE 다중 Task 검증
+
+SSE 연결과 알림 이벤트 발생 요청이 서로 다른 ECS Task에서 처리되는 상황을
+실제 운영 환경에서 검증했습니다.
+
+검증 결과 같은 Task에서 알림 이벤트가 발생한 경우에는
+연결된 사용자에게 실시간 SSE 이벤트가 전달되었습니다.
+
+반면 알림 이벤트를 생성한 요청과
+해당 사용자의 SSE 연결이 서로 다른 Task에서 처리된 경우에는
+알림 데이터 자체는 DB에 저장되지만
+해당 SSE 연결로 실시간 이벤트가 즉시 전달되지 않는 것을 확인했습니다.
+
+현재 SSE 연결 정보는 각 애플리케이션 인스턴스의 메모리에 유지되므로
+Task 간에 연결 상태가 공유되지 않습니다.
+
+```text
+User A SSE → Task A
+
+User B Request → Task B
+                    ↓
+              Notification 저장
+                    ↓
+           Task B의 로컬 SSE Registry
+                    ↓
+       User A 연결은 Task A에 존재
+                    ↓
+          실시간 SSE 전달 불가
+```
+
+따라서 상시 다중 Task 환경에서는
+별도의 공유 이벤트 전달 구조가 필요합니다.
+
+### WebSocket/STOMP Task 교체 검증
+
+WebSocket 연결이 어느 Task에 위치하는지 명확히 하기 위해
+ECS Service를 일시적으로 단일 Task 상태로 구성한 뒤
+브라우저에서 WebSocket/STOMP 연결을 생성했습니다.
+
+이후 Service를 두 개의 Task로 확장하고
+기존 WebSocket 연결을 가지고 있던 Task를 종료했습니다.
+
+다음 동작을 확인했습니다.
+
+```text
+기존 Task WebSocket 연결
+→ 기존 Task 종료
+→ 기존 WebSocket 연결 종료
+→ Frontend 자동 재연결
+→ 새 WebSocket 연결 생성
+→ STOMP CONNECT 및 SUBSCRIBE 복구
+→ DM MESSAGE 수신
+```
+
+따라서 Rolling Update 과정에서 기존 Task가 제거되더라도
+현재 Frontend의 STOMP 재연결 동작을 통해
+WebSocket 연결과 DM 구독이 복구되는 것을 확인했습니다.
+
+### ALB Stickiness 검토
+
+ALB Stickiness는 이번 문제의 해결책으로 적용하지 않습니다.
+
+알림 이벤트 발생 사용자와 알림 수신 사용자는 서로 다른 Client이므로,
+각 Client가 특정 Task에 고정되더라도
+이벤트를 생성한 Task와 수신자의 SSE 연결을 가진 Task가
+항상 동일하다는 보장이 없습니다.
+
+따라서 Stickiness는 Task 간 실시간 이벤트 전달 문제를
+근본적으로 해결하지 못합니다.
+
+현재 Target Group의 Stickiness 설정은 변경하지 않습니다.
+
+### 공유 이벤트 전달 구조 검토
+
+Redis Pub/Sub 등의 공유 이벤트 전달 구조를 적용하면
+각 Task에서 발생한 실시간 이벤트를 다른 Task에도 전달할 수 있습니다.
+
+다만 현재 운영 정책은 평상시 단일 Task이며,
+복수 Task는 Rolling Update 중 일시적으로만 발생합니다.
+
+현재 프로젝트 규모에서는 다중 Task 실시간 Fan-out을 위해
+추가 분산 메시징 구조를 도입하는 것보다
+현재 단일 Task 운영 구조를 유지하는 것으로 결정했습니다.
+
+```text
+현재
+Single Task 운영 유지
+ALB Stickiness 적용하지 않음
+공유 실시간 이벤트 전달 구조 적용하지 않음
+
+향후
+상시 다중 Task 또는 Auto Scaling 도입
+→ Redis Pub/Sub 등 공유 이벤트 전달 구조 재검토
+```
+
+### SSE 후속 확인 사항
+
+검증 과정에서 SSE Client가 일정 시간 동안 이벤트를 수신하지 못하면
+재연결을 반복하는 동작도 확인했습니다.
+
+이는 WebSocket/STOMP 재연결과는 별개의 SSE 동작입니다.
+
+다음 항목은 Issue #190에서 기능을 수정하지 않고
+SSE 기능의 후속 점검 대상으로 남깁니다.
+
+- SSE Heartbeat 적용 필요성 검토
+- `lastEventId` 전달 및 서버 수신 규칙 확인
+- SSE 재연결 시 DB 기반 누락 이벤트 Replay 동작 검증
+
+특히 현재 단일 Task 운영에서는
+배포로 인해 SSE 연결이 일시적으로 끊어질 수 있으므로
+재연결 후 누락 이벤트 Replay가 정상 동작하는지 확인하는 것이
+상시 다중 Task용 공유 이벤트 구조를 추가하는 것보다 우선합니다.
+
+### Issue #190 결론
+
+다음 항목을 검증했습니다.
+
+- Rolling Update 중 복수 Task의 요청 분산 영향 확인
+- 같은 Task에서 SSE 실시간 알림 전달 확인
+- 서로 다른 Task에서 SSE 실시간 알림 누락 가능성 확인
+- 알림 데이터의 DB 저장과 실시간 전달을 구분하여 검증
+- 기존 WebSocket 연결 Task 종료 시 연결 종료 확인
+- Frontend WebSocket/STOMP 자동 재연결 확인
+- 재연결 이후 STOMP 구독 및 DM MESSAGE 수신 확인
+- ALB Stickiness가 Task 간 이벤트 전달 문제의 해결책이 아님을 확인
+- 현재 단일 Task 운영에서는 공유 이벤트 전달 구조를 도입하지 않기로 결정
+- 상시 다중 Task 또는 Auto Scaling 도입 시 공유 이벤트 전달 구조를 재검토하기로 결정
+- SSE Heartbeat 및 `lastEventId` Replay를 후속 점검 대상으로 분리
+
+검증 완료 후 ECS Service의 Desired Count는
+기존 운영 기준인 `1`로 복구했습니다.
