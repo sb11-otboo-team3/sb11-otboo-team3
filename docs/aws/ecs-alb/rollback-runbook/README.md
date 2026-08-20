@@ -498,7 +498,7 @@ aws ecs describe-services \
 실패 Revision이 `PRIMARY` 또는 `ACTIVE` Deployment에서 참조되고 있다면
 즉시 비활성화하지 않습니다.
 
-필요한 경우 Service Deployment 이력도 확인합니다.
+Service Deployment 이력을 확인하여 실패 Revision이 어떤 Service Revision과 연결되어 있는지 확인합니다.
 
 ```bash
 aws ecs list-service-deployments \
@@ -514,13 +514,60 @@ aws ecs list-service-deployments \
   --output table
 ```
 
+확인이 필요한 Deployment ARN을 지정합니다.
+
+```bash
+DEPLOYMENT_ARN="<확인할_SERVICE_DEPLOYMENT_ARN>"
+```
+
+해당 Deployment의 이전 Service Revision과 배포 대상 Service Revision을 확인합니다.
+
+```bash
+aws ecs describe-service-deployments \
+  --service-deployment-arns "$DEPLOYMENT_ARN" \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE" \
+  --query 'serviceDeployments[0].{
+    Status:status,
+    SourceServiceRevisions:sourceServiceRevisions[].arn,
+    TargetServiceRevision:targetServiceRevision.arn
+  }' \
+  --output json
+```
+
+`sourceServiceRevisions`는 배포 이전에 사용 중이던 Service Revision이고,
+`targetServiceRevision`은 해당 Deployment에서 배포하려던 Service Revision입니다.
+
+확인할 Service Revision ARN을 지정합니다.
+
+```bash
+SERVICE_REVISION_ARN="<확인할_SERVICE_REVISION_ARN>"
+```
+
+Service Revision이 실제로 사용하는 Task Definition을 확인합니다.
+
+```bash
+aws ecs describe-service-revisions \
+  --service-revision-arns "$SERVICE_REVISION_ARN" \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE" \
+  --query 'serviceRevisions[0].{
+    ServiceRevisionArn:serviceRevisionArn,
+    TaskDefinition:taskDefinition
+  }' \
+  --output table
+```
+
+조회된 `TaskDefinition`이 비활성화하려는 실패 Revision과 일치하는지 확인합니다.
+
 다음 조건을 모두 만족할 때만 실패 Revision을 비활성화합니다.
 
 - 현재 `PRIMARY` Deployment에서 사용하지 않음
 - 전환 중인 `ACTIVE` Deployment에서 사용하지 않음
 - 진행 중인 Rollback에서 필요하지 않음
-- 향후 정상 롤백 후보가 아님
-- 의도적으로 생성한 실패/검증용 Revision임
+- 성공한 Service Deployment의 정상 롤백 후보가 아님
+- Service Revision 조회 결과 비활성화하려는 실패 Task Definition과 일치함
+- 의도적으로 생성한 실패 또는 검증용 Revision임
 
 조건을 확인한 뒤 비활성화합니다.
 
