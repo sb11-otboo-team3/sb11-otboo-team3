@@ -48,4 +48,15 @@ public class VilageFcstBaseTimeResolver {
     LocalTime lastSlotOfDay = BASE_TIMES.get(BASE_TIMES.size() - 1);
     return new VilageFcstBaseTime(current.baseDate().minusDays(1), lastSlotOfDay);
   }
+
+  // 현재 슬롯의 다음 시간대를 리턴
+  public VilageFcstBaseTime next(VilageFcstBaseTime current) {
+    int index = BASE_TIMES.indexOf(current.baseTime());
+    if (index < BASE_TIMES.size() - 1) {
+      return new VilageFcstBaseTime(current.baseDate(), BASE_TIMES.get(index + 1));
+    }
+
+    LocalTime firstSlotOfDay = BASE_TIMES.get(0);
+    return new VilageFcstBaseTime(current.baseDate().plusDays(1), firstSlotOfDay);
+  }
 }
