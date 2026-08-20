@@ -534,29 +534,6 @@ aws ecs deregister-task-definition \
 Task Definition을 deregister하면 `INACTIVE` 상태가 되며
 새로운 Task 실행이나 Service 업데이트 대상으로 다시 사용할 수 없습니다.
 
-현재 Service Revision을 확인합니다.
-
-```bash
-aws ecs describe-services \
-  --cluster "$ECS_CLUSTER" \
-  --services "$ECS_SERVICE" \
-  --region "$AWS_REGION" \
-  --profile "$AWS_PROFILE" \
-  --query 'services[0].taskDefinition' \
-  --output text
-```
-
-실패 Revision이 더 이상 사용되지 않는 것을 확인한 경우 다음과 같이 비활성화합니다.
-
-```bash
-aws ecs deregister-task-definition \
-  --task-definition otboo-prod-backend:<실패_REVISION> \
-  --region "$AWS_REGION" \
-  --profile "$AWS_PROFILE"
-```
-
-현재 Service가 사용 중인 Task Definition Revision은 비활성화하지 않습니다.
-
 ---
 
 ## 11. 운영 장애 대응 순서
