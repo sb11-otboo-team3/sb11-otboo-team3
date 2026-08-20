@@ -3,6 +3,7 @@ package com.otboo.domain.notification.outbox;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -46,6 +47,8 @@ class NotificationOutboxCleanupSchedulerTest {
         eq(NotificationOutboxStatus.FAILED),
         failedThresholdCaptor.capture()
     );
+    
+    verifyNoMoreInteractions(notificationOutboxRepository);
 
     Instant publishedThreshold = publishedThresholdCaptor.getValue();
     Instant failedThreshold = failedThresholdCaptor.getValue();

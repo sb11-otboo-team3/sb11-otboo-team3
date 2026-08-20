@@ -15,8 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class NotificationOutboxPublisher {
 
+  private static final int PUBLISH_BATCH_SIZE = 10;
   private static final int MAX_RETRY_COUNT = 3;
-  private static final int PUBLISH_BATCH_SIZE = 200;
 
   private final NotificationOutboxRepository notificationOutboxRepository;
   private final NotificationKafkaProducer notificationKafkaProducer;
@@ -24,7 +24,7 @@ public class NotificationOutboxPublisher {
   @Scheduled(fixedDelayString = "${app.notification.outbox.publish-delay-ms:3000}")
   @SchedulerLock(
       name = "notificationOutboxPublisher",
-      lockAtMostFor = "PT30S",
+      lockAtMostFor = "PT2M",
       lockAtLeastFor = "PT1S"
   )
   @Transactional

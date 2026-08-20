@@ -37,7 +37,7 @@ class NotificationOutboxPublisherTest {
   void publishPending_success() {
     NotificationOutbox outbox = createOutbox();
 
-    given(notificationOutboxRepository.findPendingOrderByCreatedAtAsc(200))
+    given(notificationOutboxRepository.findPendingOrderByCreatedAtAsc(10))
         .willReturn(List.of(outbox));
 
     notificationOutboxPublisher.publishPending();
@@ -64,7 +64,7 @@ class NotificationOutboxPublisherTest {
   void publishPending_sendFail_retry() {
     NotificationOutbox outbox = createOutbox();
 
-    given(notificationOutboxRepository.findPendingOrderByCreatedAtAsc(200))
+    given(notificationOutboxRepository.findPendingOrderByCreatedAtAsc(10))
         .willReturn(List.of(outbox));
 
     willThrow(new IllegalStateException("Kafka 발행 실패"))
@@ -84,7 +84,7 @@ class NotificationOutboxPublisherTest {
     outbox.markRetry();
     outbox.markRetry();
 
-    given(notificationOutboxRepository.findPendingOrderByCreatedAtAsc(200))
+    given(notificationOutboxRepository.findPendingOrderByCreatedAtAsc(10))
         .willReturn(List.of(outbox));
 
     willThrow(new IllegalStateException("Kafka 발행 실패"))
