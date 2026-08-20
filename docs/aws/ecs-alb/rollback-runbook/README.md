@@ -38,6 +38,37 @@ ALB Health Check를 통과하지 못하는 경우의 확인 및 복구 절차를
 | Health Check Success Code | `200` |
 | Deregistration Delay | `60초` |
 
+### 장애 대응 전 실제 배포 설정 확인
+
+문서에 기록된 운영 기준만 신뢰하지 않고 장애 대응 시점의 ECS Service 설정을 다시 확인합니다.
+
+```bash
+aws ecs describe-services \
+  --cluster "$ECS_CLUSTER" \
+  --services "$ECS_SERVICE" \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE" \
+  --query 'services[0].{
+    Controller:deploymentController.type,
+    Strategy:deploymentConfiguration.strategy,
+    CircuitBreaker:deploymentConfiguration.deploymentCircuitBreaker.enable,
+    Rollback:deploymentConfiguration.deploymentCircuitBreaker.rollback
+  }' \
+  --output table
+```
+
+자동 롤백을 기대하려면 최소한 다음 값을 확인합니다.
+
+```text
+Controller      ECS
+Strategy        ROLLING
+CircuitBreaker  True
+Rollback        True
+```
+
+위 조건을 만족하지 않으면 Deployment Circuit Breaker 자동 롤백을 전제로 대응하지 않고
+수동 롤백 절차로 전환합니다.
+
 Desired Count가 `1`이더라도 `Maximum Percent=200`으로 설정되어 있으므로
 Rolling Update 중에는 기존 Task와 신규 Task를 동시에 실행할 수 있습니다.
 
@@ -167,25 +198,60 @@ aws ecs describe-services \
   --output text
 ```
 
-### 5.2 최근 Task Definition Revision 확인
+### 5.2 최근 성공한 Service Deployment 확인
+
+Task Definition의 등록 순서만으로 롤백 대상을 선택하지 않습니다.
+
+먼저 성공적으로 완료된 Service Deployment 이력을 조회합니다.
 
 ```bash
-aws ecs list-task-definitions \
-  --family-prefix otboo-prod-backend \
-  --sort DESC \
+aws ecs list-service-deployments \
+  --cluster "$ECS_CLUSTER" \
+  --service "$ECS_SERVICE" \
+  --status SUCCESSFUL \
   --region "$AWS_REGION" \
-  --profile "$AWS_PROFILE"
+  --profile "$AWS_PROFILE" \
+  --query 'serviceDeployments[].{
+    DeploymentArn:serviceDeploymentArn,
+    ServiceRevisionArn:targetServiceRevisionArn,
+    Status:status,
+    StartedAt:startedAt,
+    FinishedAt:finishedAt
+  }' \
+  --output table
 ```
+
+롤백 후보 Deployment의 `targetServiceRevisionArn`을 확인한 뒤 해당 Service Revision을 조회합니다.
+
+```bash
+aws ecs describe-service-revisions \
+  --service-revision-arns "<정상_SERVICE_REVISION_ARN>" \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE" \
+  --query 'serviceRevisions[0].{
+    ServiceRevision:serviceRevisionArn,
+    TaskDefinition:taskDefinition
+  }' \
+  --output table
+```
+
+여기서 확인된 `TaskDefinition`을 롤백 후보로 사용합니다.
+
+현재 진행 중 Deployment의 `rolloutState=COMPLETED` 여부는
+`describe-services`를 통해 별도로 확인합니다.
 
 Revision 번호가 최신이라는 이유만으로 롤백 대상으로 선택하지 않습니다.
 
-다음 조건을 만족하는 Revision을 정상 롤백 대상으로 선택합니다.
+다음 조건을 함께 확인합니다.
 
-- 실제 운영 배포가 완료된 Revision
-- ECS Deployment 상태가 `COMPLETED`였던 Revision
-- ALB Target이 `healthy`였던 Revision
-- 운영 요청이 정상적으로 처리되었던 Revision
-- 필요한 환경변수와 Secret 구성이 검증된 Revision
+- 성공한 Service Deployment에 연결된 Task Definition
+- 기존 ECS Deployment가 정상 완료된 이력이 있음
+- ALB Target이 `healthy`였음
+- 운영 요청이 정상적으로 처리되었음
+- 필요한 환경변수와 Secret 구성이 검증되었음
+
+이전 정상 Deployment 또는 정상 Revision을 확인할 수 없는 경우
+자동으로 임의의 Revision을 선택하지 않고 장애 원인을 확인한 뒤 수동 복구 대상을 결정합니다.
 
 ---
 
@@ -258,28 +324,90 @@ Target registered
 
 ## 7. 수동 롤백 절차
 
-자동 롤백이 완료되지 않거나
-운영자가 즉시 이전 정상 Revision으로 복구해야 하는 경우 수동 롤백을 수행합니다.
+자동 롤백이 아직 시작되지 않았거나
+운영자가 진행 중인 실패 Deployment를 즉시 이전 정상 Service Revision으로 되돌려야 하는 경우
+현재 Service Deployment 상태를 먼저 확인합니다.
 
-### 7.1 롤백 대상 지정
+### 7.1 진행 중 Service Deployment 확인
 
-먼저 이전 정상 Revision을 확인한 뒤 변수로 지정합니다.
+```bash
+aws ecs list-service-deployments \
+  --cluster "$ECS_CLUSTER" \
+  --service "$ECS_SERVICE" \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE" \
+  --query 'serviceDeployments[].{
+    DeploymentArn:serviceDeploymentArn,
+    Status:status,
+    ServiceRevisionArn:targetServiceRevisionArn,
+    StatusReason:statusReason
+  }' \
+  --output table
+```
+
+현재 문제가 발생한 Deployment의 ARN과 상태를 확인합니다.
+
+`PENDING` 또는 `IN_PROGRESS` 상태에서 즉시 이전 정상 Service Revision으로 되돌려야 하는 경우
+해당 Deployment를 Rollback 처리합니다.
+
+### 7.2 진행 중 Deployment 즉시 Rollback
+
+```bash
+FAILED_DEPLOYMENT_ARN="<실패_SERVICE_DEPLOYMENT_ARN>"
+
+aws ecs stop-service-deployment \
+  --service-deployment-arn "$FAILED_DEPLOYMENT_ARN" \
+  --stop-type ROLLBACK \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE"
+```
+
+이 명령은 진행 중 Deployment를 이전 Service Revision으로 롤백하도록 ECS에 요청합니다.
+
+Deployment 상태가 이미 `ROLLBACK_REQUESTED` 또는 `ROLLBACK_IN_PROGRESS`라면
+새로운 배포를 추가로 생성하지 않고 기존 Rollback 완료를 기다립니다.
+
+다음 명령으로 상태를 확인합니다.
+
+```bash
+aws ecs describe-service-deployments \
+  --service-deployment-arns "$FAILED_DEPLOYMENT_ARN" \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE" \
+  --query 'serviceDeployments[0].{
+    Status:status,
+    StatusReason:statusReason,
+    Rollback:rollback,
+    CircuitBreaker:deploymentCircuitBreaker
+  }' \
+  --output json
+```
+
+최종적으로 `ROLLBACK_SUCCESSFUL` 또는 정상 Service 안정화를 확인합니다.
+
+### 7.3 Service 안정화 확인
+
+```bash
+aws ecs wait services-stable \
+  --cluster "$ECS_CLUSTER" \
+  --services "$ECS_SERVICE" \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE"
+```
+
+### 7.4 명시적 Task Definition Revision 복구
+
+진행 중 Deployment의 Rollback 처리가 완료된 이후에도
+특정 정상 Task Definition Revision으로 명시적으로 복구해야 하는 경우에만
+`update-service`를 사용합니다.
+
+먼저 이전 정상 Revision을 확인합니다.
 
 ```bash
 ROLLBACK_TASK_DEF="otboo-prod-backend:<정상_REVISION>"
 ```
 
-예를 들어 정상 Revision이 `54`인 경우 다음과 같습니다.
-
-```bash
-ROLLBACK_TASK_DEF="otboo-prod-backend:54"
-```
-
-예시의 Revision 번호를 실제 장애 대응 시 그대로 사용하지 않습니다.
-
-반드시 현재 배포 상황에서 정상 Revision을 다시 확인합니다.
-
-### 7.2 ECS Service를 이전 Revision으로 변경
+그다음 Service의 Task Definition을 변경합니다.
 
 ```bash
 aws ecs update-service \
@@ -290,59 +418,10 @@ aws ecs update-service \
   --profile "$AWS_PROFILE"
 ```
 
-실패 Task를 직접 `stop-task`하는 방식으로 롤백하지 않습니다.
+실패 Task나 기존 정상 Task를 직접 `stop-task`하여 롤백하지 않습니다.
 
-Service의 Task Definition을 이전 정상 Revision으로 변경하여
-ECS Deployment 흐름을 통해 복구합니다.
-
-### 7.3 Service 안정화 대기
-
-```bash
-aws ecs wait services-stable \
-  --cluster "$ECS_CLUSTER" \
-  --services "$ECS_SERVICE" \
-  --region "$AWS_REGION" \
-  --profile "$AWS_PROFILE"
-```
-
-명령이 별도 오류 없이 종료되면 최종 상태를 다시 확인합니다.
-
-### 7.4 최종 ECS 상태 확인
-
-```bash
-aws ecs describe-services \
-  --cluster "$ECS_CLUSTER" \
-  --services "$ECS_SERVICE" \
-  --region "$AWS_REGION" \
-  --profile "$AWS_PROFILE" \
-  --query 'services[0].{
-    TaskDefinition:taskDefinition,
-    DesiredCount:desiredCount,
-    RunningCount:runningCount,
-    PendingCount:pendingCount,
-    Deployments:deployments[].{
-      Status:status,
-      RolloutState:rolloutState,
-      Reason:rolloutStateReason,
-      TaskDefinition:taskDefinition,
-      Desired:desiredCount,
-      Running:runningCount,
-      Pending:pendingCount
-    }
-  }' \
-  --output json
-```
-
-수동 롤백 완료 시 다음 상태를 확인합니다.
-
-```text
-TaskDefinition = 이전 정상 Revision
-DesiredCount = 1
-RunningCount = 1
-PendingCount = 0
-Status = PRIMARY
-RolloutState = COMPLETED
-```
+`update-service`를 통한 명시적 Revision 복구는
+진행 중 Deployment 상태를 확인하고 필요한 Rollback 처리를 완료한 이후 수행합니다.
 
 ---
 
@@ -394,9 +473,68 @@ curl -sS https://otboo.work/actuator/health
 ## 10. 실패 Revision 처리
 
 실패 검증용 또는 더 이상 사용하지 않는 Task Definition Revision은
-현재 Service에서 사용하지 않는 것을 확인한 뒤 비활성화할 수 있습니다.
+현재 Service의 모든 Deployment에서 더 이상 참조하지 않고,
+추가 롤백 대상으로도 사용할 필요가 없는 경우에만 비활성화합니다.
 
-현재 Service Revision을 먼저 확인합니다.
+현재 Deployment별 Task Definition을 확인합니다.
+
+```bash
+aws ecs describe-services \
+  --cluster "$ECS_CLUSTER" \
+  --services "$ECS_SERVICE" \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE" \
+  --query 'services[0].deployments[].{
+    Status:status,
+    RolloutState:rolloutState,
+    TaskDefinition:taskDefinition,
+    Desired:desiredCount,
+    Running:runningCount,
+    Pending:pendingCount
+  }' \
+  --output table
+```
+
+실패 Revision이 `PRIMARY` 또는 `ACTIVE` Deployment에서 참조되고 있다면
+즉시 비활성화하지 않습니다.
+
+필요한 경우 Service Deployment 이력도 확인합니다.
+
+```bash
+aws ecs list-service-deployments \
+  --cluster "$ECS_CLUSTER" \
+  --service "$ECS_SERVICE" \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE" \
+  --query 'serviceDeployments[].{
+    Status:status,
+    ServiceRevisionArn:targetServiceRevisionArn,
+    DeploymentArn:serviceDeploymentArn
+  }' \
+  --output table
+```
+
+다음 조건을 모두 만족할 때만 실패 Revision을 비활성화합니다.
+
+- 현재 `PRIMARY` Deployment에서 사용하지 않음
+- 전환 중인 `ACTIVE` Deployment에서 사용하지 않음
+- 진행 중인 Rollback에서 필요하지 않음
+- 향후 정상 롤백 후보가 아님
+- 의도적으로 생성한 실패/검증용 Revision임
+
+조건을 확인한 뒤 비활성화합니다.
+
+```bash
+aws ecs deregister-task-definition \
+  --task-definition otboo-prod-backend:<실패_REVISION> \
+  --region "$AWS_REGION" \
+  --profile "$AWS_PROFILE"
+```
+
+Task Definition을 deregister하면 `INACTIVE` 상태가 되며
+새로운 Task 실행이나 Service 업데이트 대상으로 다시 사용할 수 없습니다.
+
+현재 Service Revision을 확인합니다.
 
 ```bash
 aws ecs describe-services \
