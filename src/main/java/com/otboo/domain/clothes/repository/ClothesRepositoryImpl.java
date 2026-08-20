@@ -5,6 +5,7 @@ import static com.otboo.domain.clothes.entity.QClothes.clothes;
 import com.otboo.domain.clothes.entity.Clothes;
 import com.otboo.domain.clothes.entity.ClothesType;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 
@@ -69,10 +70,9 @@ public class ClothesRepositoryImpl implements ClothesRepositoryCustom{
             return null;
         }
 
-        return clothes.createdAt.lt(cursor)
-                .or(
-                        clothes.createdAt.eq(cursor)
-                                .and(clothes.id.lt(idAfter))
-                );
+        return Expressions.booleanTemplate(
+                "({0}, {1}) < ({2}, {3})",
+                clothes.createdAt, clothes.id, cursor, idAfter
+        );
     }
 }
