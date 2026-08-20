@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class NotificationOutboxPublisher {
 
   private static final int MAX_RETRY_COUNT = 3;
+  private static final int PUBLISH_BATCH_SIZE = 200;
 
   private final NotificationOutboxRepository notificationOutboxRepository;
   private final NotificationKafkaProducer notificationKafkaProducer;
@@ -29,9 +30,7 @@ public class NotificationOutboxPublisher {
   @Transactional
   public void publishPending() {
     List<NotificationOutbox> outboxes =
-        notificationOutboxRepository.findTop200ByStatusOrderByCreatedAtAsc(
-            NotificationOutboxStatus.PENDING
-        );
+        notificationOutboxRepository.findPendingOrderByCreatedAtAsc(PUBLISH_BATCH_SIZE);
 
     for (NotificationOutbox outbox : outboxes) {
       publish(outbox);
