@@ -45,10 +45,13 @@ public class WeatherDailyDiffScheduler {
     LocalDate today = LocalDate.now(clock.withZone(KST));
     Instant dayStart = today.atStartOfDay(KST).toInstant();
     Instant dayEnd = today.plusDays(1).atStartOfDay(KST).toInstant();
+    // 이미 지난 시간대는 볼 필요 없다 - 이 알림은 "앞으로 대비하라"는 목적이라, 자정~지금 사이에
+    // 있었던 급변을 지금 와서 알려주는 건 의미가 없다(스케줄을 자주 돌릴수록 이 문제가 두드러짐).
+    Instant queryStart = clock.instant().isAfter(dayStart) ? clock.instant() : dayStart;
 
     for (Grid grid : activeGrids) {
       List<Weather> todaysWeather = weatherRepository
-          .findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, dayStart, dayEnd)
+          .findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, queryStart, dayEnd)
           .stream()
           .sorted(Comparator.comparing(Weather::getForecastAt))
           .toList();

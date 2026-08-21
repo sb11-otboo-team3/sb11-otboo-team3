@@ -48,7 +48,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildAnnouncementMessage(event);
 
     // then
-    assertThat(message).isEqualTo("9시 기온 예보가 20.0°C에서 26.0°C로 상향 조정됐어요");
+    assertThat(message).isEqualTo("09시 기온 예보가 20.0°C에서 26.0°C로 상향 조정됐어요.");
   }
 
   @Test
@@ -64,7 +64,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildAnnouncementMessage(event);
 
     // then
-    assertThat(message).isEqualTo("9시 기온 예보가 26.0°C에서 20.0°C로 하향 조정됐어요");
+    assertThat(message).isEqualTo("09시 기온 예보가 26.0°C에서 20.0°C로 하향 조정됐어요.");
   }
 
   @Test
@@ -80,7 +80,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildAnnouncementMessage(event);
 
     // then
-    assertThat(message).isEqualTo("9시 비 예보가 새로 추가됐어요 (강수확률 20%→75%)");
+    assertThat(message).isEqualTo("09시 비 예보가 새로 추가됐어요 (강수확률 20%→75%).");
   }
 
   @Test
@@ -96,7 +96,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildAnnouncementMessage(event);
 
     // then
-    assertThat(message).isEqualTo("9시 바람 예보가 더 강해지는 쪽으로 조정됐어요 (2.0m/s→10.0m/s)");
+    assertThat(message).isEqualTo("09시 바람 예보가 더 강해지는 쪽으로 조정됐어요 (2.0m/s→10.0m/s).");
   }
 
   @Test
@@ -112,7 +112,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildAnnouncementMessage(event);
 
     // then
-    assertThat(message).isEqualTo("9시 눈 예보가 새로 추가됐어요 (강수확률 20%→75%)");
+    assertThat(message).isEqualTo("09시 눈 예보가 새로 추가됐어요 (강수확률 20%→75%).");
   }
 
   @Test
@@ -128,7 +128,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildAnnouncementMessage(event);
 
     // then
-    assertThat(message).isEqualTo("9시 비/눈 예보가 새로 추가됐어요 (강수확률 20%→75%)");
+    assertThat(message).isEqualTo("09시 비/눈 예보가 새로 추가됐어요 (강수확률 20%→75%).");
   }
 
   @Test
@@ -144,7 +144,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildAnnouncementMessage(event);
 
     // then
-    assertThat(message).isEqualTo("9시 소나기 예보가 새로 추가됐어요 (강수확률 20%→75%)");
+    assertThat(message).isEqualTo("09시 소나기 예보가 새로 추가됐어요 (강수확률 20%→75%).");
   }
 
   @Test
@@ -162,7 +162,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildAnnouncementMessage(event);
 
     // then
-    assertThat(message).isEqualTo("9시 강수 예보가 새로 추가됐어요 (강수확률 20%→75%)");
+    assertThat(message).isEqualTo("09시 강수 예보가 새로 추가됐어요 (강수확률 20%→75%).");
   }
 
   @Test
@@ -178,7 +178,8 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildAnnouncementMessage(event);
 
     // then
-    assertThat(message).isEqualTo("9시 기온 예보가 20.0°C에서 26.0°C로 상향 조정됐어요 9시 비 예보가 새로 추가됐어요 (강수확률 20%→75%)");
+    assertThat(message).isEqualTo(
+        "09시 기온 예보가 20.0°C에서 26.0°C로 상향 조정됐어요.\n09시 비 예보가 새로 추가됐어요 (강수확률 20%→75%).");
   }
 
   // ===== 일일별 =====
@@ -199,7 +200,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildDailyMessage(event);
 
     // then
-    assertThat(message).isEqualTo("15시부터 기온이 급격하게 오를 것 같아요");
+    assertThat(message).isEqualTo("15시부터 기온이 급격하게 오를 것 같아요.");
   }
 
   @Test
@@ -213,7 +214,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildDailyMessage(event);
 
     // then
-    assertThat(message).isEqualTo("15시부터 기온이 급격하게 내릴 것 같아요");
+    assertThat(message).isEqualTo("15시부터 기온이 급격하게 내릴 것 같아요.");
   }
 
   @Test
@@ -227,7 +228,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildDailyMessage(event);
 
     // then
-    assertThat(message).isEqualTo("15시부터 비/눈 소식이 있을 것 같아요");
+    assertThat(message).isEqualTo("15시부터 비/눈 소식이 있을 것 같아요.");
   }
 
   @Test
@@ -241,7 +242,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildDailyMessage(event);
 
     // then
-    assertThat(message).isEqualTo("15시부터 바람이 강해질 것 같아요");
+    assertThat(message).isEqualTo("15시부터 바람이 강해질 것 같아요.");
   }
 
   @Test
@@ -256,6 +257,24 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildDailyMessage(event);
 
     // then
-    assertThat(message).isEqualTo("15시부터 기온이 급격하게 오를 것 같아요 15시부터 바람이 강해질 것 같아요");
+    assertThat(message).isEqualTo("15시부터 기온이 급격하게 오를 것 같아요.\n15시부터 바람이 강해질 것 같아요.");
+  }
+
+  @Test
+  @DisplayName("일일별 - 여러 트리거가 있으면 카테고리 순서가 아니라 시각 순서로 이어붙인다")
+  void buildsDailyMessageOrderedByTimeNotCategory() {
+    // given: 카테고리 선언 순서(기온->강수->풍속)와 반대로, 풍속이 기온보다 이른 시각에 걸림
+    DailyDiffTrigger earlierWind =
+        new DailyDiffTrigger(DiffCategory.WIND, Instant.parse("2026-07-30T00:00:00Z"), true); // KST 09시
+    DailyDiffTrigger laterTemperature =
+        new DailyDiffTrigger(DiffCategory.TEMPERATURE, Instant.parse("2026-07-30T06:00:00Z"), true); // KST 15시
+    WeatherDailyDiffEvent event = new WeatherDailyDiffEvent(
+        grid, LocalDate.of(2026, 7, 30), Set.of(laterTemperature, earlierWind));
+
+    // when
+    String message = messageBuilder.buildDailyMessage(event);
+
+    // then: 카테고리 고정 순서대로면 기온이 먼저 나오겠지만, 시각 순서로는 풍속(09시)이 먼저다
+    assertThat(message).isEqualTo("09시부터 바람이 강해질 것 같아요.\n15시부터 기온이 급격하게 오를 것 같아요.");
   }
 }

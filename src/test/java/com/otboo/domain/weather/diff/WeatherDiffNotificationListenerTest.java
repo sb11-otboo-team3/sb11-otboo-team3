@@ -98,7 +98,7 @@ class WeatherDiffNotificationListenerTest {
     assertThat(published)
         .allSatisfy(notification -> {
           assertThat(notification.content())
-              .isEqualTo("9시 기온 예보가 20.0°C에서 26.0°C로 상향 조정됐어요");
+              .isEqualTo("09시 기온 예보가 20.0°C에서 26.0°C로 상향 조정됐어요.");
           assertThat(notification.level()).isEqualTo(NotificationLevel.WARNING);
         });
   }
@@ -140,7 +140,7 @@ class WeatherDiffNotificationListenerTest {
     verify(eventPublisher).publishEvent(captor.capture());
     assertThat(captor.getValue().receiverId()).isEqualTo(userId);
     assertThat(captor.getValue().content())
-        .isEqualTo("15시부터 바람이 강해질 것 같아요");
+        .isEqualTo("15시부터 바람이 강해질 것 같아요.");
   }
 
   @Test

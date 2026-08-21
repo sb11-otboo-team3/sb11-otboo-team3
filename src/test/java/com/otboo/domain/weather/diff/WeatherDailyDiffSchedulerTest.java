@@ -50,7 +50,9 @@ class WeatherDailyDiffSchedulerTest {
 
   private final Grid grid = Grid.builder().x(60).y(127).build();
   private final Instant activeThreshold = clock.instant().minus(Duration.ofDays(3));
-  private final Instant dayStart = LocalDateTime.of(2026, 7, 30, 0, 0).atZone(KST).toInstant();
+  // clock이 07:00으로 고정돼 있어 자정(00:00)보다 늦으므로, 스케줄러가 실제로 쓰는 하한은
+  // 자정이 아니라 지금(clock.instant()) - 이미 지난 시간대는 조회 대상에서 빠진다.
+  private final Instant queryStart = clock.instant();
   private final Instant dayEnd = LocalDateTime.of(2026, 7, 31, 0, 0).atZone(KST).toInstant();
 
   @BeforeEach
@@ -88,12 +90,12 @@ class WeatherDailyDiffSchedulerTest {
   @Test
   @DisplayName("격자에 오늘자 급변이 감지되면 이벤트를 발행한다")
   void publishesEventWhenGridHasTriggeredDiff() {
-    // given: 00시 20도 -> 01시 24도, 1시간에 4도(≥3°C/h)
+    // given: 07시 20도 -> 08시 24도, 1시간에 4도(≥3°C/h)
     given(gridRepository.findByLastRequestedAtAfter(activeThreshold)).willReturn(List.of(grid));
-    given(weatherRepository.findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, dayStart, dayEnd))
+    given(weatherRepository.findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, queryStart, dayEnd))
         .willReturn(List.of(
-            slot(LocalDateTime.of(2026, 7, 30, 0, 0).atZone(KST).toInstant(), 20.0, PrecipitationType.NONE, 2.0),
-            slot(LocalDateTime.of(2026, 7, 30, 1, 0).atZone(KST).toInstant(), 24.0, PrecipitationType.NONE, 2.0)
+            slot(LocalDateTime.of(2026, 7, 30, 7, 0).atZone(KST).toInstant(), 20.0, PrecipitationType.NONE, 2.0),
+            slot(LocalDateTime.of(2026, 7, 30, 8, 0).atZone(KST).toInstant(), 24.0, PrecipitationType.NONE, 2.0)
         ));
 
     // when
@@ -111,12 +113,12 @@ class WeatherDailyDiffSchedulerTest {
   @Test
   @DisplayName("격자에 오늘자 급변이 없으면 이벤트를 발행하지 않는다")
   void publishesNothingWhenGridHasNoTriggeredDiff() {
-    // given: 00시 20도 -> 01시 21도, 급변 아님
+    // given: 07시 20도 -> 08시 21도, 급변 아님
     given(gridRepository.findByLastRequestedAtAfter(activeThreshold)).willReturn(List.of(grid));
-    given(weatherRepository.findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, dayStart, dayEnd))
+    given(weatherRepository.findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, queryStart, dayEnd))
         .willReturn(List.of(
-            slot(LocalDateTime.of(2026, 7, 30, 0, 0).atZone(KST).toInstant(), 20.0, PrecipitationType.NONE, 2.0),
-            slot(LocalDateTime.of(2026, 7, 30, 1, 0).atZone(KST).toInstant(), 21.0, PrecipitationType.NONE, 2.0)
+            slot(LocalDateTime.of(2026, 7, 30, 7, 0).atZone(KST).toInstant(), 20.0, PrecipitationType.NONE, 2.0),
+            slot(LocalDateTime.of(2026, 7, 30, 8, 0).atZone(KST).toInstant(), 21.0, PrecipitationType.NONE, 2.0)
         ));
 
     // when
@@ -132,15 +134,15 @@ class WeatherDailyDiffSchedulerTest {
     // given: grid는 급변 있음, otherGrid는 없음
     Grid otherGrid = Grid.builder().x(61).y(128).build();
     given(gridRepository.findByLastRequestedAtAfter(activeThreshold)).willReturn(List.of(grid, otherGrid));
-    given(weatherRepository.findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, dayStart, dayEnd))
+    given(weatherRepository.findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, queryStart, dayEnd))
         .willReturn(List.of(
-            slot(LocalDateTime.of(2026, 7, 30, 0, 0).atZone(KST).toInstant(), 20.0, PrecipitationType.NONE, 2.0),
-            slot(LocalDateTime.of(2026, 7, 30, 1, 0).atZone(KST).toInstant(), 24.0, PrecipitationType.NONE, 2.0)
+            slot(LocalDateTime.of(2026, 7, 30, 7, 0).atZone(KST).toInstant(), 20.0, PrecipitationType.NONE, 2.0),
+            slot(LocalDateTime.of(2026, 7, 30, 8, 0).atZone(KST).toInstant(), 24.0, PrecipitationType.NONE, 2.0)
         ));
-    given(weatherRepository.findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(otherGrid, dayStart, dayEnd))
+    given(weatherRepository.findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(otherGrid, queryStart, dayEnd))
         .willReturn(List.of(
-            slot(LocalDateTime.of(2026, 7, 30, 0, 0).atZone(KST).toInstant(), 20.0, PrecipitationType.NONE, 2.0),
-            slot(LocalDateTime.of(2026, 7, 30, 1, 0).atZone(KST).toInstant(), 21.0, PrecipitationType.NONE, 2.0)
+            slot(LocalDateTime.of(2026, 7, 30, 7, 0).atZone(KST).toInstant(), 20.0, PrecipitationType.NONE, 2.0),
+            slot(LocalDateTime.of(2026, 7, 30, 8, 0).atZone(KST).toInstant(), 21.0, PrecipitationType.NONE, 2.0)
         ));
 
     // when
@@ -150,5 +152,25 @@ class WeatherDailyDiffSchedulerTest {
     ArgumentCaptor<WeatherDailyDiffEvent> captor = ArgumentCaptor.forClass(WeatherDailyDiffEvent.class);
     verify(eventPublisher, times(1)).publishEvent(captor.capture());
     assertThat(captor.getValue().grid()).isEqualTo(grid);
+  }
+
+  @Test
+  @DisplayName("자정 정각에 실행되면 지금이 자정보다 늦지 않으므로 하한이 자정 그대로다")
+  void queriesFromMidnightWhenRunExactlyAtMidnight() {
+    // given: clock을 자정으로 고정 - clock.instant()가 dayStart보다 늦지 않은 유일한 경우
+    Clock midnightClock = Clock.fixed(LocalDateTime.of(2026, 7, 30, 0, 0).atZone(KST).toInstant(), KST);
+    Instant midnightDayStart = LocalDateTime.of(2026, 7, 30, 0, 0).atZone(KST).toInstant();
+    WeatherDailyDiffScheduler midnightScheduler = new WeatherDailyDiffScheduler(
+        gridRepository, weatherRepository, weatherDiffEvaluator, weatherDiffProperties, eventPublisher, midnightClock);
+    given(gridRepository.findByLastRequestedAtAfter(midnightClock.instant().minus(Duration.ofDays(3))))
+        .willReturn(List.of(grid));
+    given(weatherRepository.findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, midnightDayStart, dayEnd))
+        .willReturn(List.of());
+
+    // when
+    midnightScheduler.run();
+
+    // then: 위 given()의 인자(자정)와 실제 호출 인자가 일치해야 스텁이 매칭되고 예외 없이 끝난다
+    Mockito.verifyNoInteractions(eventPublisher);
   }
 }

@@ -118,7 +118,7 @@ class WeatherDiffNotificationIntegrationTest {
 
     // then
     assertThat(saved.getTitle()).isEqualTo("날씨가 급변할 예정이에요");
-    assertThat(saved.getContent()).isEqualTo("9시 기온 예보가 20.0°C에서 26.0°C로 상향 조정됐어요");
+    assertThat(saved.getContent()).isEqualTo("09시 기온 예보가 20.0°C에서 26.0°C로 상향 조정됐어요.");
   }
 
   private Weather weather(Grid grid, double temperature) {
