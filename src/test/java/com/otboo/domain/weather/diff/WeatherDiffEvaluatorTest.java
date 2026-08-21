@@ -199,7 +199,8 @@ class WeatherDiffEvaluatorTest {
 
   // ===== 일일별: 하루치 인접 슬롯 스캔 =====
 
-  private Weather slot(Instant forecastAt, double temperature, PrecipitationType precipitationType, double windSpeed) {
+  // temperature/windSpeed를 Double(boxed)로 받아 null(결측치) 케이스도 만들 수 있게 한다.
+  private Weather slot(Instant forecastAt, Double temperature, PrecipitationType precipitationType, Double windSpeed) {
     return Weather.builder()
         .grid(Grid.builder().x(60).y(127).build())
         .forecastedAt(forecastAt)
@@ -335,6 +336,110 @@ class WeatherDiffEvaluatorTest {
     List<Weather> rows = List.of(
         slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
         slot(Instant.parse("2026-07-30T01:00:00Z"), 21.0, PrecipitationType.NONE, 2.0)
+    );
+
+    // when
+    Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
+
+    // then
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  @DisplayName("강수 카테고리가 여러 쌍에서 걸려도 가장 이른 시각의 쌍만 반환한다")
+  void evaluateDailyDiffReportsEarliestPrecipitationOccurrenceWhenTriggeredMultipleTimes() {
+    // given: 00시->01시에 비가 시작되고(NONE->RAIN), 02시->03시에 그쳤다가 다시 시작돼도(NONE->RAIN)
+    // 하루에 한 번만 알리므로 더 이른 00시만 반환돼야 함
+    Instant earliestFromTime = Instant.parse("2026-07-30T00:00:00Z");
+    List<Weather> rows = List.of(
+        slot(earliestFromTime, 20.0, PrecipitationType.NONE, 2.0),
+        slot(Instant.parse("2026-07-30T01:00:00Z"), 20.0, PrecipitationType.RAIN, 2.0),
+        slot(Instant.parse("2026-07-30T02:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(Instant.parse("2026-07-30T03:00:00Z"), 20.0, PrecipitationType.RAIN, 2.0)
+    );
+
+    // when
+    Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
+
+    // then
+    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.PRECIPITATION, earliestFromTime, true));
+  }
+
+  @Test
+  @DisplayName("풍속 카테고리가 여러 쌍에서 걸려도 가장 이른 시각의 쌍만 반환한다")
+  void evaluateDailyDiffReportsEarliestWindOccurrenceWhenTriggeredMultipleTimes() {
+    // given: 00시->01시에 WEAK->STRONG, 01시->02시에 다시 WEAK로 내려갔다가, 02시->03시에 또 STRONG으로
+    // 올라도 하루에 한 번만 알리므로 더 이른 00시만 반환돼야 함
+    Instant earliestFromTime = Instant.parse("2026-07-30T00:00:00Z");
+    List<Weather> rows = List.of(
+        slot(earliestFromTime, 20.0, PrecipitationType.NONE, 2.0),
+        slot(Instant.parse("2026-07-30T01:00:00Z"), 20.0, PrecipitationType.NONE, 10.0),
+        slot(Instant.parse("2026-07-30T02:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(Instant.parse("2026-07-30T03:00:00Z"), 20.0, PrecipitationType.NONE, 10.0)
+    );
+
+    // when
+    Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
+
+    // then
+    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.WIND, earliestFromTime, true));
+  }
+
+  @Test
+  @DisplayName("쌍의 앞쪽 슬롯 기온이 null이면 그 쌍은 기온 판정을 건너뛴다")
+  void evaluateDailyDiffSkipsTemperatureWhenPreviousValueIsNull() {
+    // given: 기상청 응답 결측 등으로 temperatureCurrent가 없는 슬롯 - 예외 없이 건너뛰어야 함
+    List<Weather> rows = List.of(
+        slot(Instant.parse("2026-07-30T00:00:00Z"), null, PrecipitationType.NONE, 2.0),
+        slot(Instant.parse("2026-07-30T01:00:00Z"), 24.0, PrecipitationType.NONE, 2.0)
+    );
+
+    // when
+    Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
+
+    // then
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  @DisplayName("쌍의 뒤쪽 슬롯 기온이 null이면 그 쌍은 기온 판정을 건너뛴다")
+  void evaluateDailyDiffSkipsTemperatureWhenCurrentValueIsNull() {
+    // given
+    List<Weather> rows = List.of(
+        slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(Instant.parse("2026-07-30T01:00:00Z"), null, PrecipitationType.NONE, 2.0)
+    );
+
+    // when
+    Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
+
+    // then
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  @DisplayName("쌍의 앞쪽 슬롯 풍속이 null이면 그 쌍은 풍속 판정을 건너뛴다")
+  void evaluateDailyDiffSkipsWindWhenPreviousValueIsNull() {
+    // given
+    List<Weather> rows = List.of(
+        slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, null),
+        slot(Instant.parse("2026-07-30T01:00:00Z"), 20.0, PrecipitationType.NONE, 10.0)
+    );
+
+    // when
+    Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
+
+    // then
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  @DisplayName("쌍의 뒤쪽 슬롯 풍속이 null이면 그 쌍은 풍속 판정을 건너뛴다")
+  void evaluateDailyDiffSkipsWindWhenCurrentValueIsNull() {
+    // given
+    List<Weather> rows = List.of(
+        slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 10.0),
+        slot(Instant.parse("2026-07-30T01:00:00Z"), 20.0, PrecipitationType.NONE, null)
     );
 
     // when

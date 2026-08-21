@@ -136,8 +136,10 @@ class WeatherDiffNotificationIntegrationTest {
   }
 
   // 컨슈머가 비동기로 동작하므로 폴링으로 기다린다(Awaitility 미사용 - 이 프로젝트 의존성에 없음).
+  // 20초인 이유: 이 테스트 단독으로는 2초면 끝나지만, 전체 스위트(Testcontainers+여러 EmbeddedKafka가
+  // 앞뒤로 뜨고 내려가는 상황)와 같이 돌면 리소스 경합으로 10초를 넘기는 게 관찰돼 여유를 뒀다.
   private Notification awaitNotification(UUID receiverId) throws InterruptedException {
-    long deadline = System.currentTimeMillis() + 10_000;
+    long deadline = System.currentTimeMillis() + 20_000;
     while (System.currentTimeMillis() < deadline) {
       List<Notification> found = notificationRepository.findAll().stream()
           .filter(notification -> notification.getReceiver().getId().equals(receiverId))
@@ -147,6 +149,6 @@ class WeatherDiffNotificationIntegrationTest {
       }
       Thread.sleep(200);
     }
-    throw new AssertionError("10초 안에 Kafka를 거쳐 Notification이 저장되지 않았다");
+    throw new AssertionError("20초 안에 Kafka를 거쳐 Notification이 저장되지 않았다");
   }
 }

@@ -100,6 +100,72 @@ class WeatherDiffMessageBuilderTest {
   }
 
   @Test
+  @DisplayName("발표별 - 강수형태가 눈이면 눈으로 표시한다")
+  void buildsAnnouncementMessageForSnow() {
+    // given
+    Weather previous = weather(20.0, PrecipitationType.NONE, 20.0, 2.0);
+    Weather current = weather(20.0, PrecipitationType.SNOW, 75.0, 2.0);
+    WeatherAnnouncementDiffEvent event =
+        new WeatherAnnouncementDiffEvent(previous, current, EnumSet.of(DiffCategory.PRECIPITATION));
+
+    // when
+    String message = messageBuilder.buildAnnouncementMessage(event);
+
+    // then
+    assertThat(message).isEqualTo("9시 눈 예보가 새로 추가됐어요 (강수확률 20%→75%)");
+  }
+
+  @Test
+  @DisplayName("발표별 - 강수형태가 비/눈이면 비/눈으로 표시한다")
+  void buildsAnnouncementMessageForRainSnow() {
+    // given
+    Weather previous = weather(20.0, PrecipitationType.NONE, 20.0, 2.0);
+    Weather current = weather(20.0, PrecipitationType.RAIN_SNOW, 75.0, 2.0);
+    WeatherAnnouncementDiffEvent event =
+        new WeatherAnnouncementDiffEvent(previous, current, EnumSet.of(DiffCategory.PRECIPITATION));
+
+    // when
+    String message = messageBuilder.buildAnnouncementMessage(event);
+
+    // then
+    assertThat(message).isEqualTo("9시 비/눈 예보가 새로 추가됐어요 (강수확률 20%→75%)");
+  }
+
+  @Test
+  @DisplayName("발표별 - 강수형태가 소나기면 소나기로 표시한다")
+  void buildsAnnouncementMessageForShower() {
+    // given
+    Weather previous = weather(20.0, PrecipitationType.NONE, 20.0, 2.0);
+    Weather current = weather(20.0, PrecipitationType.SHOWER, 75.0, 2.0);
+    WeatherAnnouncementDiffEvent event =
+        new WeatherAnnouncementDiffEvent(previous, current, EnumSet.of(DiffCategory.PRECIPITATION));
+
+    // when
+    String message = messageBuilder.buildAnnouncementMessage(event);
+
+    // then
+    assertThat(message).isEqualTo("9시 소나기 예보가 새로 추가됐어요 (강수확률 20%→75%)");
+  }
+
+  @Test
+  @DisplayName("발표별 - 강수형태가 NONE이면 강수로 표시한다")
+  void buildsAnnouncementMessageForNonePrecipitationType() {
+    // given: 실제 트리거 경로(WeatherDiffEvaluator.isPrecipitationTriggered)는 NONE->강수 전환일 때만
+    // PRECIPITATION 카테고리를 세우므로 이 경우가 실전에서 나오진 않지만, precipitationWord()가
+    // 모든 enum 값에 대해 예외 없이 방어적으로 동작하는지 확인한다.
+    Weather previous = weather(20.0, PrecipitationType.NONE, 20.0, 2.0);
+    Weather current = weather(20.0, PrecipitationType.NONE, 75.0, 2.0);
+    WeatherAnnouncementDiffEvent event =
+        new WeatherAnnouncementDiffEvent(previous, current, EnumSet.of(DiffCategory.PRECIPITATION));
+
+    // when
+    String message = messageBuilder.buildAnnouncementMessage(event);
+
+    // then
+    assertThat(message).isEqualTo("9시 강수 예보가 새로 추가됐어요 (강수확률 20%→75%)");
+  }
+
+  @Test
   @DisplayName("발표별 - 여러 카테고리가 걸리면 문구를 이어붙인다")
   void buildsAnnouncementMessageForMultipleCategories() {
     // given
@@ -134,6 +200,20 @@ class WeatherDiffMessageBuilderTest {
 
     // then
     assertThat(message).isEqualTo("15시부터 기온이 급격하게 오를 것 같아요");
+  }
+
+  @Test
+  @DisplayName("일일별 - 기온 하강이면 시각과 함께 내리는 문구를 만든다")
+  void buildsDailyMessageForFallingTemperature() {
+    // given
+    WeatherDailyDiffEvent event = new WeatherDailyDiffEvent(
+        grid, LocalDate.of(2026, 7, 30), Set.of(trigger(DiffCategory.TEMPERATURE, false)));
+
+    // when
+    String message = messageBuilder.buildDailyMessage(event);
+
+    // then
+    assertThat(message).isEqualTo("15시부터 기온이 급격하게 내릴 것 같아요");
   }
 
   @Test
