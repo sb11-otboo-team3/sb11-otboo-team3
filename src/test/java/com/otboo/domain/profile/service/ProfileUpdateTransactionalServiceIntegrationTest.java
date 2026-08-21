@@ -66,10 +66,12 @@ class ProfileUpdateTransactionalServiceIntegrationTest {
 
     ProfileUpdateRequest request = new ProfileUpdateRequest(null, null, null, null, null);
     String newImageKey = "profiles/" + userId + "/new-key.png";
+    String newThumbnailKey = "profiles/" + userId + "/thumb_new-key.png";
 
     // when: 실제 @Transactional 프록시를 거쳐 커밋까지 완료된다.
     ProfileDto result = profileUpdateTransactionalService.update(
-        userId, request, null, newImageKey, "https://example.com/" + newImageKey
+        userId, request, null, newImageKey, newThumbnailKey,
+        "https://example.com/" + newImageKey, "https://example.com/" + newThumbnailKey
     );
 
     // then
