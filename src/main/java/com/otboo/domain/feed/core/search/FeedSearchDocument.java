@@ -1,0 +1,30 @@
+package com.otboo.domain.feed.core.search;
+
+import com.otboo.domain.feed.core.entity.Feed;
+import com.otboo.domain.weather.entity.PrecipitationType;
+import com.otboo.domain.weather.entity.SkyStatus;
+import java.time.Instant;
+import java.util.UUID;
+
+public record FeedSearchDocument(
+    UUID id,
+    UUID authorId,
+    String content,
+    SkyStatus skyStatus,
+    PrecipitationType precipitationType,
+    Instant createdAt,
+    long likeCount
+) {
+
+  public static FeedSearchDocument from(Feed feed) {
+    return new FeedSearchDocument(
+        feed.getId(),
+        feed.getAuthor().getId(),
+        feed.getContent(),
+        feed.getWeather().getSkyStatus(),
+        feed.getWeather().getPrecipitationType(),
+        feed.getCreatedAt(),
+        feed.getLikeCount()
+    );
+  }
+}
