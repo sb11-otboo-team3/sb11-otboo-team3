@@ -50,11 +50,11 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
   @Transactional
   User findOrCreateUser(OAuthProvider provider, OAuth2UserInfo userInfo) {
-    // 1. 이미 이 Provider로 연동된 계정이 있는지 먼저 확인한다.
+    // 이미 이 Provider로 연동된 계정이 있는지 먼저 확인한다.
     return oAuthAccountRepository
         .findByProviderAndProviderUserId(provider, userInfo.getProviderId())
         .map(this::initializeUser)
-        .orElseGet(() -> linkOrCreateUser(provider, userInfo));
+        .orElseGet(() -> createNewUser(provider, userInfo));
   }
 
   private User initializeUser(OAuthAccount oAuthAccount) {
@@ -67,30 +67,11 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     return user;
   }
 
-  User linkOrCreateUser(OAuthProvider provider, OAuth2UserInfo userInfo) {
-    String email = userInfo.getEmail();
-
-    // 2. 이메일이 제공됐고, 이미 같은 이메일로 가입된 계정이 있으면 자동으로 연동한다.
-    //    (Google/Kakao 모두 검증된 이메일만 제공하므로 신뢰할 수 있다고 판단)
-    if (email != null && !email.isBlank()) {
-      String normalizedEmail = email.toLowerCase(Locale.ROOT);
-      User existingUser = userRepository.findByEmail(normalizedEmail).orElse(null);
-
-      if (existingUser != null) {
-        log.info(
-            "기존 계정에 소셜 로그인을 연동합니다. email={}, provider={}",
-            normalizedEmail, provider
-        );
-        linkOAuthAccount(existingUser, provider, userInfo.getProviderId());
-        return existingUser;
-      }
-    }
-
-    // 3. 이메일이 없거나(예: Kakao 이메일 미동의), 매칭되는 기존 계정이 없으면 신규 가입시킨다.
-    return createNewUser(provider, userInfo);
-  }
-
   User createNewUser(OAuthProvider provider, OAuth2UserInfo userInfo) {
+    // 기존에는 이메일이 같으면 기존 계정에 자동으로 연동했으나, 사용자가
+    // 명시적으로 동의하지 않은 계정 통합은 혼란을 줄 수 있다는 판단에 따라
+    // 제거. 이메일이 같은 기존 계정이 있어도 항상 별도의 소셜 전용 계정을
+    // 새로 생성한다. (#219)
     String email = resolveEmail(provider, userInfo);
     String name = userInfo.getName() != null ? userInfo.getName() : provider.name() + " 사용자";
 
@@ -115,10 +96,9 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
   }
 
   private String resolveEmail(OAuthProvider provider, OAuth2UserInfo userInfo) {
-    if (userInfo.getEmail() != null && !userInfo.getEmail().isBlank()) {
-      return userInfo.getEmail().toLowerCase(Locale.ROOT);
-    }
-    // 이메일 제공에 동의하지 않은 경우(주로 Kakao)를 대비해 가상 이메일을 생성한다.
+    // 항상 Provider별 가상 이메일을 사용한다. 실제 이메일을 그대로 쓰면
+    // 이미 같은 이메일로 가입한 계정이 있을 때 User.email UNIQUE 제약을
+    // 위반할 수 있고, 계정 완전 분리 정책(#219)과도 맞지 않는다.
     return provider.name().toLowerCase(Locale.ROOT) + "_" + userInfo.getProviderId()
         + "@" + provider.name().toLowerCase(Locale.ROOT) + ".otboo.io";
   }
