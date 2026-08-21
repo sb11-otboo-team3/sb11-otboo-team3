@@ -98,7 +98,7 @@ class WeatherDiffNotificationListenerTest {
     assertThat(published)
         .allSatisfy(notification -> {
           assertThat(notification.content())
-              .isEqualTo("기온이 20.0°C에서 26.0°C로 오를 예정이에요");
+              .isEqualTo("9시 기온 예보가 20.0°C에서 26.0°C로 상향 조정됐어요");
           assertThat(notification.level()).isEqualTo(NotificationLevel.WARNING);
         });
   }

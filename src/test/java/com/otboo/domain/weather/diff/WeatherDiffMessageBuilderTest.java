@@ -48,7 +48,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildAnnouncementMessage(event);
 
     // then
-    assertThat(message).isEqualTo("기온이 20.0°C에서 26.0°C로 오를 예정이에요");
+    assertThat(message).isEqualTo("9시 기온 예보가 20.0°C에서 26.0°C로 상향 조정됐어요");
   }
 
   @Test
@@ -64,7 +64,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildAnnouncementMessage(event);
 
     // then
-    assertThat(message).isEqualTo("기온이 26.0°C에서 20.0°C로 내릴 예정이에요");
+    assertThat(message).isEqualTo("9시 기온 예보가 26.0°C에서 20.0°C로 하향 조정됐어요");
   }
 
   @Test
@@ -80,7 +80,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildAnnouncementMessage(event);
 
     // then
-    assertThat(message).isEqualTo("비 소식이 있어요 (강수확률 20%→75%)");
+    assertThat(message).isEqualTo("9시 비 예보가 새로 추가됐어요 (강수확률 20%→75%)");
   }
 
   @Test
@@ -96,7 +96,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildAnnouncementMessage(event);
 
     // then
-    assertThat(message).isEqualTo("바람이 강해질 예정이에요 (2.0m/s→10.0m/s)");
+    assertThat(message).isEqualTo("9시 바람 예보가 더 강해지는 쪽으로 조정됐어요 (2.0m/s→10.0m/s)");
   }
 
   @Test
@@ -112,7 +112,7 @@ class WeatherDiffMessageBuilderTest {
     String message = messageBuilder.buildAnnouncementMessage(event);
 
     // then
-    assertThat(message).isEqualTo("기온이 20.0°C에서 26.0°C로 오를 예정이에요 비 소식이 있어요 (강수확률 20%→75%)");
+    assertThat(message).isEqualTo("9시 기온 예보가 20.0°C에서 26.0°C로 상향 조정됐어요 9시 비 예보가 새로 추가됐어요 (강수확률 20%→75%)");
   }
 
   // ===== 일일별 =====
