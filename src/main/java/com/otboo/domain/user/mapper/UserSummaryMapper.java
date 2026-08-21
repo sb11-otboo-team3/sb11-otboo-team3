@@ -37,7 +37,7 @@ public class UserSummaryMapper {
     return new UserSummary(
         user.getId(),
         user.getName(),
-        resolveImageUrl(profile)
+        resolveThumbnailUrl(profile)
     );
   }
 
@@ -50,15 +50,26 @@ public class UserSummaryMapper {
         .map(user -> new UserSummary(
             user.getId(),
             user.getName(),
-            resolveImageUrl(profileMap.get(user.getId()))
+            resolveThumbnailUrl(profileMap.get(user.getId()))
         ))
         .toList();
   }
 
-  private String resolveImageUrl(Profile profile) {
-    if (profile == null || profile.getImageKey() == null || profile.getImageKey().isBlank()) {
+  // 목록 화면 등 여러 사용자를 동시에 보여주는 곳에서는 원본 대신
+  // 썸네일을 사용해 불필요한 전송량을 줄인다. 아직 썸네일이 없는
+  // (예전에 생성된) 프로필은 원본으로 대체해서 최소한 이미지가
+  // 안 보이는 상황은 피한다. (#186)
+  private String resolveThumbnailUrl(Profile profile) {
+    if (profile == null) {
       return null;
     }
-    return fileStorage.generateReadUrl(profile.getImageKey());
+    String key = profile.getThumbnailKey() != null && !profile.getThumbnailKey().isBlank()
+        ? profile.getThumbnailKey()
+        : profile.getImageKey();
+
+    if (key == null || key.isBlank()) {
+      return null;
+    }
+    return fileStorage.generateReadUrl(key);
   }
 }
