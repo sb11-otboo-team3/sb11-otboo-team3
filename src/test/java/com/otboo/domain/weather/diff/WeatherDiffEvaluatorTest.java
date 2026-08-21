@@ -226,99 +226,99 @@ class WeatherDiffEvaluatorTest {
   }
 
   @Test
-  @DisplayName("인접 슬롯 간 기온이 오르며 변화율이 임계값을 넘으면 앞쪽 시각과 함께 TEMPERATURE(rising)를 반환한다")
+  @DisplayName("인접 슬롯 간 기온이 오르며 변화율이 임계값을 넘으면 변경이 확정된(뒤쪽) 시각과 함께 TEMPERATURE(rising)를 반환한다")
   void evaluateDailyDiffDetectsRisingTemperature() {
     // given: 1시간 간격, Δ4 -> 4°C/h ≥ 3°C/h
-    Instant fromTime = Instant.parse("2026-07-30T00:00:00Z");
+    Instant triggerTime = Instant.parse("2026-07-30T01:00:00Z");
     List<Weather> rows = List.of(
-        slot(fromTime, 20.0, PrecipitationType.NONE, 2.0),
-        slot(Instant.parse("2026-07-30T01:00:00Z"), 24.0, PrecipitationType.NONE, 2.0)
+        slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(triggerTime, 24.0, PrecipitationType.NONE, 2.0)
     );
 
     // when
     Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
 
     // then
-    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.TEMPERATURE, fromTime, true));
+    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.TEMPERATURE, triggerTime, true));
   }
 
   @Test
   @DisplayName("인접 슬롯 간 기온이 내리며 변화율이 임계값을 넘으면 rising=false로 반환한다")
   void evaluateDailyDiffDetectsFallingTemperature() {
     // given
-    Instant fromTime = Instant.parse("2026-07-30T00:00:00Z");
+    Instant triggerTime = Instant.parse("2026-07-30T01:00:00Z");
     List<Weather> rows = List.of(
-        slot(fromTime, 24.0, PrecipitationType.NONE, 2.0),
-        slot(Instant.parse("2026-07-30T01:00:00Z"), 20.0, PrecipitationType.NONE, 2.0)
+        slot(Instant.parse("2026-07-30T00:00:00Z"), 24.0, PrecipitationType.NONE, 2.0),
+        slot(triggerTime, 20.0, PrecipitationType.NONE, 2.0)
     );
 
     // when
     Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
 
     // then
-    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.TEMPERATURE, fromTime, false));
+    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.TEMPERATURE, triggerTime, false));
   }
 
   @Test
-  @DisplayName("인접 슬롯 간 강수형태가 NONE에서 강수로 바뀌면 앞쪽 시각과 함께 PRECIPITATION을 반환한다")
+  @DisplayName("인접 슬롯 간 강수형태가 NONE에서 강수로 바뀌면 변경이 확정된(뒤쪽) 시각과 함께 PRECIPITATION을 반환한다")
   void evaluateDailyDiffDetectsPrecipitation() {
-    // given
-    Instant fromTime = Instant.parse("2026-07-30T00:00:00Z");
-    List<Weather> rows = List.of(
-        slot(fromTime, 20.0, PrecipitationType.NONE, 2.0),
-        slot(Instant.parse("2026-07-30T01:00:00Z"), 20.0, PrecipitationType.RAIN, 2.0)
-    );
-
-    // when
-    Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
-
-    // then
-    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.PRECIPITATION, fromTime, true));
-  }
-
-  @Test
-  @DisplayName("인접 슬롯 간 풍속 등급이 오르면 앞쪽 시각과 함께 WIND를 반환한다")
-  void evaluateDailyDiffDetectsWind() {
-    // given
-    Instant fromTime = Instant.parse("2026-07-30T00:00:00Z");
-    List<Weather> rows = List.of(
-        slot(fromTime, 20.0, PrecipitationType.NONE, 2.0),
-        slot(Instant.parse("2026-07-30T01:00:00Z"), 20.0, PrecipitationType.NONE, 10.0)
-    );
-
-    // when
-    Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
-
-    // then
-    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.WIND, fromTime, true));
-  }
-
-  @Test
-  @DisplayName("첫 인접 쌍은 안 걸려도 다음 인접 쌍이 걸리면 그 쌍의 시각으로 반환한다")
-  void evaluateDailyDiffDetectsTriggerInAnySubsequentPair() {
-    // given: 00시->01시는 변화 없음, 01시->02시에 기온만 크게 뜀
-    Instant secondPairFromTime = Instant.parse("2026-07-30T01:00:00Z");
+    // given: previous 시각(NONE)을 쓰면 그 시각 실제 데이터와 모순되므로, 강수가 확정된 current 시각을 기대한다
+    Instant triggerTime = Instant.parse("2026-07-30T01:00:00Z");
     List<Weather> rows = List.of(
         slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
-        slot(secondPairFromTime, 20.0, PrecipitationType.NONE, 2.0),
-        slot(Instant.parse("2026-07-30T02:00:00Z"), 25.0, PrecipitationType.NONE, 2.0)
+        slot(triggerTime, 20.0, PrecipitationType.RAIN, 2.0)
     );
 
     // when
     Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
 
     // then
-    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.TEMPERATURE, secondPairFromTime, true));
+    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.PRECIPITATION, triggerTime, true));
   }
 
   @Test
-  @DisplayName("같은 카테고리가 여러 쌍에서 걸려도 가장 이른 시각의 쌍만 반환한다")
-  void evaluateDailyDiffReportsEarliestOccurrenceWhenTriggeredMultipleTimes() {
-    // given: 00시->01시, 01시->02시 둘 다 기온 급변 - 더 이른 00시가 fromTime이어야 함
-    Instant earliestFromTime = Instant.parse("2026-07-30T00:00:00Z");
+  @DisplayName("인접 슬롯 간 풍속 등급이 오르면 변경이 확정된(뒤쪽) 시각과 함께 WIND를 반환한다")
+  void evaluateDailyDiffDetectsWind() {
+    // given
+    Instant triggerTime = Instant.parse("2026-07-30T01:00:00Z");
     List<Weather> rows = List.of(
-        slot(earliestFromTime, 20.0, PrecipitationType.NONE, 2.0),
-        slot(Instant.parse("2026-07-30T01:00:00Z"), 24.0, PrecipitationType.NONE, 2.0),
+        slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(triggerTime, 20.0, PrecipitationType.NONE, 10.0)
+    );
+
+    // when
+    Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
+
+    // then
+    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.WIND, triggerTime, true));
+  }
+
+  @Test
+  @DisplayName("첫 인접 쌍은 안 걸려도 다음 인접 쌍이 걸리면 그 쌍의 변경 확정 시각으로 반환한다")
+  void evaluateDailyDiffDetectsTriggerInAnySubsequentPair() {
+    // given: 00시->01시는 변화 없음, 01시->02시에 기온만 크게 뜀 - 02시가 변경이 확정된 시각
+    Instant secondPairTriggerTime = Instant.parse("2026-07-30T02:00:00Z");
+    List<Weather> rows = List.of(
+        slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(Instant.parse("2026-07-30T01:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(secondPairTriggerTime, 25.0, PrecipitationType.NONE, 2.0)
+    );
+
+    // when
+    Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
+
+    // then
+    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.TEMPERATURE, secondPairTriggerTime, true));
+  }
+
+  @Test
+  @DisplayName("같은 카테고리가 여러 쌍에서 걸려도 가장 이른 쌍의 변경 확정 시각만 반환한다")
+  void evaluateDailyDiffReportsEarliestOccurrenceWhenTriggeredMultipleTimes() {
+    // given: 00시->01시, 01시->02시 둘 다 기온 급변 - 더 이른 쌍(00시->01시)의 확정 시각인 01시가 반환돼야 함
+    Instant earliestTriggerTime = Instant.parse("2026-07-30T01:00:00Z");
+    List<Weather> rows = List.of(
+        slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(earliestTriggerTime, 24.0, PrecipitationType.NONE, 2.0),
         slot(Instant.parse("2026-07-30T02:00:00Z"), 28.0, PrecipitationType.NONE, 2.0)
     );
 
@@ -326,7 +326,7 @@ class WeatherDiffEvaluatorTest {
     Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
 
     // then
-    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.TEMPERATURE, earliestFromTime, true));
+    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.TEMPERATURE, earliestTriggerTime, true));
   }
 
   @Test
@@ -346,14 +346,14 @@ class WeatherDiffEvaluatorTest {
   }
 
   @Test
-  @DisplayName("강수 카테고리가 여러 쌍에서 걸려도 가장 이른 시각의 쌍만 반환한다")
+  @DisplayName("강수 카테고리가 여러 쌍에서 걸려도 가장 이른 쌍의 변경 확정 시각만 반환한다")
   void evaluateDailyDiffReportsEarliestPrecipitationOccurrenceWhenTriggeredMultipleTimes() {
     // given: 00시->01시에 비가 시작되고(NONE->RAIN), 02시->03시에 그쳤다가 다시 시작돼도(NONE->RAIN)
-    // 하루에 한 번만 알리므로 더 이른 00시만 반환돼야 함
-    Instant earliestFromTime = Instant.parse("2026-07-30T00:00:00Z");
+    // 하루에 한 번만 알리므로 더 이른 쌍의 확정 시각인 01시만 반환돼야 함
+    Instant earliestTriggerTime = Instant.parse("2026-07-30T01:00:00Z");
     List<Weather> rows = List.of(
-        slot(earliestFromTime, 20.0, PrecipitationType.NONE, 2.0),
-        slot(Instant.parse("2026-07-30T01:00:00Z"), 20.0, PrecipitationType.RAIN, 2.0),
+        slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(earliestTriggerTime, 20.0, PrecipitationType.RAIN, 2.0),
         slot(Instant.parse("2026-07-30T02:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
         slot(Instant.parse("2026-07-30T03:00:00Z"), 20.0, PrecipitationType.RAIN, 2.0)
     );
@@ -362,18 +362,18 @@ class WeatherDiffEvaluatorTest {
     Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
 
     // then
-    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.PRECIPITATION, earliestFromTime, true));
+    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.PRECIPITATION, earliestTriggerTime, true));
   }
 
   @Test
-  @DisplayName("풍속 카테고리가 여러 쌍에서 걸려도 가장 이른 시각의 쌍만 반환한다")
+  @DisplayName("풍속 카테고리가 여러 쌍에서 걸려도 가장 이른 쌍의 변경 확정 시각만 반환한다")
   void evaluateDailyDiffReportsEarliestWindOccurrenceWhenTriggeredMultipleTimes() {
     // given: 00시->01시에 WEAK->STRONG, 01시->02시에 다시 WEAK로 내려갔다가, 02시->03시에 또 STRONG으로
-    // 올라도 하루에 한 번만 알리므로 더 이른 00시만 반환돼야 함
-    Instant earliestFromTime = Instant.parse("2026-07-30T00:00:00Z");
+    // 올라도 하루에 한 번만 알리므로 더 이른 쌍의 확정 시각인 01시만 반환돼야 함
+    Instant earliestTriggerTime = Instant.parse("2026-07-30T01:00:00Z");
     List<Weather> rows = List.of(
-        slot(earliestFromTime, 20.0, PrecipitationType.NONE, 2.0),
-        slot(Instant.parse("2026-07-30T01:00:00Z"), 20.0, PrecipitationType.NONE, 10.0),
+        slot(Instant.parse("2026-07-30T00:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
+        slot(earliestTriggerTime, 20.0, PrecipitationType.NONE, 10.0),
         slot(Instant.parse("2026-07-30T02:00:00Z"), 20.0, PrecipitationType.NONE, 2.0),
         slot(Instant.parse("2026-07-30T03:00:00Z"), 20.0, PrecipitationType.NONE, 10.0)
     );
@@ -382,7 +382,7 @@ class WeatherDiffEvaluatorTest {
     Set<DailyDiffTrigger> result = evaluator.evaluateDailyDiff(rows, properties);
 
     // then
-    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.WIND, earliestFromTime, true));
+    assertThat(result).containsExactly(new DailyDiffTrigger(DiffCategory.WIND, earliestTriggerTime, true));
   }
 
   @Test

@@ -58,7 +58,10 @@ public class WeatherDiffEvaluator {
     for (int i = 1; i < sortedByForecastAt.size(); i++) {
       Weather previous = sortedByForecastAt.get(i - 1);
       Weather current = sortedByForecastAt.get(i);
-      Instant fromTime = previous.getForecastAt();
+      // previous 시각을 쓰면, 그 시각의 실제 데이터(아직 안 바뀐 값)와 모순되는 문구가 나간다
+      // (예: 강수는 previous가 아직 NONE인 시각인데 "그때부터 비 소식"이라 하면 틀린 말이 됨) -
+      // 새 값이 확정되는 current 시각을 기준으로 알린다.
+      Instant fromTime = current.getForecastAt();
 
       double gapHours = Duration.between(previous.getForecastAt(), current.getForecastAt()).toMinutes() / 60.0;
 
