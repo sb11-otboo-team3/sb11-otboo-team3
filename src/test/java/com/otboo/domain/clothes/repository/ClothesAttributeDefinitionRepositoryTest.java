@@ -9,8 +9,10 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 
+import java.util.List;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -56,5 +58,27 @@ public class ClothesAttributeDefinitionRepositoryTest {
         assertThrows(DataIntegrityViolationException.class, () ->
                 definitionRepository.saveAndFlush(new ClothesAttributeDefinition("패턴"))
         );
+    }
+
+    @Test
+    void 활성_필수_정의만_조회된다() {
+        //given
+        ClothesAttributeDefinition required = new ClothesAttributeDefinition("색상");
+        required.updateRequired(true);
+        definitionRepository.save(required);
+
+        ClothesAttributeDefinition optional = new ClothesAttributeDefinition("소재");
+        definitionRepository.save(optional);
+
+        ClothesAttributeDefinition deletedRequired = new ClothesAttributeDefinition("세부종류");
+        deletedRequired.updateRequired(true);
+        deletedRequired.delete();
+        definitionRepository.save(deletedRequired);
+
+        //when
+        List<ClothesAttributeDefinition> found = definitionRepository.findByDeletedAtIsNullAndRequiredTrue();
+
+        //then
+        assertThat(found).extracting(ClothesAttributeDefinition::getName).containsExactly("색상");
     }
 }

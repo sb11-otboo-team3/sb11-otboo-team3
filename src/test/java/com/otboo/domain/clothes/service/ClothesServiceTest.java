@@ -22,6 +22,7 @@ import com.otboo.domain.clothes.exception.ClothesNotFoundException;
 import com.otboo.domain.clothes.exception.DuplicateClothesAttributeException;
 import com.otboo.domain.clothes.exception.InvalidClothesAttributeValueException;
 import com.otboo.domain.clothes.exception.InvalidClothesCursorException;
+import com.otboo.domain.clothes.exception.RequiredClothesAttributeMissingException;
 import com.otboo.domain.clothes.mapper.ClothesMapper;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeDefinitionRepository;
@@ -237,6 +238,59 @@ class ClothesServiceTest {
     }
 
     @Test
+    void 필수_속성이_누락되면_등록_시_예외가_발생한다() {
+        //given
+        UUID userId = UUID.randomUUID();
+        User owner = User.create("test@otboo.io", "테스트", "encoded-password");
+        ClothesAttributeDefinition requiredDefinition = new ClothesAttributeDefinition("색상");
+        requiredDefinition.updateRequired(true);
+        ReflectionTestUtils.setField(requiredDefinition, "id", UUID.randomUUID());
+
+        ClothesCreateRequest request = new ClothesCreateRequest(
+                userId, "티셔츠", ClothesType.TOP, List.of()
+        );
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(owner));
+        given(clothesRepository.save(any(Clothes.class))).willAnswer(invocation -> invocation.getArgument(0));
+        given(definitionRepository.findByDeletedAtIsNullAndRequiredTrue()).willReturn(List.of(requiredDefinition));
+
+        //when & then
+        assertThatThrownBy(() -> service.create(userId, request, null))
+                .isInstanceOf(RequiredClothesAttributeMissingException.class);
+    }
+
+    @Test
+    void 필수_속성이_채워지면_정상_등록된다() {
+        //given
+        UUID userId = UUID.randomUUID();
+        User owner = User.create("test@otboo.io", "테스트", "encoded-password");
+        ClothesAttributeDefinition requiredDefinition = new ClothesAttributeDefinition("색상");
+        requiredDefinition.updateRequired(true);
+        UUID definitionId = UUID.randomUUID();
+        ReflectionTestUtils.setField(requiredDefinition, "id", definitionId);
+        AttributeSelectableValue selectableValue = new AttributeSelectableValue(requiredDefinition, "빨강", 0);
+
+        ClothesCreateRequest request = new ClothesCreateRequest(
+                userId, "티셔츠", ClothesType.TOP, List.of(new ClothesAttributeRequest(definitionId, "빨강"))
+        );
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(owner));
+        given(clothesRepository.save(any(Clothes.class))).willAnswer(invocation -> invocation.getArgument(0));
+        given(definitionRepository.findByDeletedAtIsNullAndRequiredTrue()).willReturn(List.of(requiredDefinition));
+        given(definitionRepository.findAllById(List.of(definitionId))).willReturn(List.of(requiredDefinition));
+        given(selectableValueRepository.findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(List.of(requiredDefinition)))
+                .willReturn(List.of(selectableValue));
+        given(clothesMapper.toResponse(any(), any(), any()))
+                .willReturn(new ClothesResponse(UUID.randomUUID(), userId, "티셔츠", null, ClothesType.TOP, List.of()));
+
+        //when
+        ClothesResponse response = service.create(userId, request, null);
+
+        //then
+        assertThat(response.name()).isEqualTo("티셔츠");
+    }
+
+    @Test
     void 정상_수정하면_이름과_속성이_갱신된다() {
         //given
         UUID userId = UUID.randomUUID();
@@ -319,6 +373,29 @@ class ClothesServiceTest {
         //when & then
         assertThatThrownBy(() -> service.update(userId, clothesId, request, null))
                 .isInstanceOf(InvalidClothesAttributeValueException.class);
+    }
+
+    @Test
+    void 필수_속성이_누락되면_수정_시_예외가_발생한다() {
+        //given
+        UUID userId = UUID.randomUUID();
+        UUID clothesId = UUID.randomUUID();
+        User owner = User.create("test@otboo.io", "테스트", "encoded-password");
+        ReflectionTestUtils.setField(owner, "id", userId);
+        Clothes clothes = new Clothes(owner, "기존이름", null, ClothesType.TOP);
+
+        ClothesAttributeDefinition requiredDefinition = new ClothesAttributeDefinition("색상");
+        requiredDefinition.updateRequired(true);
+        ReflectionTestUtils.setField(requiredDefinition, "id", UUID.randomUUID());
+
+        ClothesUpdateRequest request = new ClothesUpdateRequest("새이름", ClothesType.TOP, List.of(), null);
+
+        given(clothesRepository.findById(clothesId)).willReturn(Optional.of(clothes));
+        given(definitionRepository.findByDeletedAtIsNullAndRequiredTrue()).willReturn(List.of(requiredDefinition));
+
+        //when & then
+        assertThatThrownBy(() -> service.update(userId, clothesId, request, null))
+                .isInstanceOf(RequiredClothesAttributeMissingException.class);
     }
 
     @Test

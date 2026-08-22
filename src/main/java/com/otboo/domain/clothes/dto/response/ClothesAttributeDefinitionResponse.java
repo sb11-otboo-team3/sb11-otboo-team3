@@ -8,6 +8,7 @@ public record ClothesAttributeDefinitionResponse(
         UUID id,
         String name,
         List<String> selectableValues,
+        boolean required,
         Instant createdAt
 ) {
 }

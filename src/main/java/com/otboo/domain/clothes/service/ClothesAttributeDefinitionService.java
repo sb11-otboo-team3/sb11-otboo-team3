@@ -84,6 +84,8 @@ public class ClothesAttributeDefinitionService {
                 })
                 .orElseGet(() -> saveNewDefinition(name));
 
+        definition.updateRequired(request.required());
+
         List<AttributeSelectableValue> selectableValues =
                 syncSelectableValues(definition, values);
 
@@ -120,6 +122,7 @@ public class ClothesAttributeDefinitionService {
             throw new DuplicateAttributeDefinitionNameException(newName);
         }
         definition.updateName(newName);
+        definition.updateRequired(request.required());
         try {
             definitionRepository.flush();
         } catch (DataIntegrityViolationException e) {

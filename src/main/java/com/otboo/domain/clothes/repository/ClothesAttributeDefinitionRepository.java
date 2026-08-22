@@ -15,5 +15,6 @@ public interface ClothesAttributeDefinitionRepository extends JpaRepository<Clot
 
     List<ClothesAttributeDefinition> findByDeletedAtIsNullAndNameContainingIgnoreCase(String keyword, Sort sort);
 
+    List<ClothesAttributeDefinition> findByDeletedAtIsNullAndRequiredTrue();
 
 }
