@@ -131,9 +131,15 @@ public class WeatherForecastFinder {
       return Optional.empty(); // DB에도 없음 - 캐시를 못 믿으니 호출부가 DB/기상청부터 다시 타게 함.
     }
 
+    // 거리가 완전히 같으면(정확히 중간 시각) forecastAt 오름차순을 2차 기준으로 못박는다 -
+    // findByGridAndForecastedAt는 ORDER BY가 없어서 순서를 전혀 보장 안 하기 때문에,
+    // DailyForecastSelector.closest()와 다른 슬롯을 고를 위험이 있다(둘 다 같은 규칙을 써야
+    // "캐시된 대표가 여전히 최신인지" 비교가 의미 있어짐).
     Instant freshestTodayForecastAt = existing.stream()
         .filter(weather -> weather.getForecastAt().atZone(KST).toLocalDate().equals(today))
-        .min(Comparator.comparing(weather -> Duration.between(now, weather.getForecastAt()).abs()))
+        .min(Comparator
+            .<Weather, Duration>comparing(weather -> Duration.between(now, weather.getForecastAt()).abs())
+            .thenComparing(Weather::getForecastAt))
         .map(Weather::getForecastAt)
         .orElse(null);
 

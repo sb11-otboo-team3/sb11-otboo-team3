@@ -39,8 +39,11 @@ public class DailyForecastSelector {
     //오늘 날짜에 대한 예보 리스트 가져오기
     List<WeatherDto> todayForecasts = coveredByDate.get(today);
     if (todayForecasts == null) {
-      log.warn("일별 대표 예보 선정 - 오늘({}) 예보 없음, 전체 예보 중 현재 시각과 가장 가까운 항목으로 대체", today);
-      todayForecasts = forecasts;
+      log.warn("일별 대표 예보 선정 - 오늘({}) 예보 없음, coveredByDate 중 현재 시각과 가장 가까운 항목으로 대체", today);
+      // 원본 forecasts 전체가 아니라 coveredByDate에 남은 것만 후보로 삼는다 - 안 그러면 오늘이
+      // 하필 excludeTrailingMidnightOnlyDate가 제외한 그 날짜일 때, 제외했던 00시 슬롯이 대표로
+      // 다시 뽑히고 그 시각(00:00)이 나머지 모든 날짜의 대표 선정 기준으로도 그대로 번진다.
+      todayForecasts = coveredByDate.values().stream().flatMap(List::stream).toList();
     }
 
     //현재 시각과 가장 가까운걸 대표로 고름.
@@ -77,10 +80,14 @@ public class DailyForecastSelector {
         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
   }
 
-  // 가장 근처 시간대 체크
+  // 가장 근처 시간대 체크. 거리가 완전히 같으면(정확히 중간 시각) 입력 순서에 기대지 않도록
+  // forecastAt 오름차순(이른 시각 우선)을 2차 기준으로 못박는다 - 안 그러면 리스트가 어떤 순서로
+  // 들어오느냐에 따라 결과가 달라질 수 있다.
   private WeatherDto closest(List<WeatherDto> candidates, Instant target) {
     return candidates.stream()
-        .min(Comparator.comparing(dto -> Duration.between(target, dto.forecastAt()).abs()))
+        .min(Comparator
+            .<WeatherDto, Duration>comparing(dto -> Duration.between(target, dto.forecastAt()).abs())
+            .thenComparing(WeatherDto::forecastAt))
         .orElseThrow();
   }
 

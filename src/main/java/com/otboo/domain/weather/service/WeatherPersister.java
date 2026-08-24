@@ -124,6 +124,13 @@ public class WeatherPersister {
   // 발표별 급변: "다음 발표 전 시간대"만 비교 대상으로 삼는다 - 그보다 먼 미래는 다음 배치가 다시
   // 검증할 기회가 있으니 지금 당장 알릴 필요가 없다(같은 forecastAt이 여러 번 재평가되며 반복
   // 알림이 나가는 것도 이 스코프 제한으로 원천 차단됨).
+  //
+  // 이 메서드는 절대 예외를 던지지 않는다 - 호출 시점엔 이미 weather row가 커밋된 뒤라서, 여기서
+  // 실패가 새어나가면 "저장은 됐는데 배치/요청은 실패"하는 애매한 상태가 된다. 특히 baseTimeResolver.next()는
+  // item.forecastedAt()이 정규 발표시각이 아니면 예외를 던지는데(VilageFcstBaseTimeResolver 참고),
+  // 이 값은 기상청 원본을 검증 없이 그대로 쓰는 값이다 - 배치의 skip 정책은 KmaApiException만
+  // 대상이라 이 예외는 격자만 건너뛰지 못하고 Step 전체를 실패시킨다. 알림 계산 실패가 저장/배치
+  // 결과에 영향을 주면 안 되므로 통째로 흡수한다.
   private void publishAnnouncementDiffIfTriggered(
       VilageFcstItem item, Grid grid, Instant forecastAt, Optional<Weather> previousAnnouncement, Weather current
   ) {
@@ -131,31 +138,36 @@ public class WeatherPersister {
       return;
     }
 
-    VilageFcstBaseTime currentBaseTime = new VilageFcstBaseTime(
-        item.forecastedAt().toLocalDate(), item.forecastedAt().toLocalTime());
-    VilageFcstBaseTime nextBaseTime = baseTimeResolver.next(currentBaseTime);
-    Instant nextAnnouncementAt = nextBaseTime.baseDate().atTime(nextBaseTime.baseTime()).atZone(KST).toInstant();
-    if (!weatherDiffEvaluator.isWithinNextAnnouncementWindow(forecastAt, nextAnnouncementAt)) {
-      return;
-    }
+    try {
+      VilageFcstBaseTime currentBaseTime = new VilageFcstBaseTime(
+          item.forecastedAt().toLocalDate(), item.forecastedAt().toLocalTime());
+      VilageFcstBaseTime nextBaseTime = baseTimeResolver.next(currentBaseTime);
+      Instant nextAnnouncementAt = nextBaseTime.baseDate().atTime(nextBaseTime.baseTime()).atZone(KST).toInstant();
+      if (!weatherDiffEvaluator.isWithinNextAnnouncementWindow(forecastAt, nextAnnouncementAt)) {
+        return;
+      }
 
-    Weather previous = previousAnnouncement.get();
-    Set<DiffCategory> triggeredCategories = EnumSet.noneOf(DiffCategory.class);
+      Weather previous = previousAnnouncement.get();
+      Set<DiffCategory> triggeredCategories = EnumSet.noneOf(DiffCategory.class);
 
-    // null(결측치) 가드는 WeatherDiffEvaluator 안으로 옮겨져 있다 - 여기서 또 확인할 필요 없음.
-    if (weatherDiffEvaluator.isTemperatureTriggered(
-        previous.getTemperatureCurrent(), current.getTemperatureCurrent(), weatherDiffProperties)) {
-      triggeredCategories.add(DiffCategory.TEMPERATURE);
-    }
-    if (weatherDiffEvaluator.isPrecipitationTriggered(previous.getPrecipitationType(), current.getPrecipitationType())) {
-      triggeredCategories.add(DiffCategory.PRECIPITATION);
-    }
-    if (weatherDiffEvaluator.isWindTriggered(previous.getWindSpeed(), current.getWindSpeed())) {
-      triggeredCategories.add(DiffCategory.WIND);
-    }
+      // null(결측치) 가드는 WeatherDiffEvaluator 안으로 옮겨져 있다 - 여기서 또 확인할 필요 없음.
+      if (weatherDiffEvaluator.isTemperatureTriggered(
+          previous.getTemperatureCurrent(), current.getTemperatureCurrent(), weatherDiffProperties)) {
+        triggeredCategories.add(DiffCategory.TEMPERATURE);
+      }
+      if (weatherDiffEvaluator.isPrecipitationTriggered(previous.getPrecipitationType(), current.getPrecipitationType())) {
+        triggeredCategories.add(DiffCategory.PRECIPITATION);
+      }
+      if (weatherDiffEvaluator.isWindTriggered(previous.getWindSpeed(), current.getWindSpeed())) {
+        triggeredCategories.add(DiffCategory.WIND);
+      }
 
-    if (!triggeredCategories.isEmpty()) {
-      eventPublisher.publishEvent(new WeatherAnnouncementDiffEvent(previous, current, triggeredCategories));
+      if (!triggeredCategories.isEmpty()) {
+        eventPublisher.publishEvent(new WeatherAnnouncementDiffEvent(previous, current, triggeredCategories));
+      }
+    } catch (RuntimeException e) {
+      log.error("발표별 급변 판정 실패 - weather row는 이미 저장됨, 이번 판정만 건너뜀, grid=({},{}), forecastAt={}, forecastedAt={}",
+          grid.getX(), grid.getY(), forecastAt, item.forecastedAt(), e);
     }
   }
 

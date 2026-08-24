@@ -421,4 +421,30 @@ class WeatherPersisterTest {
     // then
     Mockito.verifyNoInteractions(eventPublisher);
   }
+
+  @Test
+  @DisplayName("forecastedAt이 정규 발표시각이 아니어서 급변 판정 중 예외가 나도, weather row는 이미 저장된 채 예외 없이 끝난다")
+  void savesWeatherEvenWhenAnnouncementDiffCheckThrows() {
+    // given: 09시30분은 8개 정규 발표시각(02,05,08...) 중 하나가 아님 -
+    // baseTimeResolver.next()가 IllegalArgumentException을 던지는 상황을 재현.
+    VilageFcstItem item = new VilageFcstItem(
+        LocalDateTime.of(2026, 7, 30, 9, 30), LocalDateTime.of(2026, 7, 30, 10, 0),
+        SkyStatus.CLEAR, PrecipitationType.NONE,
+        0.0, 20.0, 55.0, 26.0, null, null, 2.0
+    );
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 10, 0).atZone(KST).toInstant();
+    Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 10, 0).atZone(KST).toInstant();
+    // previousAnnouncement가 있어야 try 블록(baseTimeResolver.next() 호출)까지 들어감.
+    stubExisting(dayBeforeForecastAt, forecastAt, previousSlot(forecastAt, PrecipitationType.NONE, 20.0, 2.0));
+    given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
+        .willAnswer(invocation -> invocation.getArgument(0));
+
+    // when
+    Optional<Weather> result = weatherPersister.persist(item, grid);
+
+    // then: 예외가 새어나가지 않고, 저장은 정상적으로 끝나며, 알림만 조용히 건너뛴다
+    assertThat(result).isPresent();
+    verify(weatherSaver).upsertInNewTransaction(any(Weather.class));
+    Mockito.verifyNoInteractions(eventPublisher);
+  }
 }

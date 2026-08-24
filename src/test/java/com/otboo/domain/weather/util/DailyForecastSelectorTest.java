@@ -149,6 +149,29 @@ class DailyForecastSelectorTest {
     );
   }
 
+  @Test
+  @DisplayName("오늘이 하필 자정뿐이라 제외된 마지막 날짜면, 대표 시각이 그 제외된 00시로 오염되지 않는다")
+  void fallbackRepresentativeTimeIsNotContaminatedByExcludedMidnightSlotWhenTodayIsExcluded() {
+    // given: 어제(7/30)는 06/12/18시 슬롯이 있고, 오늘(7/31)은 00시 하나뿐이라 제외 대상 -
+    // 오늘이 곧 그 "마지막 날짜"라서 todayForecasts==null 폴백이 걸리는 상황.
+    Instant now = Instant.parse("2026-07-30T15:05:00Z"); // 2026-07-31 00:05 KST - "오늘"은 7/31
+    List<WeatherDto> forecasts = List.of(
+        weatherDto(Instant.parse("2026-07-29T21:00:00Z")), // 7/30 06:00 KST
+        weatherDto(Instant.parse("2026-07-30T03:00:00Z")), // 7/30 12:00 KST
+        weatherDto(Instant.parse("2026-07-30T09:00:00Z")), // 7/30 18:00 KST - now와 6시간5분 차이(제일 가까움)
+        weatherDto(Instant.parse("2026-07-30T15:00:00Z"))  // 7/31 00:00 KST, 오늘의 유일한 슬롯 - 제외 대상
+    );
+
+    // when
+    List<WeatherDto> result = selector.select(forecasts, now);
+
+    // then: 제외된 00시가 대표로 다시 뽑혀서 그 시각 기준으로 재선정됐다면 06:00(7/30)이 나왔을 것 -
+    // 대신 coveredByDate(어제 슬롯들)만 후보로 삼아 진짜 최근접인 18:00(7/30)이 나와야 함.
+    assertThat(result).extracting(WeatherDto::forecastAt).containsExactly(
+        Instant.parse("2026-07-30T09:00:00Z")
+    );
+  }
+
   private WeatherDto weatherDto(Instant forecastAt) {
     return weatherDto(forecastAt, 0.0);
   }
@@ -186,5 +209,35 @@ class DailyForecastSelectorTest {
     assertThat(result).hasSize(1);
     assertThat(result.get(0).temperature().current()).isEqualTo(26.0);
     assertThat(result.get(0).temperature().average()).isEqualTo(22.0);
+  }
+
+  @Test
+  @DisplayName("두 슬롯이 지금 시각과 정확히 같은 거리면(정확히 중간 시각) 더 이른 슬롯을 고른다")
+  void breaksExactTieByPreferringEarlierSlot() {
+    // given: 10:30 KST 기준 09:00과 12:00 둘 다 정확히 90분 차이 - 이른 쪽(09:00)이 이겨야 함
+    Instant now = Instant.parse("2026-07-31T01:30:00Z"); // 10:30 KST
+    Instant earlier = Instant.parse("2026-07-31T00:00:00Z"); // 09:00 KST
+    Instant later = Instant.parse("2026-07-31T03:00:00Z"); // 12:00 KST
+
+    // when: 입력 순서(이른 것 먼저)
+    List<WeatherDto> result = selector.select(List.of(weatherDto(earlier), weatherDto(later)), now);
+
+    // then
+    assertThat(result).extracting(WeatherDto::forecastAt).containsExactly(earlier);
+  }
+
+  @Test
+  @DisplayName("동점 슬롯의 입력 순서를 뒤집어도(늦은 것 먼저) 여전히 더 이른 슬롯을 고른다")
+  void breaksExactTieByPreferringEarlierSlotRegardlessOfInputOrder() {
+    // given: 위 테스트와 동일한 상황이지만 리스트 순서만 반대
+    Instant now = Instant.parse("2026-07-31T01:30:00Z"); // 10:30 KST
+    Instant earlier = Instant.parse("2026-07-31T00:00:00Z"); // 09:00 KST
+    Instant later = Instant.parse("2026-07-31T03:00:00Z"); // 12:00 KST
+
+    // when: 입력 순서(늦은 것 먼저) - 리스트 순서에 기대는 버그였다면 여기서 later가 나옴
+    List<WeatherDto> result = selector.select(List.of(weatherDto(later), weatherDto(earlier)), now);
+
+    // then
+    assertThat(result).extracting(WeatherDto::forecastAt).containsExactly(earlier);
   }
 }
