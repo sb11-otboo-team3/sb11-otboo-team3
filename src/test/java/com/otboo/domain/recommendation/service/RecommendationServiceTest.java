@@ -226,7 +226,7 @@ class RecommendationServiceTest {
                 null,
                 new PrecipitationDto(precipitationType, 0.0, 0.0),
                 null,
-                new TemperatureDto(0.0, 0.0, min, max),
+                new TemperatureDto(0.0, 0.0, min, max, 0.0),
                 null
         );
     }

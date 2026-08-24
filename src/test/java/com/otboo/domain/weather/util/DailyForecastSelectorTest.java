@@ -150,6 +150,10 @@ class DailyForecastSelectorTest {
   }
 
   private WeatherDto weatherDto(Instant forecastAt) {
+    return weatherDto(forecastAt, 0.0);
+  }
+
+  private WeatherDto weatherDto(Instant forecastAt, double temperature) {
     return new WeatherDto(
         null,
         forecastAt,
@@ -158,8 +162,29 @@ class DailyForecastSelectorTest {
         null,
         new PrecipitationDto(PrecipitationType.NONE, 0.0, 0.0),
         new HumidityDto(0.0, 0.0),
-        new TemperatureDto(0.0, 0.0, 0.0, 0.0),
+        new TemperatureDto(temperature, 0.0, 0.0, 0.0, 0.0),
         new WindSpeedDto(0.0, null)
     );
+  }
+
+  @Test
+  @DisplayName("일별 대표값의 평균 기온은 대표 슬롯 하나가 아니라 그 날 모든 슬롯의 현재기온 평균이다")
+  void averageTemperatureIsMeanOfAllSlotsInTheDayNotJustTheRepresentative() {
+    // given: 오늘 12/15/18시, 대표 시각은 15시(now와 가장 가까움) - 대표 슬롯 값(26.0)과
+    // 평균(10+26+30)/3=22.0이 서로 달라야 대표값을 그대로 쓰는 버그와 구분된다.
+    Instant now = Instant.parse("2026-07-31T05:00:00Z"); // 14:00 KST
+    List<WeatherDto> forecasts = List.of(
+        weatherDto(Instant.parse("2026-07-31T03:00:00Z"), 10.0), // 12:00 KST
+        weatherDto(Instant.parse("2026-07-31T06:00:00Z"), 26.0), // 15:00 KST, 대표 시각
+        weatherDto(Instant.parse("2026-07-31T09:00:00Z"), 30.0)  // 18:00 KST
+    );
+
+    // when
+    List<WeatherDto> result = selector.select(forecasts, now);
+
+    // then
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).temperature().current()).isEqualTo(26.0);
+    assertThat(result.get(0).temperature().average()).isEqualTo(22.0);
   }
 }

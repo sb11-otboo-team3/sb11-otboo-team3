@@ -41,7 +41,9 @@ public record VilageFcstItem(
             orElseZero(temperature),
             0.0,
             orElseZero(temperatureMin != null ? temperatureMin : temperature),
-            orElseZero(temperatureMax != null ? temperatureMax : temperature)
+            orElseZero(temperatureMax != null ? temperatureMax : temperature),
+            // 이 슬롯 하나론 하루 평균을 못 구함 - 일별 대표값 선정(DailyForecastSelector)에서 실제로 채워짐.
+            orElseZero(temperature)
         ),
         new WindSpeedDto(correctedWindSpeed, WindStrength.fromSpeed(correctedWindSpeed))
     );

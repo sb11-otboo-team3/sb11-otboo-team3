@@ -85,16 +85,19 @@ public class DailyForecastSelector {
   }
 
   // 대표 시간대 항목엔 일 최저/최고(TMN/TMX)가 안 실려있는 경우가 많아, 대표값 자체가 아니라
-  // 그날 전체 항목의 min/max를 모아서 채운다.
+  // 그날 전체 항목의 min/max를 모아서 채운다. 평균도 같은 이유로 대표 슬롯 하나의 current가 아니라
+  // 그날 슬롯들의 current를 다 모아 평균낸다.
   private WeatherDto withDailyMinMax(WeatherDto representative, List<WeatherDto> dayForecasts) {
     double min = dayForecasts.stream().mapToDouble(dto -> dto.temperature().min()).min().orElseThrow();
     double max = dayForecasts.stream().mapToDouble(dto -> dto.temperature().max()).max().orElseThrow();
+    double average = dayForecasts.stream().mapToDouble(dto -> dto.temperature().current()).average().orElseThrow();
 
     TemperatureDto temperature = new TemperatureDto(
         representative.temperature().current(),
         representative.temperature().comparedToDayBefore(),
         min,
-        max
+        max,
+        average
     );
 
     return new WeatherDto(

@@ -91,7 +91,7 @@ class WeatherSummaryFinderTest {
         SkyStatus.CLEAR,
         new PrecipitationDto(PrecipitationType.NONE, 0.0, 0.0),
         new HumidityDto(55.0, 0.0),
-        new TemperatureDto(23.0, 0.0, 18.0, 27.0),
+        new TemperatureDto(23.0, 0.0, 18.0, 27.0, 23.0),
         new WindSpeedDto(2.3, WindStrength.WEAK)
     );
     given(weatherForecastCache.find(new WeatherGrid(60, 127), forecastedAt))
@@ -118,7 +118,7 @@ class WeatherSummaryFinderTest {
         SkyStatus.CLEAR,
         new PrecipitationDto(PrecipitationType.NONE, 0.0, 0.0),
         new HumidityDto(55.0, 0.0),
-        new TemperatureDto(23.0, 0.0, 15.0, 22.0),
+        new TemperatureDto(23.0, 0.0, 15.0, 22.0, 23.0),
         new WindSpeedDto(2.3, WindStrength.WEAK)
     );
     given(weatherForecastCache.find(new WeatherGrid(60, 127), forecastedAt))

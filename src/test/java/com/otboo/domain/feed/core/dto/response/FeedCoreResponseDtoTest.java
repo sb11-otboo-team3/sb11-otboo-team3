@@ -35,7 +35,7 @@ class FeedCoreResponseDtoTest {
         weatherId,
         SkyStatus.CLEAR,
         new PrecipitationDto(PrecipitationType.NONE, 0.0, 0.0),
-        new TemperatureDto(20.0, 0.0, 18.0, 25.0)
+        new TemperatureDto(20.0, 0.0, 18.0, 25.0, 20.0)
     );
 
     ClothesAttributeResponse attribute = new ClothesAttributeResponse(

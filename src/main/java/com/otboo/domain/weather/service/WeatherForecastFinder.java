@@ -197,7 +197,8 @@ public class WeatherForecastFinder {
               dto.temperature().current(),
               dto.temperature().comparedToDayBefore(),
               range.min(),
-              range.max()
+              range.max(),
+              dto.temperature().average()
           );
           return new WeatherDto(
               dto.id(), dto.forecastedAt(), dto.forecastAt(), dto.location(),

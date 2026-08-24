@@ -162,7 +162,7 @@ class RedisWeatherForecastCacheTest {
         null,
         new PrecipitationDto(PrecipitationType.NONE, 0.0, 0.0),
         new HumidityDto(55.0, 0.0),
-        new TemperatureDto(23.0, 0.0, 20.0, 26.0),
+        new TemperatureDto(23.0, 0.0, 20.0, 26.0, 23.0),
         new WindSpeedDto(2.3, WindStrength.WEAK)
     );
   }
