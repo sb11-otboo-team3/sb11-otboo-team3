@@ -1,18 +1,30 @@
 package com.otboo.domain.weather.service;
 
+import com.otboo.domain.weather.diff.DiffCategory;
+import com.otboo.domain.weather.diff.WeatherAnnouncementDiffEvent;
+import com.otboo.domain.weather.diff.WeatherDiffEvaluator;
+import com.otboo.domain.weather.diff.WeatherDiffProperties;
 import com.otboo.domain.weather.dto.VilageFcstItem;
 import com.otboo.domain.weather.dto.WeatherAPILocation;
 import com.otboo.domain.weather.dto.WeatherDto;
 import com.otboo.domain.weather.entity.Grid;
 import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.repository.WeatherRepository;
+import com.otboo.domain.weather.util.VilageFcstBaseTime;
+import com.otboo.domain.weather.util.VilageFcstBaseTimeResolver;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +40,10 @@ public class WeatherPersister {
 
   private final WeatherRepository weatherRepository;
   private final WeatherSaver weatherSaver;
+  private final WeatherDiffEvaluator weatherDiffEvaluator;
+  private final VilageFcstBaseTimeResolver baseTimeResolver;
+  private final WeatherDiffProperties weatherDiffProperties;
+  private final ApplicationEventPublisher eventPublisher;
 
   public Optional<WeatherDto> persist(VilageFcstItem item, Grid grid, WeatherAPILocation location) {
     return persistEntity(item, grid).map(saved -> saved.toDto(location));
@@ -52,10 +68,18 @@ public class WeatherPersister {
       return Optional.empty();
     }
 
+    // 전일 대비 조회(dayBefore)와 발표별 diff 비교 대상 조회(previousAnnouncement)는 서로 다른
+    // forecastAt을 보지만, 같은 (grid, forecast_at) 유니크 인덱스를 타는 점 조회라 IN절 하나로 묶어
+    // DB 왕복을 한 번으로 줄인다.
+    Instant dayBeforeForecastAt = forecastAt.minus(1, ChronoUnit.DAYS);
+    Map<Instant, Weather> existingByForecastAt = weatherRepository
+        .findByGridAndForecastAtIn(grid, List.of(dayBeforeForecastAt, forecastAt))
+        .stream()
+        .collect(Collectors.toMap(Weather::getForecastAt, weather -> weather));
+
     Double humidityComparedToDayBefore = null;
     Double temperatureComparedToDayBefore = null;
-    Optional<Weather> dayBefore = weatherRepository.findByGridAndForecastAt(
-        grid, forecastAt.minus(1, ChronoUnit.DAYS));
+    Optional<Weather> dayBefore = Optional.ofNullable(existingByForecastAt.get(dayBeforeForecastAt));
     if (dayBefore.isPresent()) {
       Double humidityDayBefore = dayBefore.get().getHumidityCurrent();
       Double temperatureDayBefore = dayBefore.get().getTemperatureCurrent();
@@ -66,6 +90,10 @@ public class WeatherPersister {
         temperatureComparedToDayBefore = item.temperature() - temperatureDayBefore;
       }
     }
+
+    // 발표별 급변 비교 대상 - 같은 (grid, forecastAt)의 이전 값. upsert가 덮어쓰기 전에 미리 조회해둬야
+    // "이전 값"을 알 수 있다(덮어쓴 뒤엔 사라짐).
+    Optional<Weather> previousAnnouncement = Optional.ofNullable(existingByForecastAt.get(forecastAt));
 
     Weather weather = Weather.builder()
         .grid(grid)
@@ -87,7 +115,60 @@ public class WeatherPersister {
     // 같은 (grid, forecastAt)에 이미 row가 있으면(예: 예전 배치가 이미 이 시간대를 예측해놨으면) upsert가
     // 알아서 최신 값으로 덮어쓴다 - 유니크 위반을 신경 쓸 필요가 없어짐(WeatherSaver 참고).
     Weather saved = weatherSaver.upsertInNewTransaction(weather);
+
+    publishAnnouncementDiffIfTriggered(item, grid, forecastAt, previousAnnouncement, saved);
+
     return Optional.of(saved);
+  }
+
+  // 발표별 급변: "다음 발표 전 시간대"만 비교 대상으로 삼는다 - 그보다 먼 미래는 다음 배치가 다시
+  // 검증할 기회가 있으니 지금 당장 알릴 필요가 없다(같은 forecastAt이 여러 번 재평가되며 반복
+  // 알림이 나가는 것도 이 스코프 제한으로 원천 차단됨).
+  //
+  // 이 메서드는 절대 예외를 던지지 않는다 - 호출 시점엔 이미 weather row가 커밋된 뒤라서, 여기서
+  // 실패가 새어나가면 "저장은 됐는데 배치/요청은 실패"하는 애매한 상태가 된다. 특히 baseTimeResolver.next()는
+  // item.forecastedAt()이 정규 발표시각이 아니면 예외를 던지는데(VilageFcstBaseTimeResolver 참고),
+  // 이 값은 기상청 원본을 검증 없이 그대로 쓰는 값이다 - 배치의 skip 정책은 KmaApiException만
+  // 대상이라 이 예외는 격자만 건너뛰지 못하고 Step 전체를 실패시킨다. 알림 계산 실패가 저장/배치
+  // 결과에 영향을 주면 안 되므로 통째로 흡수한다.
+  private void publishAnnouncementDiffIfTriggered(
+      VilageFcstItem item, Grid grid, Instant forecastAt, Optional<Weather> previousAnnouncement, Weather current
+  ) {
+    if (previousAnnouncement.isEmpty()) {
+      return;
+    }
+
+    try {
+      VilageFcstBaseTime currentBaseTime = new VilageFcstBaseTime(
+          item.forecastedAt().toLocalDate(), item.forecastedAt().toLocalTime());
+      VilageFcstBaseTime nextBaseTime = baseTimeResolver.next(currentBaseTime);
+      Instant nextAnnouncementAt = nextBaseTime.baseDate().atTime(nextBaseTime.baseTime()).atZone(KST).toInstant();
+      if (!weatherDiffEvaluator.isWithinNextAnnouncementWindow(forecastAt, nextAnnouncementAt)) {
+        return;
+      }
+
+      Weather previous = previousAnnouncement.get();
+      Set<DiffCategory> triggeredCategories = EnumSet.noneOf(DiffCategory.class);
+
+      // null(결측치) 가드는 WeatherDiffEvaluator 안으로 옮겨져 있다 - 여기서 또 확인할 필요 없음.
+      if (weatherDiffEvaluator.isTemperatureTriggered(
+          previous.getTemperatureCurrent(), current.getTemperatureCurrent(), weatherDiffProperties)) {
+        triggeredCategories.add(DiffCategory.TEMPERATURE);
+      }
+      if (weatherDiffEvaluator.isPrecipitationTriggered(previous.getPrecipitationType(), current.getPrecipitationType())) {
+        triggeredCategories.add(DiffCategory.PRECIPITATION);
+      }
+      if (weatherDiffEvaluator.isWindTriggered(previous.getWindSpeed(), current.getWindSpeed())) {
+        triggeredCategories.add(DiffCategory.WIND);
+      }
+
+      if (!triggeredCategories.isEmpty()) {
+        eventPublisher.publishEvent(new WeatherAnnouncementDiffEvent(previous, current, triggeredCategories));
+      }
+    } catch (RuntimeException e) {
+      log.error("발표별 급변 판정 실패 - weather row는 이미 저장됨, 이번 판정만 건너뜀, grid=({},{}), forecastAt={}, forecastedAt={}",
+          grid.getX(), grid.getY(), forecastAt, item.forecastedAt(), e);
+    }
   }
 
   // 그 날짜(grid+date)의 min/max를 "계산만" 한다(쓰지 않음). 기상청이 그 날짜 어딘가에 실제 TMN/TMX를

@@ -144,7 +144,7 @@ class WeatherControllerTest {
           SkyStatus.CLEAR,
           new PrecipitationDto(PrecipitationType.NONE, 0.0, 10.0),
           new HumidityDto(55.0, -3.0),
-          new TemperatureDto(23.5, 1.2, 18.0, 26.0),
+          new TemperatureDto(23.5, 1.2, 18.0, 26.0, 23.5),
           new WindSpeedDto(2.3, WindStrength.WEAK)
       );
       given(weatherService.getWeathers(37.5665, 126.9780, null, null, null))
@@ -181,7 +181,7 @@ class WeatherControllerTest {
           SkyStatus.CLEAR,
           new PrecipitationDto(PrecipitationType.NONE, 0.0, 10.0),
           new HumidityDto(55.0, -3.0),
-          new TemperatureDto(23.5, 1.2, 18.0, 26.0),
+          new TemperatureDto(23.5, 1.2, 18.0, 26.0, 23.5),
           new WindSpeedDto(2.3, WindStrength.WEAK)
       );
       given(weatherService.getWeathers(37.5665, 126.9780, "서울특별시", "강서구", "마곡동"))

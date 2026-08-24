@@ -281,16 +281,17 @@ class WeatherForecastFinderTest {
   }
 
   @Test
-  @DisplayName("캐시에 예보가 있으면 DB와 기상청 모두 건드리지 않고 캐시 값을 사용한다")
-  void usesCachedForecastsWithoutTouchingDbOrKma() {
+  @DisplayName("캐시에 있는 오늘 대표가 지금 시각 기준으로도 여전히 최근접이면, 기상청은 안 부르고 캐시 값을 그대로 쓴다")
+  void usesCachedForecastsWithoutTouchingKmaWhenStillFresh() {
     // given
     WeatherAPILocation location = location(37.5665, 126.9780);
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
 
     VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
     given(baseTimeResolver.resolve(any())).willReturn(baseTime);
 
     Instant forecastedAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
-    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant(); // clock과 정확히 일치 = 지금도 최근접
     WeatherDto cachedDto = new WeatherDto(
         null,
         forecastedAt,
@@ -299,11 +300,22 @@ class WeatherForecastFinderTest {
         SkyStatus.CLEAR,
         new PrecipitationDto(PrecipitationType.NONE, 0.0, 20.0),
         new HumidityDto(55.0, 0.0),
-        new TemperatureDto(23.0, 0.0, 20.0, 26.0),
+        new TemperatureDto(23.0, 0.0, 20.0, 26.0, 23.0),
         new WindSpeedDto(2.3, WindStrength.WEAK)
     );
     given(weatherForecastCache.find(new WeatherGrid(60, 127), forecastedAt))
         .willReturn(Optional.of(List.of(cachedDto)));
+    // 캐시 히트여도 "오늘 대표가 지금도 최근접인지" DB로 검증하므로, 검증용 조회 스텁이 필요함 -
+    // 캐시와 같은 forecastAt짜리 row 하나만 있으면 재계산 없이 캐시가 그대로 살아남는다.
+    given(gridResolver.findOrRegister(any())).willReturn(existingGrid);
+    given(weatherRepository.findByGridAndForecastedAt(existingGrid, forecastedAt))
+        .willReturn(List.of(Weather.builder()
+            .grid(existingGrid)
+            .forecastedAt(forecastedAt)
+            .forecastAt(forecastAt)
+            .skyStatus(SkyStatus.CLEAR)
+            .precipitationType(PrecipitationType.NONE)
+            .build()));
 
     // when
     List<WeatherDto> result = weatherForecastFinder.find(location).block();
@@ -312,10 +324,141 @@ class WeatherForecastFinderTest {
     assertThat(result).hasSize(1);
     assertThat(result.get(0).location().locationNames()).containsExactly("서울특별시", "강서구", "마곡동");
     assertThat(result.get(0).skyStatus()).isEqualTo(SkyStatus.CLEAR);
-    verifyNoInteractions(gridResolver);
-    verifyNoInteractions(weatherRepository);
     verifyNoInteractions(kmaWeatherClient);
     verifyNoInteractions(weatherPersister);
+    // 이미 최신이니 캐시를 다시 쓰지 않는다(불필요한 Redis 쓰기 없음).
+    Mockito.verify(weatherForecastCache, Mockito.never()).save(any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("캐시에 있는 오늘 대표가 지금 시각 기준으로 더는 최근접이 아니면, DB 기준으로 다시 뽑아 캐시까지 갱신한다")
+  void refreshesCacheWhenTodayRepresentativeIsStale() {
+    // given: 캐시엔 05시 슬롯이 대표로 박혀있지만, clock(09:00)엔 09시 슬롯이 진짜 최근접임
+    WeatherAPILocation location = location(37.5665, 126.9780);
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+
+    Instant forecastedAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Instant staleForecastAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Instant freshForecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    WeatherDto staleCachedDto = new WeatherDto(
+        null, forecastedAt, staleForecastAt, null,
+        SkyStatus.CLEAR,
+        new PrecipitationDto(PrecipitationType.NONE, 0.0, 20.0),
+        new HumidityDto(55.0, 0.0),
+        new TemperatureDto(20.0, 0.0, 18.0, 26.0, 20.0),
+        new WindSpeedDto(2.3, WindStrength.WEAK)
+    );
+    given(weatherForecastCache.find(new WeatherGrid(60, 127), forecastedAt))
+        .willReturn(Optional.of(List.of(staleCachedDto)));
+    given(gridResolver.findOrRegister(any())).willReturn(existingGrid);
+    given(weatherRepository.findByGridAndForecastedAt(existingGrid, forecastedAt))
+        .willReturn(List.of(
+            Weather.builder().grid(existingGrid).forecastedAt(forecastedAt).forecastAt(staleForecastAt)
+                .skyStatus(SkyStatus.CLEAR).precipitationType(PrecipitationType.NONE)
+                .temperatureCurrent(20.0).temperatureMin(18.0).temperatureMax(26.0).build(),
+            Weather.builder().grid(existingGrid).forecastedAt(forecastedAt).forecastAt(freshForecastAt)
+                .skyStatus(SkyStatus.MOSTLY_CLOUDY).precipitationType(PrecipitationType.NONE)
+                .temperatureCurrent(26.0).temperatureMin(18.0).temperatureMax(26.0).build()
+        ));
+
+    // when
+    List<WeatherDto> result = weatherForecastFinder.find(location).block();
+
+    // then: 05시가 아니라 09시(지금과 정확히 일치) 슬롯이 대표로 나와야 함
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).forecastAt()).isEqualTo(freshForecastAt);
+    assertThat(result.get(0).skyStatus()).isEqualTo(SkyStatus.MOSTLY_CLOUDY);
+    verifyNoInteractions(kmaWeatherClient);
+    verify(weatherForecastCache).save(eq(new WeatherGrid(60, 127)), eq(forecastedAt), savedForecastsCaptor.capture());
+    assertThat(savedForecastsCaptor.getValue()).extracting(WeatherDto::forecastAt).containsExactly(freshForecastAt);
+  }
+
+  @Test
+  @DisplayName("DB의 두 슬롯이 지금 시각과 정확히 같은 거리면(동점), DB 조회 순서와 무관하게 더 이른 슬롯으로 갱신한다")
+  void refreshesToEarlierSlotOnExactTieRegardlessOfDbRowOrder() {
+    // given: clock(09:00) 기준 08:00과 10:00 둘 다 정확히 60분 차이 - 이른 쪽(08:00)이 이겨야 함.
+    // DB 조회가 늦은 슬롯을 먼저 반환하도록 해서, 입력 순서에 기대는 버그였다면 10:00이 나오게 만든다.
+    WeatherAPILocation location = location(37.5665, 126.9780);
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+
+    Instant forecastedAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Instant staleForecastAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Instant earlierTiedForecastAt = LocalDateTime.of(2026, 7, 30, 8, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Instant laterTiedForecastAt = LocalDateTime.of(2026, 7, 30, 10, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    WeatherDto staleCachedDto = new WeatherDto(
+        null, forecastedAt, staleForecastAt, null,
+        SkyStatus.CLEAR,
+        new PrecipitationDto(PrecipitationType.NONE, 0.0, 20.0),
+        new HumidityDto(55.0, 0.0),
+        new TemperatureDto(20.0, 0.0, 18.0, 26.0, 20.0),
+        new WindSpeedDto(2.3, WindStrength.WEAK)
+    );
+    given(weatherForecastCache.find(new WeatherGrid(60, 127), forecastedAt))
+        .willReturn(Optional.of(List.of(staleCachedDto)));
+    given(gridResolver.findOrRegister(any())).willReturn(existingGrid);
+    given(weatherRepository.findByGridAndForecastedAt(existingGrid, forecastedAt))
+        .willReturn(List.of(
+            // 늦은 슬롯을 먼저 반환 - ORDER BY 없는 조회를 흉내냄
+            Weather.builder().grid(existingGrid).forecastedAt(forecastedAt).forecastAt(laterTiedForecastAt)
+                .skyStatus(SkyStatus.MOSTLY_CLOUDY).precipitationType(PrecipitationType.NONE)
+                .temperatureCurrent(27.0).temperatureMin(18.0).temperatureMax(27.0).build(),
+            Weather.builder().grid(existingGrid).forecastedAt(forecastedAt).forecastAt(earlierTiedForecastAt)
+                .skyStatus(SkyStatus.CLOUDY).precipitationType(PrecipitationType.NONE)
+                .temperatureCurrent(24.0).temperatureMin(18.0).temperatureMax(27.0).build()
+        ));
+
+    // when
+    List<WeatherDto> result = weatherForecastFinder.find(location).block();
+
+    // then
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).forecastAt()).isEqualTo(earlierTiedForecastAt);
+    assertThat(result.get(0).skyStatus()).isEqualTo(SkyStatus.CLOUDY);
+  }
+
+  @Test
+  @DisplayName("캐시는 있는데 검증용 DB 조회가 비어있으면(비정상), 캐시를 못 믿고 기상청부터 다시 받아온다")
+  void fetchesFromKmaWhenCacheExistsButDbValidationIsEmpty() {
+    // given
+    WeatherAPILocation location = location(37.5665, 126.9780);
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+
+    Instant forecastedAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Instant cachedForecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    WeatherDto cachedDto = new WeatherDto(
+        null, forecastedAt, cachedForecastAt, null,
+        SkyStatus.CLEAR,
+        new PrecipitationDto(PrecipitationType.NONE, 0.0, 20.0),
+        new HumidityDto(55.0, 0.0),
+        new TemperatureDto(23.0, 0.0, 20.0, 26.0, 23.0),
+        new WindSpeedDto(2.3, WindStrength.WEAK)
+    );
+    given(weatherForecastCache.find(new WeatherGrid(60, 127), forecastedAt))
+        .willReturn(Optional.of(List.of(cachedDto)));
+    given(gridResolver.findOrRegister(any())).willReturn(existingGrid);
+    // 검증용 조회가 비어있음 - 캐시가 가리키는 DB 데이터가 사라진 비정상 상황을 흉내냄.
+    given(weatherRepository.findByGridAndForecastedAt(existingGrid, forecastedAt))
+        .willReturn(List.of());
+
+    List<VilageFcstItem> items = List.of(vilageFcstItem(LocalDateTime.of(2026, 7, 30, 9, 0)));
+    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(Mono.just(items));
+
+    // when
+    List<WeatherDto> result = weatherForecastFinder.find(location).block();
+
+    // then: 캐시 값이 아니라 기상청에서 새로 받은 값으로 응답/캐시 저장이 이뤄진다
+    assertThat(result).hasSize(1);
+    Mockito.verify(kmaWeatherClient).getForecast(60, 127, baseTime);
+    verify(weatherForecastCache).save(eq(new WeatherGrid(60, 127)), eq(forecastedAt), any());
   }
 
   @Test
@@ -415,7 +558,7 @@ class WeatherForecastFinderTest {
         SkyStatus.CLEAR,
         new PrecipitationDto(PrecipitationType.NONE, 0.0, 20.0),
         new HumidityDto(55.0, 0.0),
-        new TemperatureDto(23.0, 0.0, 20.0, 26.0),
+        new TemperatureDto(23.0, 0.0, 20.0, 26.0, 23.0),
         new WindSpeedDto(2.3, WindStrength.WEAK)
     );
     given(weatherForecastCache.find(new WeatherGrid(60, 127), previousForecastedAt))
