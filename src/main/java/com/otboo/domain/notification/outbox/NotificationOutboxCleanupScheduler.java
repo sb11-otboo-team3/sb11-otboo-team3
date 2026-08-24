@@ -23,7 +23,7 @@ public class NotificationOutboxCleanupScheduler {
 
   private final NotificationOutboxRepository notificationOutboxRepository;
 
-  @Scheduled(cron = "${app.notification.outbox.cleanup-cron:0 30 3 * * *}", zone = "Asia/Seoul")
+  @Scheduled(cron = "${app.notification.outbox.cleanup-cron:0 30 21 * * *}", zone = "Asia/Seoul")
   @SchedulerLock(
       name = "notificationOutboxCleanupScheduler",
       lockAtMostFor = "PT10M",
