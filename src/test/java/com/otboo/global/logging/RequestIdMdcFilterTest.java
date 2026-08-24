@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.web.util.WebUtils;
 
 class RequestIdMdcFilterTest {
 
@@ -164,6 +165,51 @@ class RequestIdMdcFilterTest {
 
         assertThat(asyncResponse.getHeader(RequestIdMdcFilter.REQUEST_ID_HEADER))
                 .isEqualTo(firstRequestId.get());
+    }
+
+    @Test
+    @DisplayName("ERROR 디스패치에서도 최초 요청과 동일한 requestId를 사용한다")
+    void keepsSameRequestIdOnErrorDispatch() throws Exception {
+        // given
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpServletResponse firstResponse = new MockHttpServletResponse();
+
+        AtomicReference<String> firstRequestId = new AtomicReference<>();
+
+        filter.doFilter(request, firstResponse, (req, res) ->
+                firstRequestId.set(
+                        MDC.get(RequestIdMdcFilter.MDC_REQUEST_ID_KEY)
+                )
+        );
+
+        request.setDispatcherType(DispatcherType.ERROR);
+        request.setAttribute(
+                WebUtils.ERROR_REQUEST_URI_ATTRIBUTE,
+                "/api/test"
+        );
+
+        MockHttpServletResponse errorResponse =
+                new MockHttpServletResponse();
+
+        AtomicReference<String> errorRequestId =
+                new AtomicReference<>();
+
+        // when
+        filter.doFilter(request, errorResponse, (req, res) ->
+                errorRequestId.set(
+                        MDC.get(RequestIdMdcFilter.MDC_REQUEST_ID_KEY)
+                )
+        );
+
+        // then
+        assertThat(errorRequestId.get())
+                .isEqualTo(firstRequestId.get());
+
+        assertThat(
+                errorResponse.getHeader(
+                        RequestIdMdcFilter.REQUEST_ID_HEADER
+                )
+        ).isEqualTo(firstRequestId.get());
     }
 
     private void assertThatCodeIsUuid(String value) {
