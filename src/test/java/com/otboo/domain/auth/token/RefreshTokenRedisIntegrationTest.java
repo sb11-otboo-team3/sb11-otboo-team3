@@ -4,10 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20,6 +27,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 public class RefreshTokenRedisIntegrationTest {
 
     private static final String KEY_PREFIX = "refresh:";
+
+    private static final String CONSUMED_KEY_PREFIX =
+            "refresh:consumed:";
 
     private final Set<String> createdKeys = new HashSet<>();
 
@@ -42,6 +52,7 @@ public class RefreshTokenRedisIntegrationTest {
     private String issueRefreshToken(UUID userId, long tokenVersion) {
         String refreshToken = refreshTokenService.issue(userId, tokenVersion);
         createdKeys.add(KEY_PREFIX + refreshToken);
+        createdKeys.add(CONSUMED_KEY_PREFIX + refreshToken);
         return refreshToken;
     }
 
@@ -53,7 +64,7 @@ public class RefreshTokenRedisIntegrationTest {
         long tokenVersion = 1L;
 
         // when
-        String refreshToken = refreshTokenService.issue(userId, tokenVersion);
+        String refreshToken = issueRefreshToken(userId, tokenVersion);
 
         // then
         String storedValue = redisTemplate.opsForValue()
@@ -69,7 +80,7 @@ public class RefreshTokenRedisIntegrationTest {
         UUID userId = UUID.randomUUID();
         long tokenVersion = 2L;
 
-        String refreshToken = refreshTokenService.issue(userId, tokenVersion);
+        String refreshToken = issueRefreshToken(userId, tokenVersion);
 
         // when
         Optional<RefreshTokenService.TokenInfo> result =
@@ -106,5 +117,80 @@ public class RefreshTokenRedisIntegrationTest {
 
         User reloaded = userRepository.findById(user.getId()).orElseThrow();
         assertThat(reloaded.getTokenVersion()).isEqualTo(tokenVersionBefore + 1);
+    }
+
+    @Test
+    @DisplayName("동일한 Refresh Token을 동시에 소비해도 한 요청만 성공한다")
+    void onlyOneConcurrentRequestConsumesRefreshToken() throws Exception {
+        // given
+        User user = User.create(
+                "refresh-concurrency@otboo.io",
+                "동시성테스트",
+                "encoded-password"
+        );
+        userRepository.saveAndFlush(user);
+
+        String refreshToken =
+                issueRefreshToken(
+                        user.getId(),
+                        user.getTokenVersion()
+                );
+
+        int requestCount = 10;
+
+        ExecutorService executorService =
+                Executors.newFixedThreadPool(requestCount);
+
+        CountDownLatch readyLatch =
+                new CountDownLatch(requestCount);
+
+        CountDownLatch startLatch =
+                new CountDownLatch(1);
+
+        List<Future<Optional<RefreshTokenService.TokenInfo>>> futures =
+                new ArrayList<>();
+
+        try {
+            for (int i = 0; i < requestCount; i++) {
+                futures.add(
+                        executorService.submit(() -> {
+                            readyLatch.countDown();
+
+                            startLatch.await();
+
+                            return refreshTokenService
+                                    .consumeTokenInfo(refreshToken);
+                        })
+                );
+            }
+
+            assertThat(
+                    readyLatch.await(5, TimeUnit.SECONDS)
+            ).isTrue();
+            startLatch.countDown();
+
+            int successCount = 0;
+
+            for (Future<Optional<RefreshTokenService.TokenInfo>> future
+                    : futures) {
+
+                Optional<RefreshTokenService.TokenInfo> result =
+                        future.get(5, TimeUnit.SECONDS);
+
+                if (result.isPresent()) {
+                    successCount++;
+                }
+            }
+
+            // then
+            assertThat(successCount).isEqualTo(1);
+
+            assertThat(
+                    redisTemplate.hasKey(KEY_PREFIX + refreshToken)
+            ).isFalse();
+
+        } finally {
+            executorService.shutdownNow();
+        }
     }
 }
