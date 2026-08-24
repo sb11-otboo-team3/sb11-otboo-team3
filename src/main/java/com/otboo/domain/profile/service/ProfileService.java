@@ -65,7 +65,7 @@ public class ProfileService {
     String newThumbnailKey = null;
 
     if (image != null) {
-      StoredFile storedFile = fileStorage.upload(
+      StoredFile storedFile = fileStorage.uploadWithThumbnail(
           StorageDirectory.PROFILES,
           userId,
           image

@@ -56,24 +56,56 @@ public class S3FileStorage implements FileStorage {
         UUID ownerId,
         MultipartFile file
     ) {
-        ValidatedImageFile validatedImage =
-            imageFileValidator.validate(file);
-        ImageContentType imageContentType =
-            validatedImage.contentType();
+        ValidatedImageFile validatedImage = imageFileValidator.validate(file);
+        ImageContentType imageContentType = validatedImage.contentType();
         String objectKey = objectKeyGenerator.generate(
-            directory,
-            ownerId,
-            imageContentType.getExtension()
+            directory, ownerId, imageContentType.getExtension()
         );
 
         putObject(objectKey, validatedImage.bytes(), imageContentType, validatedImage.size());
 
+        return new StoredFile(
+            objectKey,
+            imageContentType.getContentType(),
+            validatedImage.size(),
+            null
+        );
+    }
+
+    @Override
+    public StoredFile uploadWithThumbnail(
+        StorageDirectory directory,
+        UUID ownerId,
+        MultipartFile file
+    ) {
+        ValidatedImageFile validatedImage = imageFileValidator.validate(file);
+        ImageContentType imageContentType = validatedImage.contentType();
+        String objectKey = objectKeyGenerator.generate(
+            directory, ownerId, imageContentType.getExtension()
+        );
+
+        putObject(objectKey, validatedImage.bytes(), imageContentType, validatedImage.size());
+
+        // WEBP는 Java ImageIO가 인코딩을 지원하지 않아 Thumbnailator로
+        // 썸네일을 생성할 수 없다. 이 경우 원본만 저장하고 썸네일은
+        // 생성하지 않는다. 조회 시에는 UserSummaryMapper 등에서 원본으로
+        // 폴백하도록 이미 처리되어 있다. (#250 리뷰 반영)
+        if (imageContentType == ImageContentType.WEBP) {
+            return new StoredFile(
+                objectKey,
+                imageContentType.getContentType(),
+                validatedImage.size(),
+                null
+            );
+        }
+
         // 원본 검증이 끝난 바이트를 재사용해 썸네일을 생성하고, 별도 키로 업로드한다.
+        // 현재는 프로필 이미지에서만 사용한다. (#250 리뷰 반영 - 공통 upload()에
+        // 두면 의상 등 썸네일을 추적하지 않는 다른 도메인에서 orphan 객체가
+        // 계속 쌓이는 문제가 있어, 필요한 도메인이 명시적으로 선택하도록 분리)
         byte[] thumbnailBytes = thumbnailGenerator.generate(validatedImage.bytes(), imageContentType);
         String thumbnailKey = objectKeyGenerator.generateThumbnail(
-            directory,
-            ownerId,
-            imageContentType.getExtension()
+            directory, ownerId, imageContentType.getExtension()
         );
         putObject(thumbnailKey, thumbnailBytes, imageContentType, thumbnailBytes.length);
 
