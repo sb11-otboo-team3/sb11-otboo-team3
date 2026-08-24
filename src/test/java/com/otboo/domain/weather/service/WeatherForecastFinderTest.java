@@ -377,6 +377,45 @@ class WeatherForecastFinderTest {
   }
 
   @Test
+  @DisplayName("캐시는 있는데 검증용 DB 조회가 비어있으면(비정상), 캐시를 못 믿고 기상청부터 다시 받아온다")
+  void fetchesFromKmaWhenCacheExistsButDbValidationIsEmpty() {
+    // given
+    WeatherAPILocation location = location(37.5665, 126.9780);
+    Grid existingGrid = Grid.builder().x(60).y(127).build();
+
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(5, 0));
+    given(baseTimeResolver.resolve(any())).willReturn(baseTime);
+
+    Instant forecastedAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    Instant cachedForecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+    WeatherDto cachedDto = new WeatherDto(
+        null, forecastedAt, cachedForecastAt, null,
+        SkyStatus.CLEAR,
+        new PrecipitationDto(PrecipitationType.NONE, 0.0, 20.0),
+        new HumidityDto(55.0, 0.0),
+        new TemperatureDto(23.0, 0.0, 20.0, 26.0, 23.0),
+        new WindSpeedDto(2.3, WindStrength.WEAK)
+    );
+    given(weatherForecastCache.find(new WeatherGrid(60, 127), forecastedAt))
+        .willReturn(Optional.of(List.of(cachedDto)));
+    given(gridResolver.findOrRegister(any())).willReturn(existingGrid);
+    // 검증용 조회가 비어있음 - 캐시가 가리키는 DB 데이터가 사라진 비정상 상황을 흉내냄.
+    given(weatherRepository.findByGridAndForecastedAt(existingGrid, forecastedAt))
+        .willReturn(List.of());
+
+    List<VilageFcstItem> items = List.of(vilageFcstItem(LocalDateTime.of(2026, 7, 30, 9, 0)));
+    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(Mono.just(items));
+
+    // when
+    List<WeatherDto> result = weatherForecastFinder.find(location).block();
+
+    // then: 캐시 값이 아니라 기상청에서 새로 받은 값으로 응답/캐시 저장이 이뤄진다
+    assertThat(result).hasSize(1);
+    Mockito.verify(kmaWeatherClient).getForecast(60, 127, baseTime);
+    verify(weatherForecastCache).save(eq(new WeatherGrid(60, 127)), eq(forecastedAt), any());
+  }
+
+  @Test
   @DisplayName("캐시가 비어 있어 기상청까지 호출하면, 날짜별로 고른 대표 예보 목록 전체를 이 발표의 캐시 키 하나에 저장한다")
   void savesDailyRepresentativeToCachePerDateAfterFetchingFromKma() {
     // given

@@ -23,7 +23,10 @@ public class RedisWeatherForecastCache implements WeatherForecastCache {
   // 캐시 키 접두사
   private static final String KEY_PREFIX = "weather:";
   private static final String DELIMITER = ":";
-  private static final Duration TTL = Duration.ofHours(3); //TTL 3시간.
+  // 발표 주기(3시간)보다 짧게 잡아 죽은 키 청소 주기를 앞당김 - 대표 슬롯 자체는 캐시 히트 시에도
+  // DB로 검증/갱신되니(WeatherForecastFinder.cacheHit 참고) 이 TTL은 신선도 보장용이 아니라
+  // 방어적 안전장치.
+  private static final Duration TTL = Duration.ofHours(1);
   private static final TypeReference<List<WeatherDto>> FORECAST_LIST_TYPE = new TypeReference<>() {
   };
 

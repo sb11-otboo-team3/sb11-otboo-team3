@@ -73,8 +73,8 @@ class RedisWeatherForecastCacheTest {
   }
 
   @Test
-  @DisplayName("저장하면 목록 전체를 location 제거한 뒤 하나의 키에 3시간 TTL로 저장한다")
-  void saveStripsLocationAndSetsThreeHourTtl() throws Exception {
+  @DisplayName("저장하면 목록 전체를 location 제거한 뒤 하나의 키에 1시간 TTL로 저장한다")
+  void saveStripsLocationAndSetsOneHourTtl() throws Exception {
     // given
     WeatherAPILocation location = new WeatherAPILocation(37.5665, 126.9780, 60, 127,
         List.of("서울특별시", "강서구", "마곡동"));
@@ -88,7 +88,7 @@ class RedisWeatherForecastCacheTest {
 
     // then
     ArgumentCaptor<String> jsonCaptor = ArgumentCaptor.forClass(String.class);
-    verify(valueOperations).set(eq(key), jsonCaptor.capture(), eq(Duration.ofHours(3)));
+    verify(valueOperations).set(eq(key), jsonCaptor.capture(), eq(Duration.ofHours(1)));
 
     List<WeatherDto> stored = objectMapper.readValue(jsonCaptor.getValue(), new TypeReference<List<WeatherDto>>() {
     });
@@ -146,7 +146,7 @@ class RedisWeatherForecastCacheTest {
     // given
     List<WeatherDto> forecasts = List.of(weatherDto(forecastedAt, null));
     willThrow(new RedisConnectionFailureException("연결 실패"))
-        .given(valueOperations).set(eq(key), anyString(), eq(Duration.ofHours(3)));
+        .given(valueOperations).set(eq(key), anyString(), eq(Duration.ofHours(1)));
 
     // when & then
     assertThatCode(() -> cache.save(grid, forecastedAt, forecasts))
