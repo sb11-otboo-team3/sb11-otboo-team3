@@ -1075,187 +1075,87 @@ Repository를 `MUTABLE`로 변경하여 덮어쓰지 않습니다.
 
 ### GitHub Actions ECR Push Workflow
 
-최종 Workflow는 다음 기준을 따릅니다.
+운영 이미지와 ECS 배포는 단순히 Docker Build가 성공한 Commit이 아니라
+CI 검증을 통과한 최신 `develop` Commit만 대상으로 합니다.
 
-```yaml
-name: Build and Push ECR Image
+현재 Workflow 흐름은 다음과 같습니다.
 
-on:
-  push:
-    branches:
-      - develop
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  id-token: write
-
-concurrency:
-  group: ecr-push-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  AWS_REGION: ap-northeast-2
-  ECR_REPOSITORY: otboo/backend
-
-jobs:
-  build-and-push:
-    name: Build and Push ECR Image
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-
-      - name: Validate workflow ref
-        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/develop'
-        run: |
-          echo "Manual ECR push is allowed only from develop."
-          exit 1
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
-        with:
-          role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@b040164c4934333d597f3f9c67502ff28f814e9c # v2.1.6
-
-      - name: Check existing immutable image
-        id: existing-image
-        env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
-
-          EXISTING_DIGEST="$(
-            aws ecr describe-images \
-              --repository-name "$ECR_REPOSITORY" \
-              --region "$AWS_REGION" \
-              --filter tagStatus=TAGGED \
-              --query "imageDetails[?contains(imageTags, '${GITHUB_SHA}')].imageDigest | [0]" \
-              --output text \
-              --no-cli-pager
-          )"
-
-          if [ -z "$EXISTING_DIGEST" ] || [ "$EXISTING_DIGEST" = "None" ]; then
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "No existing image found for ${GITHUB_SHA}."
-            exit 0
-          fi
-
-          echo "exists=true" >> "$GITHUB_OUTPUT"
-          echo "digest=$EXISTING_DIGEST" >> "$GITHUB_OUTPUT"
-          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
-
-      - name: Validate existing immutable image
-        if: steps.existing-image.outputs.exists == 'true'
-        env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          EXISTING_DIGEST: ${{ steps.existing-image.outputs.digest }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
-
-          docker pull \
-            --platform linux/amd64 \
-            "$IMAGE_URI"
-
-          PULLED_DIGEST="$(
-            docker image inspect "$IMAGE_URI" \
-              --format '{{range .RepoDigests}}{{println .}}{{end}}' \
-            | grep "^${REGISTRY}/${ECR_REPOSITORY}@" \
-            | head -n 1 \
-            | cut -d '@' -f 2
-          )"
-
-          IMAGE_ARCH="$(
-            docker image inspect "$IMAGE_URI" \
-              --format '{{.Architecture}}'
-          )"
-
-          IMAGE_REVISION="$(
-            docker image inspect "$IMAGE_URI" \
-              --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'
-          )"
-
-          test "$PULLED_DIGEST" = "$EXISTING_DIGEST" || {
-            echo "Pulled image digest does not match the ECR digest."
-            exit 1
-          }
-
-          test "$IMAGE_ARCH" = "amd64" || {
-            echo "Existing image architecture is not amd64: $IMAGE_ARCH"
-            exit 1
-          }
-
-          test "$IMAGE_REVISION" = "$GITHUB_SHA" || {
-            echo "Existing image revision label does not match GITHUB_SHA."
-            exit 1
-          }
-
-          echo "Existing immutable image matches the requested Git SHA and platform."
-
-      - name: Set up Docker Buildx
-        if: steps.existing-image.outputs.exists != 'true'
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
-
-      - name: Build and push Docker image
-        if: steps.existing-image.outputs.exists != 'true'
-        id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64
-          provenance: false
-          push: true
-          tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-          build-args: |
-            IMAGE_SOURCE_COMMIT=${{ github.sha }}
-
-      - name: Resolve final image digest
-        id: final-image
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          IMAGE_DIGEST="$(
-            aws ecr describe-images \
-              --repository-name "$ECR_REPOSITORY" \
-              --image-ids imageTag="$GITHUB_SHA" \
-              --region "$AWS_REGION" \
-              --query 'imageDetails[0].imageDigest' \
-              --output text \
-              --no-cli-pager
-          )"
-
-          test -n "$IMAGE_DIGEST"
-          test "$IMAGE_DIGEST" != "None"
-
-          echo "digest=$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
-
-      - name: Print pushed image information
-        env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_DIGEST: ${{ steps.final-image.outputs.digest }}
-        run: |
-          echo "Image URI: ${REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
-          echo "Image Digest: ${IMAGE_DIGEST}"
+```text
+develop Push
+→ 현재 develop 최신 Git SHA 확인
+→ CI Quality Gate 실행
+→ CI 성공
+→ 이미지 Build 직전 최신 Git SHA 재확인
+→ 기존 immutable 이미지 확인 또는 Docker Build
+→ ECR Push
+→ ECS 배포 직전 최신 Git SHA 재확인
+→ ECS Deploy
+→ Service·Task·Target Health·Application Health 검증
 ```
 
-ECS Task Definition 등록이나 ECS Service 업데이트 명령은
-이 Workflow에 포함하지 않습니다.
+`ci.yml`은 `workflow_call`을 제공하며,
+`develop` Push에 대해서는 ECR/ECS Workflow가 CI를 선행 호출합니다.
+
+따라서 `develop` Push 시 CI와 운영 배포 Workflow가 서로 독립적으로 실행되지 않으며,
+테스트가 실패하면 ECR 이미지 Build·Push와 ECS 배포가 진행되지 않습니다.
+
+```yaml
+jobs:
+  validate-source:
+    # Workflow가 현재 develop 최신 SHA를 대상으로 하는지 검증
+
+  quality-gate:
+    needs: validate-source
+    uses: ./.github/workflows/ci.yml
+
+  build-and-push:
+    needs: quality-gate
+    # CI 성공 후에만 이미지 검증·Build·Push 수행
+
+  deploy-to-ecs:
+    needs: build-and-push
+    # 최신 develop SHA를 다시 확인한 뒤 ECS 배포
+```
+
+Workflow 동시 실행 정책은 다음과 같습니다.
+
+```yaml
+concurrency:
+  group: ecr-push-${{ github.ref }}
+  cancel-in-progress: false
+```
+
+이미 진행 중인 운영 배포를 새 Push가 강제로 취소하지 않습니다.
+
+또한 이전 Commit의 Workflow를 수동으로 재실행하거나,
+Workflow가 실행되는 동안 더 최신 `develop` Commit이 추가되는 경우를 대비해
+이미지 Build 직전과 ECS 배포 직전에 현재 `develop` HEAD를 다시 조회합니다.
+
+```text
+Workflow Git SHA == 현재 develop HEAD
+→ 계속 진행
+
+Workflow Git SHA != 현재 develop HEAD
+→ stale 실행으로 판단
+→ 이미지 Build 또는 ECS 배포 차단
+```
+
+이를 통해 이전 Commit의 Workflow가 늦게 실행되거나 재실행되더라도
+최신 운영 버전을 오래된 이미지가 덮어쓰는 상황을 방지합니다.
+
+동일 Git SHA 이미지가 ECR에 이미 존재하는 경우에는
+새 이미지를 다시 Push하지 않고 기존 immutable 이미지를 Pull하여 다음 항목을 검증합니다.
+
+```text
+ECR Digest == Pull한 이미지 Digest
+Platform == linux/amd64
+OCI revision Label == Git SHA
+```
+
+검증에 성공한 경우 기존 이미지를 그대로 ECS 배포 대상으로 사용합니다.
+
+ECR Repository의 immutable 정책은 유지하며,
+동일 Git SHA 태그를 덮어쓰지 않습니다.
 
 ### ECR Push 검증
 
