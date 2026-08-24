@@ -6,6 +6,7 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.otboo.domain.profile.outbox.FileDeletionOutboxRepository;
 import com.otboo.global.infrastructure.storage.FileStorage;
 import com.otboo.global.infrastructure.storage.exception.StorageDeleteException;
 import org.junit.jupiter.api.DisplayName;
@@ -26,6 +27,9 @@ class FileDeletionRetryServiceTest {
 
   @MockitoBean
   private FileStorage fileStorage;
+
+  @MockitoBean
+  private FileDeletionOutboxRepository fileDeletionOutboxRepository;
 
   @Test
   @DisplayName("삭제가 계속 실패하면 최대 3회까지 재시도한 후 예외 없이 종료된다 (Recover 처리)")

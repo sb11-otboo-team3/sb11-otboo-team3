@@ -40,6 +40,9 @@ public class Profile {
   @Column(name = "image_key")
   private String imageKey;
 
+  @Column(name = "thumbnail_key")
+  private String thumbnailKey;
+
   @Enumerated(EnumType.STRING)
   @Column(length = 20)
   private Gender gender;
@@ -121,4 +124,8 @@ public class Profile {
   public void updateImageKey(String imageKey) {
     this.imageKey = imageKey;
   }
-}
+
+  public void updateThumbnailKey(String thumbnailKey) {
+    this.thumbnailKey = thumbnailKey;
+  }
+  }

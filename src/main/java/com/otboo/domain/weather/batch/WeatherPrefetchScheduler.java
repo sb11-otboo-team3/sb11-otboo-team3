@@ -21,7 +21,7 @@ public class WeatherPrefetchScheduler {
   // TZ가 뭐든 항상 한국 시각 기준 발표+15분에 돌게 한다.
   // 프로퍼티로 뺀 이유: local 프로필에서만 주기를 짧게 오버라이드해서 테스트할 수 있게 하기 위함
   // (application-local.yaml의 weather.prefetch.cron 참고) - 기본값은 운영과 동일.
-  @Scheduled(cron = "${weather.prefetch.cron:0 15 2,5,8,11,14,17,20,23 * * *}", zone = "Asia/Seoul")
+  @Scheduled(cron = "${weather.prefetch.cron:0 15 5,8,11,14,17,20 * * *}", zone = "Asia/Seoul")
   // 서버 2대라 cron이 두 인스턴스에서 동시에 발화할 수 있음 - ShedLock으로 한 인스턴스만 실제로 돌게 함.
   // lockAtMostFor(30분) 근거: 격자 하나가 재시도까지 다 실패하는 최악의 경우 ~30초, 동시성 10(
   // WeatherPrefetchJobConfig.CONCURRENCY)으로 나눠 처리하면 활성 격자 500개까지도 약 25분 안에

@@ -462,7 +462,7 @@ class ClothesServiceTest {
         User owner = User.create("test@Otbbo.id", "테스트", "encoded-password");
         ClothesCreateRequest request = new ClothesCreateRequest(userId, "티셔츠", ClothesType.TOP, List.of());
         MultipartFile image = new MockMultipartFile("image", "shirt.png", "image/png", "dummy".getBytes());
-        StoredFile storedFile = new StoredFile("clothes/" + userId + "/key.png", "image/png", 5L);
+        StoredFile storedFile = new StoredFile("clothes/" + userId + "/key.png", "image/png", 5L, null);
 
         given(fileStorage.upload(StorageDirectory.CLOTHES, userId, image)).willReturn(storedFile);
         given(userRepository.findById(userId)).willReturn(Optional.of(owner));
@@ -493,7 +493,7 @@ class ClothesServiceTest {
 
         ClothesUpdateRequest request = new ClothesUpdateRequest("새이름", ClothesType.TOP, List.of(), null);
         MultipartFile image = new MockMultipartFile("image","new.png", "image/png", "dummy".getBytes());
-        StoredFile storedFile = new StoredFile("clothes/" + userId + "/new.png", "image/png", 5L);
+        StoredFile storedFile = new StoredFile("clothes/" + userId + "/new.png", "image/png", 5L, null);
 
         given(fileStorage.upload(StorageDirectory.CLOTHES, userId, image)).willReturn(storedFile);
         given(clothesRepository.findById(clothesId)).willReturn(Optional.of(clothes));
@@ -599,7 +599,7 @@ class ClothesServiceTest {
         MultipartFile image = new MockMultipartFile("image", "shirt.png", "image/png", "dummy".getBytes());
         ClothesAttributeDefinition definition = new ClothesAttributeDefinition("색상");
         ReflectionTestUtils.setField(definition, "id", definitionId);
-        StoredFile storedFile = new StoredFile("clothes/" + userId + "/key.png", "image/png", 5L);
+        StoredFile storedFile = new StoredFile("clothes/" + userId + "/key.png", "image/png", 5L, null);
 
         given(fileStorage.upload(StorageDirectory.CLOTHES, userId, image)).willReturn(storedFile);
         given(userRepository.findById(userId)).willReturn(Optional.of(owner));

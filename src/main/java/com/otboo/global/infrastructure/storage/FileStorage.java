@@ -4,11 +4,16 @@ import java.util.UUID;
 import org.springframework.web.multipart.MultipartFile;
 
 public interface FileStorage {
-
     StoredFile upload(
-            StorageDirectory directory,
-            UUID ownerId,
-            MultipartFile file
+        StorageDirectory directory,
+        UUID ownerId,
+        MultipartFile file
+    );
+
+    StoredFile uploadWithThumbnail(
+        StorageDirectory directory,
+        UUID ownerId,
+        MultipartFile file
     );
 
     String generateReadUrl(String objectKey);

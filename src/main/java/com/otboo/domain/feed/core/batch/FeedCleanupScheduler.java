@@ -16,8 +16,8 @@ public class FeedCleanupScheduler {
   private final JobLauncher jobLauncher;
   private final Job feedCleanupJob;
 
-  // 매일 새벽 3시에 삭제
-  @Scheduled(cron = "0 0 3 * * *")
+  // 매일 21시에 삭제
+  @Scheduled(cron = "0 0 21 * * *", zone = "Asia/Seoul")
   public void runFeedCleanupJob() throws Exception {
     JobParameters jobParameters = new JobParametersBuilder()
         .addLocalDateTime("runAt", LocalDateTime.now())

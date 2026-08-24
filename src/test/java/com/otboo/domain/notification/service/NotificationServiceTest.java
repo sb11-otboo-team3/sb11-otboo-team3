@@ -243,6 +243,16 @@ class NotificationServiceTest {
   }
 
   @Test
+  @DisplayName("SSE 구독은 서버 자체 timeout 없이 장시간 연결을 유지한다")
+  void subscribe_withoutServerTimeout_success() {
+    UUID receiverId = UUID.randomUUID();
+
+    SseEmitter emitter = notificationService.subscribe(receiverId, null);
+
+    assertThat(emitter.getTimeout()).isEqualTo(0L);
+  }
+
+  @Test
   @DisplayName("알림 목록 조회 성공 - 다음 페이지가 있는 경우 cursor를 반환한다")
   void getNotifications_hasNext_success() {
     UUID receiverId = UUID.randomUUID();
