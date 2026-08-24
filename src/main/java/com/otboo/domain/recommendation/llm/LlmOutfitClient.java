@@ -3,6 +3,7 @@ package com.otboo.domain.recommendation.llm;
 import com.otboo.domain.recommendation.llm.dto.OpenRouterChatRequest;
 import com.otboo.domain.recommendation.llm.dto.OpenRouterChatResponse;
 import com.otboo.domain.recommendation.llm.dto.OpenRouterMessage;
+import com.otboo.domain.recommendation.llm.dto.OpenRouterResponseFormat;
 import com.otboo.domain.recommendation.llm.exception.LlmRequestFailedException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -28,7 +29,7 @@ public class LlmOutfitClient {
     }
 
     public Mono<OpenRouterChatResponse> requestCompletion(List<OpenRouterMessage> messages) {
-        OpenRouterChatRequest request = new OpenRouterChatRequest(model, messages);
+        OpenRouterChatRequest request = new OpenRouterChatRequest(model, messages, OpenRouterResponseFormat.jsonObject());
         log.debug("OpenRouter 요청 시작, model={}", model);
 
         return webClient.post()
