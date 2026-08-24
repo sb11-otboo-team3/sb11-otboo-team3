@@ -70,7 +70,11 @@ public class WeatherForecastFinder {
   }
 
   private List<WeatherDto> findCachedForecasts(WeatherGrid weatherGrid, Instant forecastedAt) {
-    return weatherForecastCache.find(weatherGrid, forecastedAt).orElseGet(List::of);
+    List<WeatherDto> cached = weatherForecastCache.find(weatherGrid, forecastedAt).orElseGet(List::of);
+    if (cached.isEmpty()) {
+      log.info("날씨 조회 - 캐시 미스, x={}, y={}, forecastedAt={}", weatherGrid.x(), weatherGrid.y(), forecastedAt);
+    }
+    return cached;
   }
 
   //캐시에 있으면 가져오기.

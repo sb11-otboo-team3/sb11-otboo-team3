@@ -75,6 +75,7 @@ public class RedisWeatherForecastCache implements WeatherForecastCache {
     }
     try {
       redisTemplate.opsForValue().set(key(grid, forecastedAt), json, TTL);
+      log.info("날씨 캐시 저장, grid=({},{}), forecastedAt={}", grid.x(), grid.y(), forecastedAt);
     } catch (DataAccessException e) {
       log.error("날씨 캐시 저장 실패 - Redis 접근 불가, 캐시 쓰기 생략, grid=({},{}), forecastedAt={}",
           grid.x(), grid.y(), forecastedAt, e);
