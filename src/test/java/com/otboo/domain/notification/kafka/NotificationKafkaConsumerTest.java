@@ -20,56 +20,60 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class NotificationKafkaConsumerTest {
 
-  @Mock
-  private NotificationService notificationService;
+    @Mock
+    private NotificationService notificationService;
 
-  private ObjectMapper objectMapper;
-  private NotificationKafkaConsumer notificationKafkaConsumer;
+    private ObjectMapper objectMapper;
+    private NotificationKafkaConsumer notificationKafkaConsumer;
 
-  @BeforeEach
-  void setUp() {
-    objectMapper = new ObjectMapper();
-    objectMapper.registerModule(new JavaTimeModule());
-    notificationKafkaConsumer = new NotificationKafkaConsumer(notificationService, objectMapper);
-  }
+    @BeforeEach
+    void setUp() {
+        objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+        notificationKafkaConsumer = new NotificationKafkaConsumer(notificationService, objectMapper);
+    }
 
-  @Test
-  @DisplayName("Kafka 메시지를 알림 생성 서비스로 전달한다")
-  void consume_success() throws Exception {
-    UUID receiverId = UUID.randomUUID();
+    @Test
+    @DisplayName("Kafka 메시지를 알림 생성 서비스로 전달한다")
+    void consume_success() throws Exception {
+        UUID eventId = UUID.randomUUID();
+        UUID receiverId = UUID.randomUUID();
 
-    NotificationCreatedMessage message = new NotificationCreatedMessage(
-        receiverId,
-        "알림 제목",
-        "알림 내용",
-        NotificationLevel.WARNING,
-        Instant.parse("2026-08-20T01:00:00Z")
-    );
+        NotificationCreatedMessage message = new NotificationCreatedMessage(
+                eventId,
+                receiverId,
+                "알림 제목",
+                "알림 내용",
+                NotificationLevel.WARNING,
+                Instant.parse("2026-08-20T01:00:00Z")
+        );
 
-    String payload = objectMapper.writeValueAsString(message);
+        String payload = objectMapper.writeValueAsString(message);
 
-    notificationKafkaConsumer.consume(payload);
+        notificationKafkaConsumer.consume(payload);
 
-    verify(notificationService).createNotification(
-        receiverId,
-        "알림 제목",
-        "알림 내용",
-        NotificationLevel.WARNING
-    );
-  }
+        verify(notificationService).createNotification(
+                eventId,
+                receiverId,
+                "알림 제목",
+                "알림 내용",
+                NotificationLevel.WARNING
+        );
+    }
 
-  @Test
-  @DisplayName("역직렬화 실패 시 예외를 던지고 알림을 생성하지 않는다")
-  void consume_invalidPayload_throwsException() {
-    assertThatThrownBy(() -> notificationKafkaConsumer.consume("invalid-json"))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessage("알림 Kafka 메시지 역직렬화 실패");
+    @Test
+    @DisplayName("역직렬화 실패 시 예외를 던지고 알림을 생성하지 않는다")
+    void consume_invalidPayload_throwsException() {
+        assertThatThrownBy(() -> notificationKafkaConsumer.consume("invalid-json"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("알림 Kafka 메시지 역직렬화 실패");
 
-    verify(notificationService, never()).createNotification(
-        org.mockito.ArgumentMatchers.any(),
-        org.mockito.ArgumentMatchers.anyString(),
-        org.mockito.ArgumentMatchers.anyString(),
-        org.mockito.ArgumentMatchers.any()
-    );
-  }
+        verify(notificationService, never()).createNotification(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()
+        );
+    }
 }

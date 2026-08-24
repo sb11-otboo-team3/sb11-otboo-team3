@@ -5,11 +5,12 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record NotificationCreatedMessage(
-    UUID receiverId,
-    String title,
-    String content,
-    NotificationLevel level,
-    Instant occurredAt
+        UUID eventId,
+        UUID receiverId,
+        String title,
+        String content,
+        NotificationLevel level,
+        Instant occurredAt
 ) {
 
 }

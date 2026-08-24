@@ -1,12 +1,14 @@
 package com.otboo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.sql.SQLException;
 import java.util.Base64;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -73,6 +75,158 @@ class FlywayMigrationIntegrationTest {
 			assertThat(resultSet.getBoolean("success"))
 				.as("V1 마이그레이션이 성공으로 기록돼야 한다")
 				.isTrue();
+		}
+	}
+
+	@Test
+	void notificationEventIdMigrationIsApplied() throws Exception {
+		try (Connection connection = dataSource.getConnection()) {
+
+			// V11 Migration 성공 여부 확인
+			try (PreparedStatement ps = connection.prepareStatement(
+					"""
+                    SELECT success
+                    FROM flyway_schema_history
+                    WHERE version = '11'
+                    """
+			);
+				 ResultSet rs = ps.executeQuery()) {
+
+				assertThat(rs.next())
+						.as("V11 알림 event_id 마이그레이션 이력이 존재해야 한다")
+						.isTrue();
+
+				assertThat(rs.getBoolean("success"))
+						.as("V11 마이그레이션이 성공으로 기록돼야 한다")
+						.isTrue();
+			}
+
+			// event_id가 NOT NULL인지 확인
+			try (PreparedStatement ps = connection.prepareStatement(
+					"""
+                    SELECT is_nullable
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'notifications'
+                      AND column_name = 'event_id'
+                    """
+			);
+				 ResultSet rs = ps.executeQuery()) {
+
+				assertThat(rs.next())
+						.as("notifications.event_id 컬럼이 존재해야 한다")
+						.isTrue();
+
+				assertThat(rs.getString("is_nullable"))
+						.as("notifications.event_id는 NOT NULL이어야 한다")
+						.isEqualTo("NO");
+			}
+
+			// event_id UNIQUE Constraint 확인
+			try (PreparedStatement ps = connection.prepareStatement(
+					"""
+                    SELECT COUNT(*)
+                    FROM information_schema.table_constraints
+                    WHERE table_schema = 'public'
+                      AND table_name = 'notifications'
+                      AND constraint_name = 'uq_notifications_event_id'
+                      AND constraint_type = 'UNIQUE'
+                    """
+			);
+				 ResultSet rs = ps.executeQuery()) {
+
+				assertThat(rs.next()).isTrue();
+
+				assertThat(rs.getInt(1))
+						.as("notifications.event_id UNIQUE 제약이 존재해야 한다")
+						.isEqualTo(1);
+			}
+		}
+	}
+
+	@Test
+	void notificationEventIdUniqueConstraintRejectsDuplicates() throws Exception {
+		// given
+		UUID userId = UUID.randomUUID();
+		UUID eventId = UUID.randomUUID();
+
+		try (Connection connection = dataSource.getConnection()) {
+			connection.setAutoCommit(false);
+
+			try {
+				try (PreparedStatement ps = connection.prepareStatement(
+						"""
+                        INSERT INTO users (
+                            id,
+                            email,
+                            name,
+                            password_hash
+                        )
+                        VALUES (?, ?, ?, ?)
+                        """
+				)) {
+					ps.setObject(1, userId);
+					ps.setString(
+							2,
+							"notification-idempotency-"
+									+ UUID.randomUUID()
+									+ "@otboo.io"
+					);
+					ps.setString(3, "test-user");
+					ps.setString(4, "encoded-password");
+					ps.executeUpdate();
+				}
+
+				try (PreparedStatement ps = connection.prepareStatement(
+						"""
+                        INSERT INTO notifications (
+                            id,
+                            event_id,
+                            receiver_id,
+                            title,
+                            content,
+                            level
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """
+				)) {
+					ps.setObject(1, UUID.randomUUID());
+					ps.setObject(2, eventId);
+					ps.setObject(3, userId);
+					ps.setString(4, "첫 번째 알림");
+					ps.setString(5, "알림 내용");
+					ps.setString(6, "INFO");
+
+					ps.executeUpdate();
+				}
+
+				// 동일 event_id를 가진 두 번째 알림은 DB가 거부
+				try (PreparedStatement ps = connection.prepareStatement(
+						"""
+                        INSERT INTO notifications (
+                            id,
+                            event_id,
+                            receiver_id,
+                            title,
+                            content,
+                            level
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """
+				)) {
+					ps.setObject(1, UUID.randomUUID());
+					ps.setObject(2, eventId);
+					ps.setObject(3, userId);
+					ps.setString(4, "두 번째 알림");
+					ps.setString(5, "중복 이벤트");
+					ps.setString(6, "INFO");
+
+					assertThatThrownBy(ps::executeUpdate)
+							.isInstanceOf(SQLException.class);
+				}
+			} finally {
+				connection.rollback();
+			}
 		}
 	}
 

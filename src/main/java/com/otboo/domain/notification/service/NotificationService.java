@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -160,11 +161,27 @@ public class NotificationService {
   }
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
-  public NotificationDto createNotification(UUID receiverId, String title, String content, NotificationLevel level) {
+  public NotificationDto createNotification(
+          UUID eventId,
+          UUID receiverId,
+          String title,
+          String content,
+          NotificationLevel level
+  ) {
+
+    Optional<Notification> existingNotification =
+            notificationRepository.findByEventId(eventId);
+
+    if (existingNotification.isPresent()) {
+      return NotificationMapper.toDto(
+              existingNotification.get()
+      );
+    }
+
     User receiver = userRepository.findById(receiverId)
         .orElseThrow(() -> new NotificationUserNotFoundException(receiverId));
 
-    Notification notification = Notification.create(receiver, title, content, level);
+    Notification notification = Notification.create(eventId, receiver, title, content, level);
 
     Notification savedNotification = notificationRepository.save(notification);
 

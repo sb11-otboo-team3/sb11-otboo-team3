@@ -19,6 +19,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class NotificationOutboxPublisherTest {
@@ -48,6 +49,8 @@ class NotificationOutboxPublisherTest {
     verify(notificationKafkaProducer).send(captor.capture());
 
     NotificationCreatedMessage message = captor.getValue();
+
+    assertThat(message.eventId()).isEqualTo(outbox.getId());
 
     assertThat(message.receiverId()).isEqualTo(outbox.getReceiverId());
     assertThat(message.title()).isEqualTo(outbox.getTitle());
@@ -98,12 +101,20 @@ class NotificationOutboxPublisherTest {
   }
 
   private NotificationOutbox createOutbox() {
-    return NotificationOutbox.create(
+    NotificationOutbox outbox = NotificationOutbox.create(
         UUID.randomUUID(),
         "알림 제목",
         "알림 내용",
         NotificationLevel.INFO,
         Instant.parse("2026-08-20T01:00:00Z")
     );
+
+    ReflectionTestUtils.setField(
+            outbox,
+            "id",
+            UUID.randomUUID()
+    );
+
+    return outbox;
   }
 }

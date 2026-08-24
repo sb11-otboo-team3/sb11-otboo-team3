@@ -146,6 +146,26 @@ otboo-feed-index-consumer
 도메인별 비즈니스 예외의 재시도 여부는
 실제 도메인 Producer·Consumer 구현 시 별도로 결정합니다.
 
+### DLT 운영 및 재처리 기준
+
+재시도를 모두 소진하여 DLT로 전달된 메시지는
+자동으로 원본 Topic에 다시 전달하지 않습니다.
+
+DLT 메시지가 발생하면 다음 순서로 확인합니다.
+
+1. 애플리케이션 로그에서 Consumer 최종 실패 원인을 확인합니다.
+2. 운영자 권한으로 해당 DLT의 메시지를 확인합니다.
+3. 코드 오류, 데이터 오류, 외부 의존성 장애 등 실패 원인을 먼저 해결합니다.
+4. 재처리가 필요하다고 판단한 메시지만 원본 Topic으로 수동 재발행합니다.
+5. 재발행 시 기존 메시지의 Key, Payload, `eventId`를 유지합니다.
+
+`eventId`를 새로 생성하면 동일 비즈니스 이벤트가 새로운 이벤트로 인식되어
+중복 처리가 발생할 수 있으므로 DLT 재처리 과정에서도 기존 `eventId`를 유지합니다.
+
+DLT 전체를 주기적으로 원본 Topic으로 자동 Replay하는 방식은 사용하지 않습니다.
+실패 원인이 해결되지 않은 상태에서 자동 Replay하면 동일한 메시지가
+Consumer 재시도와 DLT 전달을 반복하는 장애 루프가 발생할 수 있기 때문입니다.
+
 ---
 
 ## 7. 테스트 기준
@@ -180,6 +200,40 @@ Kafka를 기본 해결책으로 가정하지 않고 실제 검증 결과를 바�
 ## 9. 운영 환경
 
 운영 Kafka는 Amazon MSK Provisioned Standard를 사용합니다.
+
+### Consumer Offset 정책
+
+Kafka Consumer는 자동 Offset Commit을 사용하지 않습니다.
+
+```text
+enable-auto-commit: false
+```
+
+Offset Commit은 Spring Kafka Listener Container가 관리하며,
+현재 별도의 `AckMode`를 지정하지 않고 기본 `BATCH` 정책을 사용합니다.
+Consumer에서 `Acknowledgment`를 이용한 수동 ACK는 적용하지 않습니다.
+
+Consumer Group에 저장된 Offset이 없는 경우의 시작 위치는 다음과 같이 유지합니다.
+
+```text
+auto-offset-reset: earliest
+```
+
+`earliest`는 새로운 Consumer Group이 생성되었거나
+기존 Offset을 더 이상 사용할 수 없는 경우 Kafka에 보존된 가장 오래된 메시지부터 처리합니다.
+
+현재 프로젝트에서는 새로운 Consumer Group이 기존 이벤트를 조용히 건너뛰는 것보다
+보존된 이벤트를 다시 처리할 수 있도록 하는 방향을 선택합니다.
+
+따라서 Consumer는 재전달 가능성을 전제로 멱등하게 구현하며,
+알림 Consumer는 `eventId`를 기준으로 동일 이벤트의 중복 처리를 방지합니다.
+
+운영 중 Consumer Group ID를 변경하면 기존 Offset을 이어받지 못하고
+보존된 메시지를 처음부터 다시 처리할 수 있으므로
+Consumer Group ID는 단순 배포나 코드 수정 과정에서 임의로 변경하지 않습니다.
+
+특정 Consumer가 과거 메시지를 처리하지 않아야 하는 요구사항이 있다면
+전역 설정을 변경하지 않고 해당 도메인의 Kafka 적용 이슈에서 별도로 결정합니다.
 
 실제 운영 환경은 다음 구성으로 구축했습니다.
 
