@@ -22,7 +22,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -82,14 +81,21 @@ class WeatherPersisterTest {
     );
   }
 
+  // dayBefore/previousAnnouncement 조회가 findByGridAndForecastAtIn 하나로 합쳐졌으니(WeatherPersister
+  // 참고), 두 시각 중 실제로 존재하는 row만 담아 스텁하면 된다.
+  private void stubExisting(Instant dayBeforeForecastAt, Instant forecastAt, Weather... existing) {
+    given(weatherRepository.findByGridAndForecastAtIn(grid, List.of(dayBeforeForecastAt, forecastAt)))
+        .willReturn(List.of(existing));
+  }
+
   @Test
   @DisplayName("전날 같은 시각 기록이 없으면 전일 대비 값 없이 저장한다")
   void savesWithoutComparedToDayBeforeWhenNoYesterdayRecord() {
     // given
     VilageFcstItem item = item(LocalDateTime.of(2026, 7, 30, 9, 0), SkyStatus.CLEAR, PrecipitationType.NONE);
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(KST).toInstant();
     Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 9, 0).atZone(KST).toInstant();
-    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt))
-        .willReturn(Optional.empty());
+    stubExisting(dayBeforeForecastAt, forecastAt);
     given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -112,6 +118,7 @@ class WeatherPersisterTest {
   void computesComparedToDayBeforeWhenYesterdayRecordExists() {
     // given
     VilageFcstItem item = item(LocalDateTime.of(2026, 7, 30, 9, 0), SkyStatus.CLEAR, PrecipitationType.NONE);
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(KST).toInstant();
     Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 9, 0).atZone(KST).toInstant();
     Weather yesterday = Weather.builder()
         .grid(grid)
@@ -122,8 +129,7 @@ class WeatherPersisterTest {
         .humidityCurrent(50.0)
         .temperatureCurrent(20.0)
         .build();
-    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt))
-        .willReturn(Optional.of(yesterday));
+    stubExisting(dayBeforeForecastAt, forecastAt, yesterday);
     given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -165,11 +171,10 @@ class WeatherPersisterTest {
     // upsert가 그 기존 row를 덮어쓴 결과(응답 DTO 기준으론 CLOUDY가 아니라 최신값)를 리턴한다고 가정하면,
     // persist()가 그 리턴값을 그대로 쓰는지(직접 새로 만든 Weather를 쓰는 게 아니라) 확인할 수 있다.
     VilageFcstItem item = item(LocalDateTime.of(2026, 7, 30, 9, 0), SkyStatus.CLEAR, PrecipitationType.NONE);
-    Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 9, 0).atZone(KST).toInstant();
-    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt))
-        .willReturn(Optional.empty());
-
     Instant forecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(KST).toInstant();
+    Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 9, 0).atZone(KST).toInstant();
+    stubExisting(dayBeforeForecastAt, forecastAt);
+
     Instant forecastedAt = LocalDateTime.of(2026, 7, 30, 5, 0).atZone(KST).toInstant();
     Weather upserted = Weather.builder()
         .grid(grid)
@@ -235,9 +240,9 @@ class WeatherPersisterTest {
   void persistWithoutLocationReturnsSavedEntityWhenSuccessful() {
     // given: 배치는 응답 DTO(위치 포함)가 필요 없으니 location 없는 오버로드를 쓴다
     VilageFcstItem item = item(LocalDateTime.of(2026, 7, 30, 9, 0), SkyStatus.CLEAR, PrecipitationType.NONE);
+    Instant forecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(KST).toInstant();
     Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 9, 0).atZone(KST).toInstant();
-    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt))
-        .willReturn(Optional.empty());
+    stubExisting(dayBeforeForecastAt, forecastAt);
     given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -310,8 +315,7 @@ class WeatherPersisterTest {
     VilageFcstItem item = announcementItem(LocalDateTime.of(2026, 7, 30, 7, 0), PrecipitationType.NONE, 26.0, 2.0);
     Instant forecastAt = LocalDateTime.of(2026, 7, 30, 7, 0).atZone(KST).toInstant();
     Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 7, 0).atZone(KST).toInstant();
-    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt)).willReturn(Optional.empty());
-    given(weatherRepository.findByGridAndForecastAt(grid, forecastAt)).willReturn(Optional.empty());
+    stubExisting(dayBeforeForecastAt, forecastAt);
     given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -329,9 +333,7 @@ class WeatherPersisterTest {
     VilageFcstItem item = announcementItem(LocalDateTime.of(2026, 7, 30, 9, 0), PrecipitationType.NONE, 26.0, 2.0);
     Instant forecastAt = LocalDateTime.of(2026, 7, 30, 9, 0).atZone(KST).toInstant();
     Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 9, 0).atZone(KST).toInstant();
-    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt)).willReturn(Optional.empty());
-    given(weatherRepository.findByGridAndForecastAt(grid, forecastAt))
-        .willReturn(Optional.of(previousSlot(forecastAt, PrecipitationType.NONE, 5.0, 2.0)));
+    stubExisting(dayBeforeForecastAt, forecastAt, previousSlot(forecastAt, PrecipitationType.NONE, 5.0, 2.0));
     given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -349,9 +351,7 @@ class WeatherPersisterTest {
     VilageFcstItem item = announcementItem(LocalDateTime.of(2026, 7, 30, 7, 0), PrecipitationType.NONE, 26.0, 2.0);
     Instant forecastAt = LocalDateTime.of(2026, 7, 30, 7, 0).atZone(KST).toInstant();
     Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 7, 0).atZone(KST).toInstant();
-    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt)).willReturn(Optional.empty());
-    given(weatherRepository.findByGridAndForecastAt(grid, forecastAt))
-        .willReturn(Optional.of(previousSlot(forecastAt, PrecipitationType.NONE, 20.0, 2.0)));
+    stubExisting(dayBeforeForecastAt, forecastAt, previousSlot(forecastAt, PrecipitationType.NONE, 20.0, 2.0));
     given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -371,9 +371,7 @@ class WeatherPersisterTest {
     VilageFcstItem item = announcementItem(LocalDateTime.of(2026, 7, 30, 7, 0), PrecipitationType.RAIN, 20.0, 2.0);
     Instant forecastAt = LocalDateTime.of(2026, 7, 30, 7, 0).atZone(KST).toInstant();
     Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 7, 0).atZone(KST).toInstant();
-    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt)).willReturn(Optional.empty());
-    given(weatherRepository.findByGridAndForecastAt(grid, forecastAt))
-        .willReturn(Optional.of(previousSlot(forecastAt, PrecipitationType.NONE, 20.0, 2.0)));
+    stubExisting(dayBeforeForecastAt, forecastAt, previousSlot(forecastAt, PrecipitationType.NONE, 20.0, 2.0));
     given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -393,9 +391,7 @@ class WeatherPersisterTest {
     VilageFcstItem item = announcementItem(LocalDateTime.of(2026, 7, 30, 7, 0), PrecipitationType.NONE, 20.0, 10.0);
     Instant forecastAt = LocalDateTime.of(2026, 7, 30, 7, 0).atZone(KST).toInstant();
     Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 7, 0).atZone(KST).toInstant();
-    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt)).willReturn(Optional.empty());
-    given(weatherRepository.findByGridAndForecastAt(grid, forecastAt))
-        .willReturn(Optional.of(previousSlot(forecastAt, PrecipitationType.NONE, 20.0, 2.0)));
+    stubExisting(dayBeforeForecastAt, forecastAt, previousSlot(forecastAt, PrecipitationType.NONE, 20.0, 2.0));
     given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -415,9 +411,7 @@ class WeatherPersisterTest {
     VilageFcstItem item = announcementItem(LocalDateTime.of(2026, 7, 30, 7, 0), PrecipitationType.NONE, 21.0, 2.0);
     Instant forecastAt = LocalDateTime.of(2026, 7, 30, 7, 0).atZone(KST).toInstant();
     Instant dayBeforeForecastAt = LocalDateTime.of(2026, 7, 29, 7, 0).atZone(KST).toInstant();
-    given(weatherRepository.findByGridAndForecastAt(grid, dayBeforeForecastAt)).willReturn(Optional.empty());
-    given(weatherRepository.findByGridAndForecastAt(grid, forecastAt))
-        .willReturn(Optional.of(previousSlot(forecastAt, PrecipitationType.NONE, 20.0, 2.0)));
+    stubExisting(dayBeforeForecastAt, forecastAt, previousSlot(forecastAt, PrecipitationType.NONE, 20.0, 2.0));
     given(weatherSaver.upsertInNewTransaction(any(Weather.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
 

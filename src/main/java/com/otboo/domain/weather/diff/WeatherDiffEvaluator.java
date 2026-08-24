@@ -5,7 +5,6 @@ import com.otboo.domain.weather.entity.Weather;
 import com.otboo.domain.weather.entity.WindStrength;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -18,7 +17,11 @@ import org.springframework.stereotype.Component;
 public class WeatherDiffEvaluator {
 
   // 기온은 대칭(|Δ|) - 오르든 내리든 옷차림에 똑같이 영향을 주므로 방향 구분 없이 판정한다.
-  public boolean isTemperatureTriggered(double previousTemp, double currentTemp, WeatherDiffProperties properties) {
+  // 결측치(null) 체크를 여기서 하니 호출부(WeatherPersister, evaluateDailyDiff)마다 반복하지 않아도 된다.
+  public boolean isTemperatureTriggered(Double previousTemp, Double currentTemp, WeatherDiffProperties properties) {
+    if (previousTemp == null || currentTemp == null) {
+      return false;
+    }
     return Math.abs(currentTemp - previousTemp) >= properties.announcementTempThreshold();
   }
 
@@ -29,7 +32,10 @@ public class WeatherDiffEvaluator {
 
   // 풍속도 악화 방향(등급 상승)만 판정한다 - WindStrength 선언 순서(WEAK<MODERATE<STRONG)가
   // 그대로 심각도 순서라 ordinal 비교로 등급이 올라갔는지 알 수 있다.
-  public boolean isWindTriggered(double previousSpeed, double currentSpeed) {
+  public boolean isWindTriggered(Double previousSpeed, Double currentSpeed) {
+    if (previousSpeed == null || currentSpeed == null) {
+      return false;
+    }
     WindStrength previous = WindStrength.fromSpeed(previousSpeed);
     WindStrength current = WindStrength.fromSpeed(currentSpeed);
     return current.ordinal() > previous.ordinal();
@@ -44,7 +50,10 @@ public class WeatherDiffEvaluator {
   // 일일별 기온은 절대값이 아니라 시간당 변화율로 본다 - 인접 슬롯 간격이 1시간/3시간으로 섞여있어서,
   // 같은 임계값을 그대로 쓰면 짧은 간격에선 절대 안 걸리고 긴 간격에선 늘 걸리게 된다.
   public boolean isTemperatureTriggeredByRate(
-      double previousTemp, double currentTemp, double gapHours, WeatherDiffProperties properties) {
+      Double previousTemp, Double currentTemp, double gapHours, WeatherDiffProperties properties) {
+    if (previousTemp == null || currentTemp == null) {
+      return false;
+    }
     return Math.abs(currentTemp - previousTemp) / gapHours >= properties.dailyTempRateThresholdPerHour();
   }
 
@@ -53,7 +62,6 @@ public class WeatherDiffEvaluator {
   // 그대로 재사용한다(카테고리 전환이면 간격 크기와 무관하게 이미 의미 있는 변화라 시간으로 나눌 필요 없음).
   public Set<DailyDiffTrigger> evaluateDailyDiff(List<Weather> sortedByForecastAt, WeatherDiffProperties properties) {
     Set<DailyDiffTrigger> triggers = new LinkedHashSet<>();
-    Set<DiffCategory> reportedCategories = EnumSet.noneOf(DiffCategory.class);
 
     for (int i = 1; i < sortedByForecastAt.size(); i++) {
       Weather previous = sortedByForecastAt.get(i - 1);
@@ -65,27 +73,28 @@ public class WeatherDiffEvaluator {
 
       double gapHours = Duration.between(previous.getForecastAt(), current.getForecastAt()).toMinutes() / 60.0;
 
-      if (!reportedCategories.contains(DiffCategory.TEMPERATURE)
-          && previous.getTemperatureCurrent() != null && current.getTemperatureCurrent() != null
+      if (!alreadyTriggered(triggers, DiffCategory.TEMPERATURE)
           && isTemperatureTriggeredByRate(
               previous.getTemperatureCurrent(), current.getTemperatureCurrent(), gapHours, properties)) {
         boolean rising = current.getTemperatureCurrent() > previous.getTemperatureCurrent();
         triggers.add(new DailyDiffTrigger(DiffCategory.TEMPERATURE, fromTime, rising));
-        reportedCategories.add(DiffCategory.TEMPERATURE);
       }
-      if (!reportedCategories.contains(DiffCategory.PRECIPITATION)
+      if (!alreadyTriggered(triggers, DiffCategory.PRECIPITATION)
           && isPrecipitationTriggered(previous.getPrecipitationType(), current.getPrecipitationType())) {
         triggers.add(new DailyDiffTrigger(DiffCategory.PRECIPITATION, fromTime, true));
-        reportedCategories.add(DiffCategory.PRECIPITATION);
       }
-      if (!reportedCategories.contains(DiffCategory.WIND)
-          && previous.getWindSpeed() != null && current.getWindSpeed() != null
+      if (!alreadyTriggered(triggers, DiffCategory.WIND)
           && isWindTriggered(previous.getWindSpeed(), current.getWindSpeed())) {
         triggers.add(new DailyDiffTrigger(DiffCategory.WIND, fromTime, true));
-        reportedCategories.add(DiffCategory.WIND);
       }
     }
 
     return triggers;
+  }
+
+  // "이 카테고리로 이미 하루치 트리거를 담았는지"를 triggers 자체에서 되묻는다 - 별도 Set을 나란히
+  // 유지하며 두 컬렉션의 add를 매번 짝 맞춰야 하는 부담을 없앤다.
+  private boolean alreadyTriggered(Set<DailyDiffTrigger> triggers, DiffCategory category) {
+    return triggers.stream().anyMatch(trigger -> trigger.category() == category);
   }
 }

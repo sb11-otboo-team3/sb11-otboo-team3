@@ -55,10 +55,14 @@ public class WeatherDiffMessageBuilder {
     return "%02d시 기온 예보가 %.1f°C에서 %.1f°C로 %s 조정됐어요.".formatted(hour, previousTemp, currentTemp, direction);
   }
 
+  // 강수확률은 트리거 판정(형태 전환)과 무관하게 문구용으로만 곁들이는 값이라 null일 수 있다
+  // (KMA POP 필드 파싱 실패 - KmaWeatherClient.parseDoubleOrNull) - 없으면 괄호째 생략한다.
   private String precipitationAnnouncementClause(
-      int hour, PrecipitationType currentType, double previousProbability, double currentProbability) {
-    return "%02d시 %s 예보가 새로 추가됐어요 (강수확률 %.0f%%→%.0f%%).".formatted(
-        hour, precipitationWord(currentType), previousProbability, currentProbability);
+      int hour, PrecipitationType currentType, Double previousProbability, Double currentProbability) {
+    String probabilityClause = (previousProbability != null && currentProbability != null)
+        ? " (강수확률 %.0f%%→%.0f%%)".formatted(previousProbability, currentProbability)
+        : "";
+    return "%02d시 %s 예보가 새로 추가됐어요%s.".formatted(hour, precipitationWord(currentType), probabilityClause);
   }
 
   private String windAnnouncementClause(int hour, double previousSpeed, double currentSpeed) {

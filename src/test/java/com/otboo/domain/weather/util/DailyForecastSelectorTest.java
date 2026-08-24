@@ -81,6 +81,74 @@ class DailyForecastSelectorTest {
     );
   }
 
+  @Test
+  @DisplayName("마지막 날 예보가 자정 한 줄뿐이면(연장예보 끝자락) 결과에서 제외한다")
+  void excludesLastDateWhenOnlyOneSlotExists() {
+    // given
+    Instant now = Instant.parse("2026-07-31T05:00:00Z"); // 14:00 KST
+    List<WeatherDto> forecasts = List.of(
+        weatherDto(Instant.parse("2026-07-31T03:00:00Z")), // 오늘 12:00 KST
+        weatherDto(Instant.parse("2026-07-31T06:00:00Z")), // 오늘 15:00 KST, 대표 시각
+        weatherDto(Instant.parse("2026-07-31T09:00:00Z")), // 오늘 18:00 KST
+        weatherDto(Instant.parse("2026-08-01T05:00:00Z")), // 내일 14:00 KST
+        weatherDto(Instant.parse("2026-08-01T08:00:00Z")), // 내일 17:00 KST
+        weatherDto(Instant.parse("2026-08-02T15:00:00Z"))  // 모레의 다음날(8/3) 00:00 KST, 이 날짜엔 이 한 줄뿐
+    );
+
+    // when
+    List<WeatherDto> result = selector.select(forecasts, now);
+
+    // then
+    assertThat(result).extracting(WeatherDto::forecastAt).containsExactly(
+        Instant.parse("2026-07-31T06:00:00Z"),
+        Instant.parse("2026-08-01T05:00:00Z")
+    );
+  }
+
+  @Test
+  @DisplayName("마지막 날에 00:00 말고 다른 시각도 있으면 제외하지 않는다")
+  void keepsLastDateWhenItHasMoreThanJustMidnight() {
+    // given
+    Instant now = Instant.parse("2026-07-31T05:00:00Z"); // 14:00 KST
+    List<WeatherDto> forecasts = List.of(
+        weatherDto(Instant.parse("2026-07-31T03:00:00Z")), // 오늘 12:00 KST
+        weatherDto(Instant.parse("2026-07-31T06:00:00Z")), // 오늘 15:00 KST, 대표 시각
+        weatherDto(Instant.parse("2026-07-31T09:00:00Z")), // 오늘 18:00 KST
+        weatherDto(Instant.parse("2026-08-01T05:00:00Z")), // 내일 14:00 KST
+        weatherDto(Instant.parse("2026-08-01T08:00:00Z")), // 내일 17:00 KST
+        weatherDto(Instant.parse("2026-08-01T15:00:00Z")), // 모레 00:00 KST
+        weatherDto(Instant.parse("2026-08-01T18:00:00Z"))  // 모레 03:00 KST, 대표시각(15:00)과 더 가까움
+    );
+
+    // when
+    List<WeatherDto> result = selector.select(forecasts, now);
+
+    // then
+    assertThat(result).extracting(WeatherDto::forecastAt).containsExactly(
+        Instant.parse("2026-07-31T06:00:00Z"),
+        Instant.parse("2026-08-01T05:00:00Z"),
+        Instant.parse("2026-08-01T18:00:00Z")
+    );
+  }
+
+  @Test
+  @DisplayName("날짜가 하나뿐이면 그마저 00:00 하나뿐이어도 제외하지 않는다")
+  void keepsOnlyDateEvenWhenItIsMidnightOnly() {
+    // given
+    Instant now = Instant.parse("2026-07-30T15:00:00Z"); // 2026-07-31 00:00 KST
+    List<WeatherDto> forecasts = List.of(
+        weatherDto(Instant.parse("2026-07-30T15:00:00Z")) // 2026-07-31 00:00 KST, 이 날짜의 유일한 데이터
+    );
+
+    // when
+    List<WeatherDto> result = selector.select(forecasts, now);
+
+    // then
+    assertThat(result).extracting(WeatherDto::forecastAt).containsExactly(
+        Instant.parse("2026-07-30T15:00:00Z")
+    );
+  }
+
   private WeatherDto weatherDto(Instant forecastAt) {
     return new WeatherDto(
         null,

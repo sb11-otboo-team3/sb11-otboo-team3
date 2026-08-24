@@ -1,6 +1,7 @@
 package com.otboo.domain.weather.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -108,5 +109,27 @@ class VilageFcstBaseTimeResolverTest {
     // then
     assertThat(result.baseDate()).isEqualTo(LocalDate.of(2026, 7, 31));
     assertThat(result.baseTime()).isEqualTo(LocalTime.of(2, 0));
+  }
+
+  @Test
+  @DisplayName("목록에 없는 발표시각으로 이전 발표시각을 구하면 조용히 값을 지어내지 않고 예외를 던진다")
+  void previousThrowsWhenBaseTimeIsUnknown() {
+    // given
+    VilageFcstBaseTime current = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(9, 30));
+
+    // when & then
+    assertThatThrownBy(() -> resolver.previous(current))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  @DisplayName("목록에 없는 발표시각으로 다음 발표시각을 구하면 조용히 값을 지어내지 않고 예외를 던진다")
+  void nextThrowsWhenBaseTimeIsUnknown() {
+    // given
+    VilageFcstBaseTime current = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(9, 30));
+
+    // when & then
+    assertThatThrownBy(() -> resolver.next(current))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 }

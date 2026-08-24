@@ -17,8 +17,11 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -65,10 +68,18 @@ public class WeatherPersister {
       return Optional.empty();
     }
 
+    // 전일 대비 조회(dayBefore)와 발표별 diff 비교 대상 조회(previousAnnouncement)는 서로 다른
+    // forecastAt을 보지만, 같은 (grid, forecast_at) 유니크 인덱스를 타는 점 조회라 IN절 하나로 묶어
+    // DB 왕복을 한 번으로 줄인다.
+    Instant dayBeforeForecastAt = forecastAt.minus(1, ChronoUnit.DAYS);
+    Map<Instant, Weather> existingByForecastAt = weatherRepository
+        .findByGridAndForecastAtIn(grid, List.of(dayBeforeForecastAt, forecastAt))
+        .stream()
+        .collect(Collectors.toMap(Weather::getForecastAt, weather -> weather));
+
     Double humidityComparedToDayBefore = null;
     Double temperatureComparedToDayBefore = null;
-    Optional<Weather> dayBefore = weatherRepository.findByGridAndForecastAt(
-        grid, forecastAt.minus(1, ChronoUnit.DAYS));
+    Optional<Weather> dayBefore = Optional.ofNullable(existingByForecastAt.get(dayBeforeForecastAt));
     if (dayBefore.isPresent()) {
       Double humidityDayBefore = dayBefore.get().getHumidityCurrent();
       Double temperatureDayBefore = dayBefore.get().getTemperatureCurrent();
@@ -82,7 +93,7 @@ public class WeatherPersister {
 
     // 발표별 급변 비교 대상 - 같은 (grid, forecastAt)의 이전 값. upsert가 덮어쓰기 전에 미리 조회해둬야
     // "이전 값"을 알 수 있다(덮어쓴 뒤엔 사라짐).
-    Optional<Weather> previousAnnouncement = weatherRepository.findByGridAndForecastAt(grid, forecastAt);
+    Optional<Weather> previousAnnouncement = Optional.ofNullable(existingByForecastAt.get(forecastAt));
 
     Weather weather = Weather.builder()
         .grid(grid)
@@ -131,16 +142,15 @@ public class WeatherPersister {
     Weather previous = previousAnnouncement.get();
     Set<DiffCategory> triggeredCategories = EnumSet.noneOf(DiffCategory.class);
 
-    if (previous.getTemperatureCurrent() != null && current.getTemperatureCurrent() != null
-        && weatherDiffEvaluator.isTemperatureTriggered(
-            previous.getTemperatureCurrent(), current.getTemperatureCurrent(), weatherDiffProperties)) {
+    // null(결측치) 가드는 WeatherDiffEvaluator 안으로 옮겨져 있다 - 여기서 또 확인할 필요 없음.
+    if (weatherDiffEvaluator.isTemperatureTriggered(
+        previous.getTemperatureCurrent(), current.getTemperatureCurrent(), weatherDiffProperties)) {
       triggeredCategories.add(DiffCategory.TEMPERATURE);
     }
     if (weatherDiffEvaluator.isPrecipitationTriggered(previous.getPrecipitationType(), current.getPrecipitationType())) {
       triggeredCategories.add(DiffCategory.PRECIPITATION);
     }
-    if (previous.getWindSpeed() != null && current.getWindSpeed() != null
-        && weatherDiffEvaluator.isWindTriggered(previous.getWindSpeed(), current.getWindSpeed())) {
+    if (weatherDiffEvaluator.isWindTriggered(previous.getWindSpeed(), current.getWindSpeed())) {
       triggeredCategories.add(DiffCategory.WIND);
     }
 

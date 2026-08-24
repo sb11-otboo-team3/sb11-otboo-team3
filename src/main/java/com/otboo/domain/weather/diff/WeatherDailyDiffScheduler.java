@@ -2,16 +2,18 @@ package com.otboo.domain.weather.diff;
 
 import com.otboo.domain.weather.entity.Grid;
 import com.otboo.domain.weather.entity.Weather;
-import com.otboo.domain.weather.repository.GridRepository;
 import com.otboo.domain.weather.repository.WeatherRepository;
+import com.otboo.domain.weather.util.ActiveGridFinder;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.context.ApplicationEventPublisher;
@@ -26,10 +28,8 @@ import org.springframework.stereotype.Component;
 public class WeatherDailyDiffScheduler {
 
   private static final ZoneId KST = ZoneId.of("Asia/Seoul");
-  // 프리패치 배치(WeatherPrefetchJobConfig)와 같은 기준 - 실제로 조회되는 격자만 대상으로 한다.
-  private static final Duration ACTIVE_WINDOW = Duration.ofDays(3);
 
-  private final GridRepository gridRepository;
+  private final ActiveGridFinder activeGridFinder;
   private final WeatherRepository weatherRepository;
   private final WeatherDiffEvaluator weatherDiffEvaluator;
   private final WeatherDiffProperties weatherDiffProperties;
@@ -39,8 +39,10 @@ public class WeatherDailyDiffScheduler {
   @Scheduled(cron = "${weather.daily-diff.cron:0 0 7 * * *}", zone = "Asia/Seoul")
   @SchedulerLock(name = "weatherDailyDiffScheduler", lockAtMostFor = "PT10M", lockAtLeastFor = "PT30S")
   public void run() {
-    Instant threshold = clock.instant().minus(ACTIVE_WINDOW);
-    List<Grid> activeGrids = gridRepository.findByLastRequestedAtAfter(threshold);
+    List<Grid> activeGrids = activeGridFinder.findActiveGrids();
+    if (activeGrids.isEmpty()) {
+      return;
+    }
 
     LocalDate today = LocalDate.now(clock.withZone(KST));
     Instant dayStart = today.atStartOfDay(KST).toInstant();
@@ -49,9 +51,16 @@ public class WeatherDailyDiffScheduler {
     // 있었던 급변을 지금 와서 알려주는 건 의미가 없다(스케줄을 자주 돌릴수록 이 문제가 두드러짐).
     Instant queryStart = clock.instant().isAfter(dayStart) ? clock.instant() : dayStart;
 
+    // 격자마다 따로 조회하는 대신 IN절 하나로 묶는다. 같은 쿼리 결과 안의 Grid는 같은 영속성
+    // 컨텍스트에서 나온 것이라 동일 인스턴스지만, activeGrids 쪽 Grid와는 세션이 다를 수 있어
+    // 참조 동등성을 믿을 수 없다 - id(UUID)로 묶는다.
+    Map<UUID, List<Weather>> weathersByGridId = weatherRepository
+        .findByGridInAndForecastAtGreaterThanEqualAndForecastAtLessThan(activeGrids, queryStart, dayEnd)
+        .stream()
+        .collect(Collectors.groupingBy(weather -> weather.getGrid().getId()));
+
     for (Grid grid : activeGrids) {
-      List<Weather> todaysWeather = weatherRepository
-          .findByGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(grid, queryStart, dayEnd)
+      List<Weather> todaysWeather = weathersByGridId.getOrDefault(grid.getId(), List.of())
           .stream()
           .sorted(Comparator.comparing(Weather::getForecastAt))
           .toList();

@@ -48,6 +48,14 @@ class WeatherDiffEvaluatorTest {
   }
 
   @Test
+  @DisplayName("기온 중 하나라도 결측치(null)면 급변으로 판정하지 않는다")
+  void notTriggeredWhenTemperatureIsNull() {
+    // when & then
+    assertThat(evaluator.isTemperatureTriggered(null, 24.0, properties)).isFalse();
+    assertThat(evaluator.isTemperatureTriggered(22.0, null, properties)).isFalse();
+  }
+
+  @Test
   @DisplayName("강수형태가 NONE에서 강수로 전환되면 급변으로 판정한다")
   void triggeredWhenPrecipitationStartsFromNone() {
     // when
@@ -128,6 +136,14 @@ class WeatherDiffEvaluatorTest {
   }
 
   @Test
+  @DisplayName("풍속 중 하나라도 결측치(null)면 급변으로 판정하지 않는다")
+  void notTriggeredWhenWindSpeedIsNull() {
+    // when & then
+    assertThat(evaluator.isWindTriggered(null, 5.0)).isFalse();
+    assertThat(evaluator.isWindTriggered(3.0, null)).isFalse();
+  }
+
+  @Test
   @DisplayName("forecastAt이 다음 발표 시각보다 이전이면 스코프 안에 든다")
   void withinWindowWhenForecastAtBeforeNextAnnouncement() {
     // given
@@ -195,6 +211,14 @@ class WeatherDiffEvaluatorTest {
 
     // then
     assertThat(triggered).isFalse();
+  }
+
+  @Test
+  @DisplayName("변화율 판정에서 기온 중 하나라도 결측치(null)면 급변으로 판정하지 않는다")
+  void notTriggeredByRateWhenTemperatureIsNull() {
+    // when & then
+    assertThat(evaluator.isTemperatureTriggeredByRate(null, 24.0, 1.0, properties)).isFalse();
+    assertThat(evaluator.isTemperatureTriggeredByRate(20.0, null, 1.0, properties)).isFalse();
   }
 
   // ===== 일일별: 하루치 인접 슬롯 스캔 =====

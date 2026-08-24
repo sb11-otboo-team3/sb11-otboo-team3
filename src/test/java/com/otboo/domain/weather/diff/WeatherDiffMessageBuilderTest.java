@@ -165,6 +165,52 @@ class WeatherDiffMessageBuilderTest {
     assertThat(message).isEqualTo("09시 강수 예보가 새로 추가됐어요 (강수확률 20%→75%).");
   }
 
+  private Weather weatherWithNullProbability(double temperature, PrecipitationType precipitationType, double windSpeed) {
+    Instant now = Instant.parse("2026-07-30T00:00:00Z");
+    return Weather.builder()
+        .grid(grid)
+        .forecastedAt(now)
+        .forecastAt(now)
+        .skyStatus(SkyStatus.CLEAR)
+        .precipitationType(precipitationType)
+        .precipitationProbability(null)
+        .temperatureCurrent(temperature)
+        .windSpeed(windSpeed)
+        .build();
+  }
+
+  @Test
+  @DisplayName("발표별 - 이전 강수확률이 결측치(null)면 괄호 없이 문구를 만든다")
+  void buildsAnnouncementMessageWithoutProbabilityWhenPreviousIsNull() {
+    // given: KMA POP 파싱 실패 등으로 확률이 null이어도 예외 없이 문구는 만들어져야 한다
+    Weather previous = weatherWithNullProbability(20.0, PrecipitationType.NONE, 2.0);
+    Weather current = weather(20.0, PrecipitationType.RAIN, 75.0, 2.0);
+    WeatherAnnouncementDiffEvent event =
+        new WeatherAnnouncementDiffEvent(previous, current, EnumSet.of(DiffCategory.PRECIPITATION));
+
+    // when
+    String message = messageBuilder.buildAnnouncementMessage(event);
+
+    // then
+    assertThat(message).isEqualTo("09시 비 예보가 새로 추가됐어요.");
+  }
+
+  @Test
+  @DisplayName("발표별 - 현재 강수확률이 결측치(null)면 괄호 없이 문구를 만든다")
+  void buildsAnnouncementMessageWithoutProbabilityWhenCurrentIsNull() {
+    // given
+    Weather previous = weather(20.0, PrecipitationType.NONE, 20.0, 2.0);
+    Weather current = weatherWithNullProbability(20.0, PrecipitationType.RAIN, 2.0);
+    WeatherAnnouncementDiffEvent event =
+        new WeatherAnnouncementDiffEvent(previous, current, EnumSet.of(DiffCategory.PRECIPITATION));
+
+    // when
+    String message = messageBuilder.buildAnnouncementMessage(event);
+
+    // then
+    assertThat(message).isEqualTo("09시 비 예보가 새로 추가됐어요.");
+  }
+
   @Test
   @DisplayName("발표별 - 여러 카테고리가 걸리면 문구를 이어붙인다")
   void buildsAnnouncementMessageForMultipleCategories() {
