@@ -62,7 +62,12 @@ public class S3FileStorage implements FileStorage {
             directory, ownerId, imageContentType.getExtension()
         );
 
-        putObject(objectKey, validatedImage.bytes(), imageContentType, validatedImage.size());
+        putObject(
+                objectKey,
+                validatedImage.bytes(),
+                imageContentType,
+                validatedImage.size()
+        );
 
         return new StoredFile(
             objectKey,
@@ -80,11 +85,20 @@ public class S3FileStorage implements FileStorage {
     ) {
         ValidatedImageFile validatedImage = imageFileValidator.validate(file);
         ImageContentType imageContentType = validatedImage.contentType();
+
+        // bytes()를 1회만 호출해서 이후 원본 업로드와 썸네일 생성에 재사용
+        byte[] validatedBytes = validatedImage.bytes();
+
         String objectKey = objectKeyGenerator.generate(
             directory, ownerId, imageContentType.getExtension()
         );
 
-        putObject(objectKey, validatedImage.bytes(), imageContentType, validatedImage.size());
+        putObject(
+                objectKey,
+                validatedBytes,
+                imageContentType,
+                validatedImage.size()
+        );
 
         // WEBP는 Java ImageIO가 인코딩을 지원하지 않아 Thumbnailator로
         // 썸네일을 생성할 수 없다. 이 경우 원본만 저장하고 썸네일은
@@ -103,7 +117,10 @@ public class S3FileStorage implements FileStorage {
         // 현재는 프로필 이미지에서만 사용한다. (#250 리뷰 반영 - 공통 upload()에
         // 두면 의상 등 썸네일을 추적하지 않는 다른 도메인에서 orphan 객체가
         // 계속 쌓이는 문제가 있어, 필요한 도메인이 명시적으로 선택하도록 분리)
-        byte[] thumbnailBytes = thumbnailGenerator.generate(validatedImage.bytes(), imageContentType);
+        byte[] thumbnailBytes = thumbnailGenerator.generate(
+                validatedBytes,
+                imageContentType
+        );
         String thumbnailKey = objectKeyGenerator.generateThumbnail(
             directory, ownerId, imageContentType.getExtension()
         );

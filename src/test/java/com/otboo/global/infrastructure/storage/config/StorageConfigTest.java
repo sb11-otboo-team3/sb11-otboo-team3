@@ -2,6 +2,8 @@ package com.otboo.global.infrastructure.storage.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
+
 import com.otboo.global.infrastructure.storage.validation.ImageFileValidator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -51,6 +53,21 @@ class StorageConfigTest {
 
             assertThat(imageStorageProperties.maxFileSizeBytes())
                     .isEqualTo(10L * 1024 * 1024);
+
+            S3Client s3Client =
+                    context.getBean(S3Client.class);
+
+            assertThat(
+                    s3Client.serviceClientConfiguration()
+                            .overrideConfiguration()
+                            .apiCallTimeout()
+            ).contains(Duration.ofSeconds(30));
+
+            assertThat(
+                    s3Client.serviceClientConfiguration()
+                            .overrideConfiguration()
+                            .apiCallAttemptTimeout()
+            ).contains(Duration.ofSeconds(10));
         });
     }
 
