@@ -146,24 +146,22 @@ class S3FileStorageTest {
         assertThat(result.objectKey()).isEqualTo(OBJECT_KEY);
         assertThat(result.contentType()).isEqualTo("image/jpeg");
         assertThat(result.size()).isEqualTo(JPEG_BYTES.length);
-        assertThat(result.thumbnailKey()).isNotNull();
+        assertThat(result.thumbnailKey()).isNull();
 
         ArgumentCaptor<PutObjectRequest> requestCaptor =
             ArgumentCaptor.forClass(PutObjectRequest.class);
 
-        // 원본 업로드 1회 + 썸네일 업로드 1회, 총 2회 호출된다.
-        verify(s3Client, org.mockito.Mockito.times(2)).putObject(
+        // 원본만 업로드하므로 1회만 호출된다.
+        verify(s3Client, org.mockito.Mockito.times(1)).putObject(
             requestCaptor.capture(),
             any(RequestBody.class)
         );
 
-        // 첫 번째 호출(원본)만 검증한다.
-        PutObjectRequest originalRequest = requestCaptor.getAllValues().get(0);
-
-        assertThat(originalRequest.bucket()).isEqualTo(BUCKET);
-        assertThat(originalRequest.key()).isEqualTo(OBJECT_KEY);
-        assertThat(originalRequest.contentType()).isEqualTo("image/jpeg");
-        assertThat(originalRequest.contentLength()).isEqualTo(JPEG_BYTES.length);
+        PutObjectRequest request = requestCaptor.getValue();
+        assertThat(request.bucket()).isEqualTo(BUCKET);
+        assertThat(request.key()).isEqualTo(OBJECT_KEY);
+        assertThat(request.contentType()).isEqualTo("image/jpeg");
+        assertThat(request.contentLength()).isEqualTo(JPEG_BYTES.length);
     }
 
     @Test
@@ -490,5 +488,96 @@ class S3FileStorageTest {
         );
 
         verifyNoInteractions(s3Client);
+    }
+
+    @Test
+    @DisplayName("uploadWithThumbnail 호출 시 원본과 썸네일을 함께 S3에 저장하고 두 Object Key를 모두 반환한다")
+    void uploadWithThumbnailStoresOriginalAndThumbnail() throws Exception {
+        // given
+        MockMultipartFile image = new MockMultipartFile(
+            "image",
+            "profile.jpg",
+            "image/jpeg",
+            JPEG_BYTES
+        );
+
+        given(
+            s3Client.putObject(
+                any(PutObjectRequest.class),
+                any(RequestBody.class)
+            )
+        ).willReturn(
+            PutObjectResponse.builder()
+                .eTag("test-etag")
+                .build()
+        );
+
+        // when
+        StoredFile result = s3FileStorage.uploadWithThumbnail(
+            StorageDirectory.PROFILES,
+            OWNER_ID,
+            image
+        );
+
+        // then
+        assertThat(result.objectKey()).isEqualTo(OBJECT_KEY);
+        assertThat(result.contentType()).isEqualTo("image/jpeg");
+        assertThat(result.size()).isEqualTo(JPEG_BYTES.length);
+        assertThat(result.thumbnailKey()).isNotNull();
+
+        // 원본 업로드 1회 + 썸네일 업로드 1회, 총 2회 호출된다.
+        verify(s3Client, org.mockito.Mockito.times(2)).putObject(
+            any(PutObjectRequest.class),
+            any(RequestBody.class)
+        );
+    }
+
+    @Test
+    @DisplayName("WEBP 이미지는 uploadWithThumbnail을 호출해도 썸네일 없이 원본만 저장된다")
+    void uploadWithThumbnailSkipsThumbnailForWebp() throws Exception {
+        // given
+        byte[] webpBytes = createDummyWebpBytes();
+        MockMultipartFile image = new MockMultipartFile(
+            "image",
+            "profile.webp",
+            "image/webp",
+            webpBytes
+        );
+
+        given(
+            s3Client.putObject(
+                any(PutObjectRequest.class),
+                any(RequestBody.class)
+            )
+        ).willReturn(
+            PutObjectResponse.builder()
+                .eTag("test-etag")
+                .build()
+        );
+
+        // when
+        StoredFile result = s3FileStorage.uploadWithThumbnail(
+            StorageDirectory.PROFILES,
+            OWNER_ID,
+            image
+        );
+
+        // then
+        assertThat(result.thumbnailKey()).isNull();
+
+        // 썸네일을 생성하지 않으므로 원본만 1회 업로드된다.
+        verify(s3Client, org.mockito.Mockito.times(1)).putObject(
+            any(PutObjectRequest.class),
+            any(RequestBody.class)
+        );
+    }
+
+    private byte[] createDummyWebpBytes() {
+        // RIFF....WEBP 최소 시그니처 (ImageContentType.matchesSignature 통과용)
+        return new byte[]{
+            0x52, 0x49, 0x46, 0x46,  // "RIFF"
+            0x00, 0x00, 0x00, 0x00,  // 파일 크기 (더미, 실제로 안 씀)
+            0x57, 0x45, 0x42, 0x50   // "WEBP"
+        };
     }
 }

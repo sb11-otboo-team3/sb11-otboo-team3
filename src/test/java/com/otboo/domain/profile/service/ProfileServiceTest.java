@@ -417,7 +417,7 @@ class ProfileServiceTest {
         null
     );
     given(
-        fileStorage.upload(
+        fileStorage.uploadWithThumbnail(
             StorageDirectory.PROFILES,
             userId,
             image
@@ -436,7 +436,7 @@ class ProfileServiceTest {
         .isEqualTo("https://example.com/new-key.png");
     assertThat(profile.getImageKey())
         .isEqualTo("profiles/" + userId + "/new-key.png");
-    verify(fileStorage).upload(
+    verify(fileStorage).uploadWithThumbnail(
         StorageDirectory.PROFILES,
         userId,
         image
@@ -491,7 +491,7 @@ class ProfileServiceTest {
     );
 
     given(
-        fileStorage.upload(
+        fileStorage.uploadWithThumbnail(
             StorageDirectory.PROFILES,
             userId,
             image
@@ -515,7 +515,7 @@ class ProfileServiceTest {
     assertThat(profile.getImageKey())
         .isEqualTo("profiles/" + userId + "/first-key.png");
 
-    verify(fileStorage).upload(
+    verify(fileStorage).uploadWithThumbnail(
         StorageDirectory.PROFILES,
         userId,
         image
@@ -561,7 +561,7 @@ class ProfileServiceTest {
         null
     );
     given(
-        fileStorage.upload(StorageDirectory.PROFILES, userId, image)
+        fileStorage.uploadWithThumbnail(StorageDirectory.PROFILES, userId, image)
     ).willReturn(storedFile);
 
     // when & then
