@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 import lombok.RequiredArgsConstructor;
@@ -82,10 +83,16 @@ public class RecommendationTransactionalService {
     ) {
         return rankedOutfits
                 .filter(outfits -> !outfits.isEmpty())
-                .map(outfits -> recommendationEngine.resolveFromRanked(outfits.get(0).clothesIds()))
+                .map(this::pickRandomOutfit)
+                .map(outfit -> recommendationEngine.resolveFromRanked(outfit.clothesIds()))
                 .filter(clothes -> !clothes.isEmpty())
                 .orElseGet(() -> recommendationEngine.recommend(
                         ownerId, minTemperature, maxTemperature, precipitationType, temperatureSensitivity));
+    }
+
+    // 같은 시간대엔 캐시된 랭킹 리스트가 항상 동일하므로, 재호출("다른 옷 추천")마다 다른 조합을 주기 위해 매번 무작위로 하나를 고른다.
+    private RankedOutfit pickRandomOutfit(List<RankedOutfit> outfits) {
+        return outfits.get(ThreadLocalRandom.current().nextInt(outfits.size()));
     }
 
     private RecommendationClothesResponse toRecommendationClothesResponse(ClothesResponse response) {
