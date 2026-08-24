@@ -10,11 +10,16 @@ import
         com.otboo.domain.recommendation.exception.LocationNotSetException;
 import
         com.otboo.domain.recommendation.exception.WeatherUnavailableException;
+import com.otboo.domain.recommendation.llm.LlmOutfitRanker;
+import com.otboo.domain.recommendation.llm.dto.OutfitCandidate;
+import com.otboo.domain.recommendation.llm.dto.RankedOutfit;
 import com.otboo.domain.weather.dto.WeatherDto;
+import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.exception.WeatherNotFoundException;
 import com.otboo.domain.weather.service.WeatherService;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import lombok.RequiredArgsConstructor;
@@ -31,8 +36,10 @@ public class RecommendationService {
     private final ProfileRepository profileRepository;
     private final WeatherService weatherService;
     private final RecommendationTransactionalService recommendationTransactionalService;
+    private final OutfitRecommendationEngine recommendationEngine;
+    private final LlmOutfitRanker llmOutfitRanker;
 
-    // 날씨 API 블로킹 호출 중에는 DB 트랜잭션을 점유하지 않는다.
+    // 날씨 API·LLM 블로킹 호출 중에는 DB 트랜잭션을 점유하지 않는다.
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public RecommendationResponse recommend(UUID userId, UUID weatherId) {
         Profile profile = profileRepository.findById(userId)
@@ -58,13 +65,20 @@ public class RecommendationService {
                 ? profile.getTemperatureSensitivity()
                 : DEFAULT_TEMPERATURE_SENSITIVITY;
 
+        double minTemperature = today.temperature().min();
+        double maxTemperature = today.temperature().max();
+        PrecipitationType precipitationType = today.precipitation().type();
+
+        List<OutfitCandidate> llmCandidates = recommendationEngine.buildCandidates(
+                userId, minTemperature, maxTemperature, precipitationType, temperatureSensitivity
+        );
+        Optional<List<RankedOutfit>> rankedOutfits = llmOutfitRanker.rank(
+                llmCandidates, minTemperature, maxTemperature, precipitationType, temperatureSensitivity
+        );
+
         List<RecommendationClothesResponse> clothes =
                 recommendationTransactionalService.recommend(
-                        userId,
-                        today.temperature().min(),
-                        today.temperature().max(),
-                        today.precipitation().type(),
-                        temperatureSensitivity
+                        userId, minTemperature, maxTemperature, precipitationType, temperatureSensitivity, rankedOutfits
                 );
 
         return new RecommendationResponse(today.id(), userId, clothes);

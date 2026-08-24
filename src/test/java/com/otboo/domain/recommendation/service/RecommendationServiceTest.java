@@ -13,6 +13,7 @@ import com.otboo.domain.recommendation.dto.response.RecommendationClothesRespons
 import com.otboo.domain.recommendation.dto.response.RecommendationResponse;
 import com.otboo.domain.recommendation.exception.LocationNotSetException;
 import com.otboo.domain.recommendation.exception.WeatherUnavailableException;
+import com.otboo.domain.recommendation.llm.LlmOutfitRanker;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.weather.dto.PrecipitationDto;
 import com.otboo.domain.weather.dto.TemperatureDto;
@@ -44,6 +45,12 @@ class RecommendationServiceTest {
 
     @Mock
     private RecommendationTransactionalService recommendationTransactionalService;
+
+    @Mock
+    private OutfitRecommendationEngine recommendationEngine;
+
+    @Mock
+    private LlmOutfitRanker llmOutfitRanker;
 
     @InjectMocks
     private RecommendationService service;
@@ -125,7 +132,11 @@ class RecommendationServiceTest {
 
         given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
         given(weatherService.getWeathers(37.5, 127.0)).willReturn(Mono.just(List.of(weatherDto)));
-        given(recommendationTransactionalService.recommend(userId, 5.0, 10.0, PrecipitationType.NONE, 3))
+        given(recommendationEngine.buildCandidates(userId, 5.0, 10.0, PrecipitationType.NONE, 3))
+                .willReturn(List.of());
+        given(llmOutfitRanker.rank(List.of(), 5.0, 10.0, PrecipitationType.NONE, 3))
+                .willReturn(Optional.empty());
+        given(recommendationTransactionalService.recommend(userId, 5.0, 10.0, PrecipitationType.NONE, 3, Optional.empty()))
                 .willReturn(List.of());
 
         //when
@@ -133,7 +144,7 @@ class RecommendationServiceTest {
 
         //then
         verify(recommendationTransactionalService)
-                .recommend(userId, 5.0, 10.0, PrecipitationType.NONE, 3);
+                .recommend(userId, 5.0, 10.0, PrecipitationType.NONE, 3, Optional.empty());
     }
 
     @Test
@@ -155,7 +166,11 @@ class RecommendationServiceTest {
 
         given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
         given(weatherService.getWeathers(37.5, 127.0)).willReturn(Mono.just(List.of(weatherDto)));
-        given(recommendationTransactionalService.recommend(userId, 5.0, 10.0, PrecipitationType.RAIN, 4))
+        given(recommendationEngine.buildCandidates(userId, 5.0, 10.0, PrecipitationType.RAIN, 4))
+                .willReturn(List.of());
+        given(llmOutfitRanker.rank(List.of(), 5.0, 10.0, PrecipitationType.RAIN, 4))
+                .willReturn(Optional.empty());
+        given(recommendationTransactionalService.recommend(userId, 5.0, 10.0, PrecipitationType.RAIN, 4, Optional.empty()))
                 .willReturn(List.of(clothesResponse));
 
         //when
@@ -185,7 +200,11 @@ class RecommendationServiceTest {
         given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
         given(weatherService.getWeathers(37.5, 127.0))
                 .willReturn(Mono.just(List.of(firstWeather, selectedWeather)));
-        given(recommendationTransactionalService.recommend(userId, 10.0, 15.0, PrecipitationType.RAIN, 3))
+        given(recommendationEngine.buildCandidates(userId, 10.0, 15.0, PrecipitationType.RAIN, 3))
+                .willReturn(List.of());
+        given(llmOutfitRanker.rank(List.of(), 10.0, 15.0, PrecipitationType.RAIN, 3))
+                .willReturn(Optional.empty());
+        given(recommendationTransactionalService.recommend(userId, 10.0, 15.0, PrecipitationType.RAIN, 3, Optional.empty()))
                 .willReturn(List.of());
 
         //when
@@ -194,7 +213,7 @@ class RecommendationServiceTest {
         //then
         assertThat(response.weatherId()).isEqualTo(selectedWeatherId);
         verify(recommendationTransactionalService)
-                .recommend(userId, 10.0, 15.0, PrecipitationType.RAIN, 3);
+                .recommend(userId, 10.0, 15.0, PrecipitationType.RAIN, 3, Optional.empty());
     }
 
     @Test

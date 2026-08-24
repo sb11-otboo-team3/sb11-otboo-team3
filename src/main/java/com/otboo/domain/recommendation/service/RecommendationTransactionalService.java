@@ -10,10 +10,12 @@ import
         com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeRepository;
 import com.otboo.domain.recommendation.dto.response.RecommendationClothesResponse;
+import com.otboo.domain.recommendation.llm.dto.RankedOutfit;
 import com.otboo.domain.weather.entity.PrecipitationType;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -36,10 +38,11 @@ public class RecommendationTransactionalService {
             double minTemperature,
             double maxTemperature,
             PrecipitationType precipitationType,
-            int temperatureSensitivity
+            int temperatureSensitivity,
+            Optional<List<RankedOutfit>> rankedOutfits
     ) {
-        List<Clothes> combination = recommendationEngine.recommend(
-                ownerId, minTemperature, maxTemperature, precipitationType, temperatureSensitivity
+        List<Clothes> combination = resolveCombination(
+                ownerId, minTemperature, maxTemperature, precipitationType, temperatureSensitivity, rankedOutfits
         );
 
         List<ClothesAttribute> attributes = clothesAttributeRepository.findByClothesIn(combination);
@@ -67,6 +70,22 @@ public class RecommendationTransactionalService {
                 ))
                 .map(this::toRecommendationClothesResponse)
                 .toList();
+    }
+
+    private List<Clothes> resolveCombination(
+            UUID ownerId,
+            double minTemperature,
+            double maxTemperature,
+            PrecipitationType precipitationType,
+            int temperatureSensitivity,
+            Optional<List<RankedOutfit>> rankedOutfits
+    ) {
+        return rankedOutfits
+                .filter(outfits -> !outfits.isEmpty())
+                .map(outfits -> recommendationEngine.resolveFromRanked(outfits.get(0).clothesIds()))
+                .filter(clothes -> !clothes.isEmpty())
+                .orElseGet(() -> recommendationEngine.recommend(
+                        ownerId, minTemperature, maxTemperature, precipitationType, temperatureSensitivity));
     }
 
     private RecommendationClothesResponse toRecommendationClothesResponse(ClothesResponse response) {

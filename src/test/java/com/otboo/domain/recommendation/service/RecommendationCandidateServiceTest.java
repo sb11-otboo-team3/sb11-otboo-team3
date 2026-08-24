@@ -62,4 +62,20 @@ class RecommendationCandidateServiceTest {
         //then
         assertThat(result).isEmpty();
     }
+
+    @Test
+    void id_목록으로_삭제되지_않은_의상을_조회한다() {
+        //given
+        User owner = User.create("test@otboo.io", "테스트", "encoded-password");
+        Clothes top = new Clothes(owner, "티셔츠", null, ClothesType.TOP);
+        List<UUID> ids = List.of(UUID.randomUUID(), UUID.randomUUID());
+
+        given(clothesRepository.findByIdInAndDeletedAtIsNull(ids)).willReturn(List.of(top));
+
+        //when
+        List<Clothes> result = service.getByIds(ids);
+
+        //then
+        assertThat(result).containsExactly(top);
+    }
 }

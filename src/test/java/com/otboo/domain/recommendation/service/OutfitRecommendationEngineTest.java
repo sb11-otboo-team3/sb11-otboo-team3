@@ -6,9 +6,15 @@ import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import com.otboo.domain.clothes.entity.Clothes;
+import com.otboo.domain.clothes.entity.ClothesAttribute;
+import com.otboo.domain.clothes.entity.ClothesAttributeDefinition;
 import com.otboo.domain.clothes.entity.ClothesType;
+import com.otboo.domain.clothes.repository.ClothesAttributeRepository;
+import com.otboo.domain.recommendation.llm.dto.OutfitCandidate;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.weather.entity.PrecipitationType;
 
@@ -37,6 +43,9 @@ class OutfitRecommendationEngineTest {
 
     @Mock
     private ClothesScoreCalculator scoreCalculator;
+
+    @Mock
+    private ClothesAttributeRepository clothesAttributeRepository;
 
     @InjectMocks
     private OutfitRecommendationEngine engine;
@@ -202,5 +211,76 @@ class OutfitRecommendationEngineTest {
         // 매 호출마다 후보 5개 중 상위 3개만 추리는데, 그 "상위 3개" 자체가 매번 무작위로 섞여 정해지므로
         // 100번 반복하면 5개 후보 모두 한 번쯤은 뽑힐 확률이 매우 높다.
         assertThat(pickedOverManyRuns).hasSizeGreaterThan(3);
+    }
+
+    @Test
+    void buildCandidates는_점수가_0보다_큰_후보만_속성과_함께_평탄화한다() {
+        //given
+        UUID ownerId = UUID.randomUUID();
+        Clothes top = new Clothes(owner, "반팔", null, ClothesType.TOP);
+        ReflectionTestUtils.setField(top, "id", UUID.randomUUID());
+        Clothes outerHot = new Clothes(owner, "얇은코트", null, ClothesType.OUTER);
+        ReflectionTestUtils.setField(outerHot, "id", UUID.randomUUID());
+        Clothes outerWarm = new Clothes(owner, "패딩", null, ClothesType.OUTER);
+        ReflectionTestUtils.setField(outerWarm, "id", UUID.randomUUID());
+
+        Map<ClothesType, List<Clothes>> candidatesByType = Map.of(
+                ClothesType.TOP, List.of(top),
+                ClothesType.OUTER, List.of(outerHot, outerWarm)
+        );
+
+        given(candidateService.getCandidatesByType(ownerId)).willReturn(candidatesByType);
+        given(combinationRule.apply(candidatesByType)).willReturn(candidatesByType);
+        given(scoreCalculator.calculateScore(eq(ClothesType.TOP), anyDouble(), anyDouble(), any(), anyInt()))
+                .willReturn(1.0);
+        given(scoreCalculator.calculateScore(eq(ClothesType.OUTER), anyDouble(), anyDouble(), any(), anyInt()))
+                .willReturn(0.0, 9.0);
+
+        ClothesAttributeDefinition colorDefinition = new ClothesAttributeDefinition("색상");
+        ClothesAttribute topColor = new ClothesAttribute(top, colorDefinition, "빨강");
+        given(clothesAttributeRepository.findByClothesIn(List.of(top, outerWarm)))
+                .willReturn(List.of(topColor));
+
+        //when
+        List<OutfitCandidate> result = engine.buildCandidates(ownerId, 5.0, 10.0, PrecipitationType.NONE, 3);
+
+        //then
+        assertThat(result).hasSize(2);
+        OutfitCandidate topCandidate = result.stream().filter(c -> c.id().equals(top.getId())).findFirst().orElseThrow();
+        assertThat(topCandidate.attributes()).containsExactly("색상: 빨강");
+        OutfitCandidate outerCandidate = result.stream().filter(c -> c.id().equals(outerWarm.getId())).findFirst().orElseThrow();
+        assertThat(outerCandidate.attributes()).isEmpty();
+    }
+
+    @Test
+    void buildCandidates는_후보가_없으면_속성_조회_없이_빈_리스트를_반환한다() {
+        //given
+        UUID ownerId = UUID.randomUUID();
+
+        given(candidateService.getCandidatesByType(ownerId)).willReturn(Map.of());
+        given(combinationRule.apply(Map.of())).willReturn(Map.of());
+
+        //when
+        List<OutfitCandidate> result = engine.buildCandidates(ownerId, 5.0, 10.0, PrecipitationType.NONE, 3);
+
+        //then
+        assertThat(result).isEmpty();
+        verify(clothesAttributeRepository, never()).findByClothesIn(any());
+    }
+
+    @Test
+    void resolveFromRanked는_candidateService에_id_조회를_위임한다() {
+        //given
+        Clothes top = new Clothes(owner, "반팔", null, ClothesType.TOP);
+        ReflectionTestUtils.setField(top, "id", UUID.randomUUID());
+        List<UUID> ids = List.of(top.getId());
+
+        given(candidateService.getByIds(ids)).willReturn(List.of(top));
+
+        //when
+        List<Clothes> result = engine.resolveFromRanked(ids);
+
+        //then
+        assertThat(result).containsExactly(top);
     }
 }
