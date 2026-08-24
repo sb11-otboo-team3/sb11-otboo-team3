@@ -143,7 +143,7 @@ RDS PostgreSQL과 ElastiCache Redis는 기존 Private Subnet 구성을 유지합
 | Public IP | 활성화 |
 | Deployment Circuit Breaker | 활성화 |
 | 배포 실패 자동 롤백 | 활성화 |
-| Health Check Grace Period | 120초 |
+| Health Check Grace Period | 180초 |
 
 정상 상태 기준은 다음과 같습니다.
 
@@ -172,8 +172,8 @@ Task 교체 중 일시적인 접근 중단이 발생할 수 있으며,
 | Network Mode | `awsvpc` |
 | 운영체제 | Linux |
 | CPU Architecture | X86_64 |
-| CPU | 1 vCPU |
-| Memory | 2 GB |
+| CPU | 0.5 vCPU |
+| Memory | 1 GB |
 | Container Name | `otboo-backend` |
 | Container Port | 8080 |
 | Protocol | TCP |
@@ -201,6 +201,29 @@ Task Definition 수정
 → 새 Target healthy 확인
 → 기존 Task 제거 확인
 ```
+
+### ECS Fargate Right-sizing
+
+CloudWatch CPUUtilization·MemoryUtilization 분석을 기반으로
+운영 Task 리소스를 `1 vCPU / 2GB`에서 `0.5 vCPU / 1GB`로 조정했습니다.
+
+초기 적용 시 Spring Boot 기동 시간이 기존 Health Check Grace Period인
+120초를 초과하여 ALB Health Check에서 일시적으로 `502`가 발생했고,
+Deployment Circuit Breaker에 의해 기존 Task Definition으로 자동 롤백되었습니다.
+
+이에 Health Check Grace Period를 180초로 조정한 뒤 다시 배포했으며,
+새 Task가 정상적으로 `healthy` 상태에 진입하는 것을 확인했습니다.
+
+Rolling Update 중 연속 Health Check 요청 294건이 모두 HTTP 200으로 응답하여
+서비스 중단 없이 배포되는 것을 확인했습니다.
+
+축소 후 운영 지표는 다음과 같습니다.
+
+- CPU 평균 사용률: 평상시 약 1~4%
+- CPU 측정 구간 최대 사용률: 약 27.6%
+- Memory 사용률: 약 47.2%
+- ECS Task 상태: `RUNNING`
+- ALB Target 상태: `healthy`
 
 ---
 
