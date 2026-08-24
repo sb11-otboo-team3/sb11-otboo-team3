@@ -11,6 +11,7 @@ import
 import
         com.otboo.domain.recommendation.exception.WeatherUnavailableException;
 import com.otboo.domain.recommendation.llm.LlmOutfitRanker;
+import com.otboo.domain.recommendation.llm.cache.RecommendationLlmCache;
 import com.otboo.domain.recommendation.llm.dto.OutfitCandidate;
 import com.otboo.domain.recommendation.llm.dto.RankedOutfit;
 import com.otboo.domain.weather.dto.WeatherDto;
@@ -38,6 +39,7 @@ public class RecommendationService {
     private final RecommendationTransactionalService recommendationTransactionalService;
     private final OutfitRecommendationEngine recommendationEngine;
     private final LlmOutfitRanker llmOutfitRanker;
+    private final RecommendationLlmCache recommendationLlmCache;
 
     // 날씨 API·LLM 블로킹 호출 중에는 DB 트랜잭션을 점유하지 않는다.
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -69,12 +71,16 @@ public class RecommendationService {
         double maxTemperature = today.temperature().max();
         PrecipitationType precipitationType = today.precipitation().type();
 
-        List<OutfitCandidate> llmCandidates = recommendationEngine.buildCandidates(
-                userId, minTemperature, maxTemperature, precipitationType, temperatureSensitivity
-        );
-        Optional<List<RankedOutfit>> rankedOutfits = llmOutfitRanker.rank(
-                llmCandidates, minTemperature, maxTemperature, precipitationType, temperatureSensitivity
-        );
+        Optional<List<RankedOutfit>> rankedOutfits = recommendationLlmCache.find(userId, today.forecastAt());
+        if (rankedOutfits.isEmpty()) {
+            List<OutfitCandidate> llmCandidates = recommendationEngine.buildCandidates(
+                    userId, minTemperature, maxTemperature, precipitationType, temperatureSensitivity
+            );
+            rankedOutfits = llmOutfitRanker.rank(
+                    llmCandidates, minTemperature, maxTemperature, precipitationType, temperatureSensitivity
+            );
+            rankedOutfits.ifPresent(outfits -> recommendationLlmCache.save(userId, today.forecastAt(), outfits));
+        }
 
         List<RecommendationClothesResponse> clothes =
                 recommendationTransactionalService.recommend(

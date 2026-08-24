@@ -14,6 +14,7 @@ import com.otboo.domain.recommendation.dto.response.RecommendationResponse;
 import com.otboo.domain.recommendation.exception.LocationNotSetException;
 import com.otboo.domain.recommendation.exception.WeatherUnavailableException;
 import com.otboo.domain.recommendation.llm.LlmOutfitRanker;
+import com.otboo.domain.recommendation.llm.cache.RecommendationLlmCache;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.weather.dto.PrecipitationDto;
 import com.otboo.domain.weather.dto.TemperatureDto;
@@ -51,6 +52,9 @@ class RecommendationServiceTest {
 
     @Mock
     private LlmOutfitRanker llmOutfitRanker;
+
+    @Mock
+    private RecommendationLlmCache recommendationLlmCache;
 
     @InjectMocks
     private RecommendationService service;
@@ -132,6 +136,7 @@ class RecommendationServiceTest {
 
         given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
         given(weatherService.getWeathers(37.5, 127.0)).willReturn(Mono.just(List.of(weatherDto)));
+        given(recommendationLlmCache.find(userId, weatherDto.forecastAt())).willReturn(Optional.empty());
         given(recommendationEngine.buildCandidates(userId, 5.0, 10.0, PrecipitationType.NONE, 3))
                 .willReturn(List.of());
         given(llmOutfitRanker.rank(List.of(), 5.0, 10.0, PrecipitationType.NONE, 3))
@@ -166,6 +171,7 @@ class RecommendationServiceTest {
 
         given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
         given(weatherService.getWeathers(37.5, 127.0)).willReturn(Mono.just(List.of(weatherDto)));
+        given(recommendationLlmCache.find(userId, weatherDto.forecastAt())).willReturn(Optional.empty());
         given(recommendationEngine.buildCandidates(userId, 5.0, 10.0, PrecipitationType.RAIN, 4))
                 .willReturn(List.of());
         given(llmOutfitRanker.rank(List.of(), 5.0, 10.0, PrecipitationType.RAIN, 4))
@@ -200,6 +206,7 @@ class RecommendationServiceTest {
         given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
         given(weatherService.getWeathers(37.5, 127.0))
                 .willReturn(Mono.just(List.of(firstWeather, selectedWeather)));
+        given(recommendationLlmCache.find(userId, selectedWeather.forecastAt())).willReturn(Optional.empty());
         given(recommendationEngine.buildCandidates(userId, 10.0, 15.0, PrecipitationType.RAIN, 3))
                 .willReturn(List.of());
         given(llmOutfitRanker.rank(List.of(), 10.0, 15.0, PrecipitationType.RAIN, 3))

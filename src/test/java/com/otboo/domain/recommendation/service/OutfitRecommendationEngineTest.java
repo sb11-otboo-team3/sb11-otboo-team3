@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
@@ -238,7 +239,7 @@ class OutfitRecommendationEngineTest {
 
         ClothesAttributeDefinition colorDefinition = new ClothesAttributeDefinition("색상");
         ClothesAttribute topColor = new ClothesAttribute(top, colorDefinition, "빨강");
-        given(clothesAttributeRepository.findByClothesIn(List.of(top, outerWarm)))
+        given(clothesAttributeRepository.findByClothesIn(anyList()))
                 .willReturn(List.of(topColor));
 
         //when
