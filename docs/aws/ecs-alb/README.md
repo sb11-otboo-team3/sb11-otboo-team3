@@ -214,8 +214,11 @@ Deployment Circuit Breaker에 의해 기존 Task Definition으로 자동 롤백�
 이에 Health Check Grace Period를 180초로 조정한 뒤 다시 배포했으며,
 새 Task가 정상적으로 `healthy` 상태에 진입하는 것을 확인했습니다.
 
-Rolling Update 중 연속 Health Check 요청 294건이 모두 HTTP 200으로 응답하여
-서비스 중단 없이 배포되는 것을 확인했습니다.
+Rolling Update 중 운영 도메인 `https://otboo.work/actuator/health`에
+1초 간격으로 연속 HTTP 요청을 수행했으며, 총 294건 모두 HTTP 200으로 응답했습니다.
+
+이를 통해 Rolling Update 과정에서 HTTP 요청 기준의 접근 중단이 발생하지 않았음을 확인했습니다.
+SSE/WebSocket 연결 연속성은 해당 검증 범위에 포함하지 않습니다.
 
 축소 후 운영 지표는 다음과 같습니다.
 
@@ -608,7 +611,7 @@ PendingCount: 0
 RolloutState: COMPLETED
 CircuitBreaker: True
 Rollback: True
-HealthCheckGracePeriod: 120
+HealthCheckGracePeriod: 180
 ```
 
 ### Target Group ARN 조회
