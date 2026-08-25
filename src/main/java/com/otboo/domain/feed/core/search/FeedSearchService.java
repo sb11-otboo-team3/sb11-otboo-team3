@@ -1,4 +1,4 @@
-package com.otboo.domain.feed.core.repository;
+package com.otboo.domain.feed.core.search;
 
 import com.otboo.domain.feed.core.dto.request.SortBy;
 import com.otboo.domain.feed.core.dto.request.SortDirection;
@@ -8,31 +8,22 @@ import com.otboo.domain.weather.entity.SkyStatus;
 import java.util.List;
 import java.util.UUID;
 
-public interface FeedRepositoryCustom {
+public interface FeedSearchService {
 
-  long deleteFeedsDeletedBeforeOneDay();
+  void index(Feed feed);
 
-  long increaseLikeCount(UUID feedId);
+  void indexAll(List<Feed> feeds);
 
-  long decreaseLikeCount(UUID feedId);
+  void indexById(UUID feedId);
 
-  long increaseCommentCount(UUID feedId);
+  void delete(UUID feedId);
 
-  List<Feed> findFeeds(
+  FeedSearchResult search(
       String cursor,
       UUID idAfter,
       int limit,
       SortBy sortBy,
       SortDirection sortDirection,
-      String keywordLike,
-      SkyStatus skyStatusEqual,
-      PrecipitationType precipitationTypeEqual,
-      UUID authorIdEqual
-  );
-
-  List<Feed> findFeedsByIds(List<UUID> feedIds);
-
-  long countFeeds(
       String keywordLike,
       SkyStatus skyStatusEqual,
       PrecipitationType precipitationTypeEqual,

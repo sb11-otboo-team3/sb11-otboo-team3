@@ -23,6 +23,7 @@ import com.otboo.domain.feed.core.exception.FeedUserNotFoundException;
 import com.otboo.domain.feed.core.exception.FeedWeatherNotFoundException;
 import com.otboo.domain.feed.core.mapper.FeedMapper;
 import com.otboo.domain.feed.core.repository.FeedRepository;
+import com.otboo.domain.feed.core.search.FeedSearchService;
 import com.otboo.domain.feed.like.repository.FeedLikeRepository;
 import com.otboo.domain.follow.repository.FollowRepository;
 import com.otboo.domain.notification.entity.NotificationLevel;
@@ -61,6 +62,7 @@ public class FeedCommandService {
   private final ApplicationEventPublisher eventPublisher;
   private final FollowRepository followRepository;
   private final FeedAuthorListCache feedAuthorListCache;
+  private final FeedSearchService feedSearchService;
   private final FeedMapper feedMapper;
   private final ObjectMapper objectMapper;
 
@@ -103,6 +105,7 @@ public class FeedCommandService {
     feedClothesRepository.saveAll(feedClothes);
 
     evictAuthorFeedsAfterCommit(author.getId());
+    indexFeedAfterCommit(savedFeed);
 
     followRepository.findFollowerIdsByFolloweeId(author.getId()).stream()
         .filter(followerId -> !followerId.equals(author.getId()))
@@ -134,6 +137,7 @@ public class FeedCommandService {
     feed.updateContent(request.content());
 
     evictAuthorFeedsAfterCommit(feed.getAuthor().getId());
+    indexFeedAfterCommit(feed);
 
     boolean likedByMe = feedLikeRepository.existsByFeedIdAndUserId(feedId, currentUserId);
 
@@ -152,6 +156,7 @@ public class FeedCommandService {
     feed.delete();
 
     evictAuthorFeedsAfterCommit(feed.getAuthor().getId());
+    deleteFeedIndexAfterCommit(feedId);
   }
 
   private FeedDto toFeedDto(Feed feed, boolean likedByMe) {
@@ -209,5 +214,37 @@ public class FeedCommandService {
     }
 
     evict.run();
+  }
+
+  private void indexFeedAfterCommit(Feed feed) {
+    Runnable index = () -> feedSearchService.index(feed);
+
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+          index.run();
+        }
+      });
+      return;
+    }
+
+    index.run();
+  }
+
+  private void deleteFeedIndexAfterCommit(UUID feedId) {
+    Runnable delete = () -> feedSearchService.delete(feedId);
+
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+          delete.run();
+        }
+      });
+      return;
+    }
+
+    delete.run();
   }
 }

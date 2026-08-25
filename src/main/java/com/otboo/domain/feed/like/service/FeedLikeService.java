@@ -5,6 +5,7 @@ import com.otboo.domain.feed.core.entity.Feed;
 import com.otboo.domain.feed.core.exception.FeedNotFoundException;
 import com.otboo.domain.feed.core.exception.FeedUserNotFoundException;
 import com.otboo.domain.feed.core.repository.FeedRepository;
+import com.otboo.domain.feed.core.search.FeedSearchService;
 import com.otboo.domain.feed.like.entity.FeedLike;
 import com.otboo.domain.feed.like.exception.DuplicateFeedLikeException;
 import com.otboo.domain.feed.like.exception.FeedLikeNotFoundException;
@@ -31,6 +32,7 @@ public class FeedLikeService {
   private final FeedRepository feedRepository;
   private final FeedLikeRepository feedLikeRepository;
   private final FeedAuthorListCache feedAuthorListCache;
+  private final FeedSearchService feedSearchService;
   private final ApplicationEventPublisher eventPublisher;
 
   @Transactional
@@ -45,7 +47,10 @@ public class FeedLikeService {
       FeedLike feedLike = FeedLike.create(feed, user);
       feedLikeRepository.saveAndFlush(feedLike);
       feedRepository.increaseLikeCount(feedId);
+
       evictAuthorFeedsAfterCommit(feed.getAuthor().getId());
+      indexFeedAfterCommit(feedId);
+
       if (!feed.getAuthor().getId().equals(currentUserId)) {
         eventPublisher.publishEvent(
             new NotificationEvent(
@@ -78,6 +83,7 @@ public class FeedLikeService {
     feedRepository.decreaseLikeCount(feedId);
 
     evictAuthorFeedsAfterCommit(feed.getAuthor().getId());
+    indexFeedAfterCommit(feedId);
   }
 
   private void evictAuthorFeedsAfterCommit(UUID authorId) {
@@ -94,5 +100,21 @@ public class FeedLikeService {
     }
 
     evict.run();
+  }
+
+  private void indexFeedAfterCommit(UUID feedId) {
+    Runnable index = () -> feedSearchService.indexById(feedId);
+
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+          index.run();
+        }
+      });
+      return;
+    }
+
+    index.run();
   }
 }
