@@ -1,5 +1,6 @@
 package com.otboo.global.config;
 
+import com.otboo.domain.clothes.llm.ClothesVisionTaggingClient;
 import com.otboo.domain.recommendation.llm.LlmOutfitClient;
 import io.netty.channel.ChannelOption;
 import java.time.Duration;
@@ -22,15 +23,26 @@ public class OpenRouterClientConfig {
             @Value("${openrouter.api-key}") String apiKey,
             @Value("${openrouter.model}") String model
     ) {
+        return new LlmOutfitClient(buildWebClient(baseUrl), apiKey, model);
+    }
+
+    @Bean
+    public ClothesVisionTaggingClient clothesVisionTaggingClient(
+            @Value("${openrouter.base-url}") String baseUrl,
+            @Value("${openrouter.api-key}") String apiKey,
+            @Value("${openrouter.vision-model}") String visionModel
+    ) {
+        return new ClothesVisionTaggingClient(buildWebClient(baseUrl), apiKey, visionModel);
+    }
+
+    private WebClient buildWebClient(String baseUrl) {
         HttpClient httpClient = HttpClient.create()
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) CONNECT_TIMEOUT.toMillis())
                 .responseTimeout(READ_TIMEOUT);
 
-        WebClient webClient = WebClient.builder()
+        return WebClient.builder()
                 .baseUrl(baseUrl)
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .build();
-
-        return new LlmOutfitClient(webClient, apiKey, model);
     }
 }
