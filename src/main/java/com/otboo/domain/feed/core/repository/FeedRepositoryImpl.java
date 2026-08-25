@@ -219,4 +219,21 @@ public class FeedRepositoryImpl implements FeedRepositoryCustom {
 
     return feed.id.desc();
   }
+
+  @Override
+  public List<Feed> findFeedsByIds(List<UUID> feedIds) {
+    if (feedIds == null || feedIds.isEmpty()) {
+      return List.of();
+    }
+
+    return queryFactory
+        .selectFrom(feed)
+        .join(feed.author).fetchJoin()
+        .join(feed.weather).fetchJoin()
+        .where(
+            feed.deletedAt.isNull(),
+            feed.id.in(feedIds)
+        )
+        .fetch();
+  }
 }

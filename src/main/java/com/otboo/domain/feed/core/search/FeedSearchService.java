@@ -11,6 +11,8 @@ public interface FeedSearchService {
 
   void index(Feed feed);
 
+  void indexById(UUID feedId);
+
   void delete(UUID feedId);
 
   FeedSearchResult search(

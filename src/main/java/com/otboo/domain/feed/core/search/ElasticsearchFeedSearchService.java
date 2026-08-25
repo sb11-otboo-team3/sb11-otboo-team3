@@ -5,18 +5,31 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otboo.domain.feed.core.dto.request.SortBy;
 import com.otboo.domain.feed.core.dto.request.SortDirection;
 import com.otboo.domain.feed.core.entity.Feed;
+import com.otboo.domain.feed.core.repository.FeedRepository;
+import com.otboo.domain.weather.dto.WeatherSummaryDto;
 import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.action.search.SearchRequest;
+import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.xcontent.XContentType;
+import org.elasticsearch.index.query.BoolQueryBuilder;
+import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.search.SearchHit;
+import org.elasticsearch.search.builder.SearchSourceBuilder;
+import org.elasticsearch.search.sort.FieldSortBuilder;
+import org.elasticsearch.search.sort.SortBuilders;
+import org.elasticsearch.search.sort.SortOrder;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -28,11 +41,13 @@ public class ElasticsearchFeedSearchService implements FeedSearchService {
 
   private final RestHighLevelClient searchClient;
   private final ObjectMapper objectMapper;
+  private final FeedRepository feedRepository;
 
   @Override
   public void index(Feed feed) {
-    // Feed Entity를 검색용 document로 변환
-    FeedSearchDocument document = FeedSearchDocument.from(feed);
+    WeatherSummaryDto weatherSummary = objectMapper.convertValue(feed.getWeatherSnapshot(), WeatherSummaryDto.class);
+
+    FeedSearchDocument document = FeedSearchDocument.from(feed, weatherSummary);
 
     String source;
     try {
@@ -59,6 +74,15 @@ public class ElasticsearchFeedSearchService implements FeedSearchService {
           exception
       );
     }
+  }
+
+  @Override
+  public void indexById(UUID feedId) {
+    feedRepository.findByIdAndDeletedAtIsNull(feedId)
+        .ifPresentOrElse(
+            this::index,
+            () -> delete(feedId)
+        );
   }
 
   @Override
@@ -89,6 +113,155 @@ public class ElasticsearchFeedSearchService implements FeedSearchService {
       PrecipitationType precipitationTypeEqual,
       UUID authorIdEqual
   ) {
-    throw new UnsupportedOperationException("피드 Elasticsearch 검색은 아직 구현되지 않았습니다.");
+    SearchSourceBuilder sourceBuilder = new SearchSourceBuilder()
+        .query(feedQuery(
+            keywordLike,
+            skyStatusEqual,
+            precipitationTypeEqual,
+            authorIdEqual
+        ))
+        .size(limit + 1)
+        .trackTotalHits(true);
+
+    sourceBuilder.sort(feedSort(sortBy, sortDirection));
+    sourceBuilder.sort(idSort(sortDirection));
+
+    Object[] searchAfter = searchAfterValues(cursor, idAfter, sortBy);
+
+    if (searchAfter != null) {
+      sourceBuilder.searchAfter(searchAfter);
+    }
+
+    SearchRequest request = new SearchRequest(INDEX_NAME)
+        .source(sourceBuilder);
+
+    SearchResponse response;
+    try {
+      response = searchClient.search(request, RequestOptions.DEFAULT);
+    } catch (IOException | ElasticsearchException exception) {
+      log.warn(
+          "피드 Elasticsearch 검색 실패 - DB 검색 fallback 필요, keywordLike={}",
+          keywordLike,
+          exception
+      );
+      throw new IllegalStateException("피드 Elasticsearch 검색 실패", exception);
+    }
+
+    SearchHit[] hits = response.getHits().getHits();
+    boolean hasNext = hits.length > limit;
+
+    List<SearchHit> pageHits = Arrays.stream(hits)
+        .limit(limit)
+        .toList();
+
+    List<UUID> feedIds = pageHits.stream()
+        .map(this::extractFeedId)
+        .toList();
+
+    String nextCursor = null;
+    UUID nextIdAfter = null;
+
+    if (hasNext && !pageHits.isEmpty()) {
+      FeedSearchDocument lastDocument = toDocument(pageHits.get(pageHits.size() - 1));
+
+      if (sortBy == SortBy.likeCount) {
+        nextCursor = String.valueOf(lastDocument.likeCount());
+      } else {
+        nextCursor = lastDocument.createdAt().toString();
+      }
+
+      nextIdAfter = lastDocument.id();
+    }
+
+    return new FeedSearchResult(
+        feedIds,
+        nextCursor,
+        nextIdAfter,
+        hasNext,
+        response.getHits().getTotalHits().value
+    );
+  }
+
+  private BoolQueryBuilder feedQuery(
+      String keywordLike,
+      SkyStatus skyStatusEqual,
+      PrecipitationType precipitationTypeEqual,
+      UUID authorIdEqual
+  ) {
+    BoolQueryBuilder query = QueryBuilders.boolQuery();
+
+    if (keywordLike == null || keywordLike.isBlank()) {
+      query.must(QueryBuilders.matchAllQuery());
+    } else {
+      query.must(QueryBuilders.matchQuery("content", keywordLike.trim()));
+    }
+
+    if (skyStatusEqual != null) {
+      query.filter(QueryBuilders.termQuery("skyStatus", skyStatusEqual.name()));
+    }
+
+    if (precipitationTypeEqual != null) {
+      query.filter(QueryBuilders.termQuery("precipitationType", precipitationTypeEqual.name()));
+    }
+
+    if (authorIdEqual != null) {
+      query.filter(QueryBuilders.termQuery("authorId", authorIdEqual.toString()));
+    }
+
+    return query;
+  }
+
+  private FieldSortBuilder feedSort(SortBy sortBy, SortDirection sortDirection) {
+    SortOrder order = toSortOrder(sortDirection);
+
+    if (sortBy == SortBy.likeCount) {
+      return SortBuilders.fieldSort("likeCount")
+          .order(order);
+    }
+
+    return SortBuilders.fieldSort("createdAt")
+        .order(order);
+  }
+
+  private FieldSortBuilder idSort(SortDirection sortDirection) {
+    return SortBuilders.fieldSort("id")
+        .order(toSortOrder(sortDirection));
+  }
+
+  private SortOrder toSortOrder(SortDirection sortDirection) {
+    if (sortDirection == SortDirection.ASCENDING) {
+      return SortOrder.ASC;
+    }
+
+    return SortOrder.DESC;
+  }
+
+  private Object[] searchAfterValues(String cursor, UUID idAfter, SortBy sortBy) {
+    if (cursor == null || cursor.isBlank() || idAfter == null) {
+      return null;
+    }
+
+    if (sortBy == SortBy.likeCount) {
+      return new Object[] {
+          Long.parseLong(cursor),
+          idAfter.toString()
+      };
+    }
+
+    return new Object[] {
+        cursor,
+        idAfter.toString()
+    };
+  }
+
+  private UUID extractFeedId(SearchHit hit) {
+    return toDocument(hit).id();
+  }
+
+  private FeedSearchDocument toDocument(SearchHit hit) {
+    return objectMapper.convertValue(
+        hit.getSourceAsMap(),
+        FeedSearchDocument.class
+    );
   }
 }

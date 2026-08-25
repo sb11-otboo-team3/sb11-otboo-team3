@@ -30,6 +30,8 @@ public interface FeedRepositoryCustom {
       UUID authorIdEqual
   );
 
+  List<Feed> findFeedsByIds(List<UUID> feedIds);
+
   long countFeeds(
       String keywordLike,
       SkyStatus skyStatusEqual,
