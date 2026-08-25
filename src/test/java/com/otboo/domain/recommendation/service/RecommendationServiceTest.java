@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.otboo.domain.clothes.entity.ClothesType;
 import com.otboo.domain.profile.entity.Profile;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -60,6 +62,12 @@ class RecommendationServiceTest {
     private RecommendationService service;
 
     private final User owner = User.create("test@otboo.io", "테스트", "encoded-password");
+
+    @BeforeEach
+    void setUp() {
+        // @Value 필드는 생성자 주입 대상이 아니라 InjectMocks로 자동 세팅되지 않으므로, 운영 기본값(true)을 명시적으로 맞춰준다.
+        ReflectionTestUtils.setField(service, "llmRecommendationEnabled", true);
+    }
 
     @Test
     void 프로필이_없으면_예외가_발생한다() {
@@ -241,6 +249,35 @@ class RecommendationServiceTest {
         //when & then
         assertThatThrownBy(() -> service.recommend(userId, unknownWeatherId))
                 .isInstanceOf(WeatherNotFoundException.class);
+    }
+
+    @Test
+    void LLM_추천이_꺼져있으면_캐시와_랭커를_전혀_호출하지_않고_폴백만_사용한다() {
+        //given
+        ReflectionTestUtils.setField(service, "llmRecommendationEnabled", false);
+
+        UUID userId = UUID.randomUUID();
+        Profile profile = Profile.createDefault(owner);
+        ReflectionTestUtils.setField(profile, "userId", userId);
+        ReflectionTestUtils.setField(profile, "latitude", 37.5);
+        ReflectionTestUtils.setField(profile, "longitude", 127.0);
+        ReflectionTestUtils.setField(profile, "temperatureSensitivity", 3);
+
+        UUID weatherId = UUID.randomUUID();
+        WeatherDto weatherDto = weatherDto(weatherId, 5.0, 10.0, PrecipitationType.NONE);
+
+        given(profileRepository.findById(userId)).willReturn(Optional.of(profile));
+        given(weatherService.getWeathers(37.5, 127.0)).willReturn(Mono.just(List.of(weatherDto)));
+        given(recommendationTransactionalService.recommend(userId, 5.0, 10.0, PrecipitationType.NONE, 3, Optional.empty()))
+                .willReturn(List.of());
+
+        //when
+        service.recommend(userId, weatherId);
+
+        //then
+        verifyNoInteractions(recommendationLlmCache, recommendationEngine, llmOutfitRanker);
+        verify(recommendationTransactionalService)
+                .recommend(userId, 5.0, 10.0, PrecipitationType.NONE, 3, Optional.empty());
     }
 
     private WeatherDto weatherDto(UUID id, double min, double max, PrecipitationType precipitationType) {

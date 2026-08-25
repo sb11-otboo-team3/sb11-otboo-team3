@@ -90,6 +90,9 @@ openrouter:
   model: test-model
   vision-model: test-vision-model
 
+recommendation:
+  llm-enabled: true
+
 app:
   # Client 생성만 하며 실제 Elasticsearch 접속은 발생하지 않는다.
   search:
