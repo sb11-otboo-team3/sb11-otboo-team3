@@ -23,6 +23,7 @@ import com.otboo.domain.clothes.exception.DuplicateClothesAttributeException;
 import com.otboo.domain.clothes.exception.InvalidClothesAttributeValueException;
 import com.otboo.domain.clothes.exception.InvalidClothesCursorException;
 import com.otboo.domain.clothes.exception.RequiredClothesAttributeMissingException;
+import com.otboo.domain.clothes.llm.ClothesAttributeAutoTagger;
 import com.otboo.domain.clothes.mapper.ClothesMapper;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeDefinitionRepository;
@@ -80,6 +81,9 @@ class ClothesServiceTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private ClothesAttributeAutoTagger clothesAttributeAutoTagger;
+
     private ClothesService service;
 
 
@@ -91,7 +95,7 @@ class ClothesServiceTest {
         );
         service = new ClothesService(
                 clothesRepository, clothesAttributeRepository, selectableValueRepository,
-                clothesMapper, writeService, fileStorage
+                clothesMapper, writeService, clothesAttributeAutoTagger, fileStorage
         );
     }
 
@@ -557,6 +561,41 @@ class ClothesServiceTest {
         verify(clothesRepository).save(captor.capture());
 
         assertThat(captor.getValue().getImageKey()).isEqualTo("clothes/" + userId + "/key.png");
+    }
+
+    @Test
+    void 이미지가_있고_필수_속성이_빠졌으면_자동_태깅된_속성이_병합되어_저장된다() {
+        //given
+        UUID userId = UUID.randomUUID();
+        User owner = User.create("test@otboo.io", "테스트", "encoded-password");
+        ClothesCreateRequest request = new ClothesCreateRequest(userId, "티셔츠", ClothesType.TOP, List.of());
+        MultipartFile image = new MockMultipartFile("image", "shirt.png", "image/png", "dummy".getBytes());
+        StoredFile storedFile = new StoredFile("clothes/" + userId + "/key.png", "image/png", 5L, null);
+
+        ClothesAttributeDefinition colorDefinition = new ClothesAttributeDefinition("색상");
+        ReflectionTestUtils.setField(colorDefinition, "id", UUID.randomUUID());
+        ClothesAttributeRequest taggedAttribute = new ClothesAttributeRequest(colorDefinition.getId(), "빨강");
+
+        given(fileStorage.upload(StorageDirectory.CLOTHES, userId, image)).willReturn(storedFile);
+        given(clothesAttributeAutoTagger.tagMissingRequiredAttributes(List.of(), "dummy".getBytes(), "image/png"))
+                .willReturn(List.of(taggedAttribute));
+        given(userRepository.findById(userId)).willReturn(Optional.of(owner));
+        given(clothesRepository.save(any(Clothes.class))).willAnswer(invocation -> invocation.getArgument(0));
+        given(definitionRepository.findByDeletedAtIsNullAndRequiredTrue()).willReturn(List.of(colorDefinition));
+        given(definitionRepository.findAllById(List.of(colorDefinition.getId()))).willReturn(List.of(colorDefinition));
+        given(selectableValueRepository.findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(any()))
+                .willReturn(List.of(new AttributeSelectableValue(colorDefinition, "빨강", 0)));
+        given(clothesAttributeRepository.save(any(ClothesAttribute.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        //when
+        service.create(userId, request, image);
+
+        //then
+        ArgumentCaptor<ClothesAttribute> captor = ArgumentCaptor.forClass(ClothesAttribute.class);
+        verify(clothesAttributeRepository).save(captor.capture());
+        assertThat(captor.getValue().getValue()).isEqualTo("빨강");
+        assertThat(captor.getValue().getDefinition()).isEqualTo(colorDefinition);
     }
 
     @Test
