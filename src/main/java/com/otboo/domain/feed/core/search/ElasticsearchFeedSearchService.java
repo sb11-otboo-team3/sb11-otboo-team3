@@ -20,6 +20,7 @@ import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.support.WriteRequest;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.xcontent.XContentType;
@@ -63,7 +64,8 @@ public class ElasticsearchFeedSearchService implements FeedSearchService {
 
     IndexRequest request = new IndexRequest(INDEX_NAME)
         .id(feed.getId().toString())
-        .source(source, XContentType.JSON);
+        .source(source, XContentType.JSON)
+        .setRefreshPolicy(WriteRequest.RefreshPolicy.WAIT_UNTIL);
 
     try {
       searchClient.index(request, RequestOptions.DEFAULT);
@@ -88,7 +90,8 @@ public class ElasticsearchFeedSearchService implements FeedSearchService {
   @Override
   public void delete(UUID feedId) {
     DeleteRequest request = new DeleteRequest(INDEX_NAME)
-        .id(feedId.toString());
+        .id(feedId.toString())
+        .setRefreshPolicy(WriteRequest.RefreshPolicy.WAIT_UNTIL);
 
     try {
       searchClient.delete(request, RequestOptions.DEFAULT);
