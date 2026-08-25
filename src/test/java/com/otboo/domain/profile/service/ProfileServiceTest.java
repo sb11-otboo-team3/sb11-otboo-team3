@@ -572,4 +572,38 @@ class ProfileServiceTest {
         "profiles/" + userId + "/orphan-key.png"
     );
   }
+
+  @Test
+  @DisplayName("원본 업로드는 성공했지만 썸네일 생성/업로드가 실패하면 원본을 정리한다")
+  void updateProfileCleansUpOriginalWhenThumbnailUploadFails() {
+    // given
+    UUID userId = UUID.randomUUID();
+    User user = User.create("thumbfail@otboo.io", "썸네일실패테스트", "encoded-password");
+    ReflectionTestUtils.setField(user, "id", userId);
+    Profile profile = Profile.createDefault(user);
+    ReflectionTestUtils.setField(profile, "userId", userId);
+
+    given(profileRepository.findById(userId))
+        .willReturn(Optional.of(profile));
+
+    ProfileUpdateRequest request = new ProfileUpdateRequest(null, null, null, null, null);
+    MultipartFile image = new MockMultipartFile(
+        "image", "test.png", "image/png", "dummy-content".getBytes()
+    );
+
+    // uploadWithThumbnail() 자체가 예외를 던지는 상황을 재현한다
+    // (예: 원본은 S3에 이미 올라갔지만, 썸네일 생성/업로드 단계에서 실패).
+    given(
+        fileStorage.uploadWithThumbnail(StorageDirectory.PROFILES, userId, image)
+    ).willThrow(new RuntimeException("썸네일 업로드 실패"));
+
+    // when & then
+    assertThatThrownBy(() -> profileService.updateProfile(userId, userId, request, image))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessage("썸네일 업로드 실패");
+
+    // uploadWithThumbnail() 자체가 예외를 던졌으므로 newImageKey는 확보되지 않았고,
+    // fileDeletionRetryService는 호출되지 않는다 (정리할 대상 자체가 없음).
+    verify(fileDeletionRetryService, never()).deleteWithRetry(any());
+  }
 }

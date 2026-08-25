@@ -64,27 +64,22 @@ public class ProfileService {
     String newImageKey = null;
     String newThumbnailKey = null;
 
-    if (image != null) {
-      StoredFile storedFile = fileStorage.uploadWithThumbnail(
-          StorageDirectory.PROFILES,
-          userId,
-          image
-      );
-
-      newImageKey = storedFile.objectKey();
-      newThumbnailKey = storedFile.thumbnailKey();
-    }
-
-    String resultImageKey =
-        newImageKey != null
-            ? newImageKey
-            : currentProfile.getImageKey();
-    String resultThumbnailKey =
-        newThumbnailKey != null
-            ? newThumbnailKey
-            : currentProfile.getThumbnailKey();
-
     try {
+      if (image != null) {
+        StoredFile storedFile = uploadImageSafely(userId, image);
+        newImageKey = storedFile.objectKey();
+        newThumbnailKey = storedFile.thumbnailKey();
+      }
+
+      String resultImageKey =
+          newImageKey != null
+              ? newImageKey
+              : currentProfile.getImageKey();
+      String resultThumbnailKey =
+          newThumbnailKey != null
+              ? newThumbnailKey
+              : currentProfile.getThumbnailKey();
+
       // 기존 이미지 삭제(AFTER_COMMIT) 및 새 이미지 정리(AFTER_ROLLBACK)는
       // ProfileUpdateTransactionalService가 FileReplacementEvent 발행을 통해 담당한다. (#108)
       return profileUpdateTransactionalService.update(
@@ -103,12 +98,35 @@ public class ProfileService {
           "낙관적 락 충돌로 프로필 갱신이 실패하여 신규 업로드 파일을 정리합니다.");
       throw new ProfileConcurrentUpdateException();
     } catch (RuntimeException e) {
-      // update() 진입 자체(예: 동시 삭제로 인한 findById 실패)를 포함해 어느 시점에
-      // 실패하더라도, 이벤트가 아예 등록되지 못했을 수 있으므로 여기서 한 번 더
-      // 새로 업로드한 파일을 직접 정리한다. (이벤트로 이미 정리된 경우와 중복될
-      // 수 있으나 S3 삭제는 멱등하므로 안전하다.)
+      // update() 진입 자체(예: 동시 삭제로 인한 findById 실패)뿐 아니라, 원본
+      // 업로드는 성공했지만 썸네일 생성/업로드가 실패한 경우(uploadWithThumbnail
+      // 자체에서 발생한 예외)까지 포함해 어느 시점에 실패하더라도, 여기서 한 번
+      // 더 새로 업로드한 파일을 직접 정리한다. (#256 - 기존에는 uploadWithThumbnail
+      // 호출이 try 블록 밖에 있어 이 케이스가 전혀 정리되지 않고 원본이 orphan으로
+      // 남는 문제가 있었음)
       cleanUpNewFiles(userId, newImageKey, newThumbnailKey, e,
           "프로필 갱신 실패로 신규 업로드 파일을 정리합니다.");
+      throw e;
+    }
+  }
+
+  private StoredFile uploadImageSafely(UUID userId, MultipartFile image) {
+    try {
+      return fileStorage.uploadWithThumbnail(StorageDirectory.PROFILES, userId, image);
+    } catch (RuntimeException e) {
+      // uploadWithThumbnail() 내부에서 원본 업로드는 성공했으나 썸네일
+      // 생성/업로드 단계에서 실패했을 가능성이 있다. 이 경우 원본의
+      // objectKey를 이 시점엔 알 수 없어(예외로 인해 반환값을 못 받음)
+      // 자동으로 정리할 수 없으므로, 운영자가 S3를 확인할 수 있도록
+      // 명확한 경고 로그를 남긴다. 근본적인 원자성 보장(원본 업로드 성공 +
+      // 썸네일 실패 시 원본 자동 롤백)은 FileStorage 계층(S3FileStorage)에서
+      // 다뤄야 하며, 별도 후속 작업으로 분리한다. (#256)
+      log.error(
+          "프로필 이미지 업로드 중 실패가 발생했습니다. 원본 이미지가 S3에 이미 "
+              + "업로드되었으나 추적되지 않는 상태로 남아있을 수 있습니다(orphan 의심). "
+              + "userId={}, fileName={}",
+          userId, image.getOriginalFilename(), e
+      );
       throw e;
     }
   }
