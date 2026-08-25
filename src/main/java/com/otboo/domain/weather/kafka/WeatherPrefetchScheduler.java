@@ -46,7 +46,7 @@ public class WeatherPrefetchScheduler {
 
   // 기상청 발표 시각(02,05,08,11,14,17,20,23시) + 15분마다 실행. zone을 명시해서 배포 환경의 서버 기본
   // TZ가 뭐든 항상 한국 시각 기준 발표+15분에 돌게 한다.
-  @Scheduled(cron = "${weather.prefetch.cron:0 15 5,8,11,14,17,20 * * *}", zone = "Asia/Seoul")
+  @Scheduled(cron = "${weather.prefetch.cron:0 15 2,5,8,11,14,17,20,23 * * *}", zone = "Asia/Seoul")
   // 서버 2대라 cron이 두 인스턴스에서 동시에 발화할 수 있음 - ShedLock으로 한 인스턴스만 실제로 발행하게 함.
   @SchedulerLock(name = "weatherPrefetchJob", lockAtMostFor = "PT30M", lockAtLeastFor = "PT30S")
   public void publishActiveGrids() {
