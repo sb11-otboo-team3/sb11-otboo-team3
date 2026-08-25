@@ -10,9 +10,9 @@ import com.otboo.global.security.oauth2.HttpCookieOAuth2AuthorizationRequestRepo
 import com.otboo.global.security.oauth2.OAuth2LoginFailureHandler;
 import com.otboo.global.security.oauth2.OAuth2LoginSuccessHandler;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -46,7 +46,7 @@ public class SecurityConfig {
   @Bean
   public SecurityFilterChain securityFilterChain(
       HttpSecurity http,
-      Environment environment,
+      @Value("${security.actuator.prometheus-public:false}") boolean actuatorPrometheusPublic,
       JwtProvider jwtProvider,
       UserRepository userRepository,
       ObjectProvider<CustomOAuth2UserService> customOAuth2UserServiceProvider,
@@ -103,10 +103,8 @@ public class SecurityConfig {
                   "/v3/api-docs/**"
               ).permitAll();
 
-          // 로컬 프로메테우스(compose.yaml)가 인증 없이 스크래핑할 수 있게 로컬 프로필에서만 허용.
-          // 운영은 계속 인증 필요(anyRequest().authenticated()로 막힘) - MSK/actuator 노출 범위는
-          // 네트워크 계층(VPC 내부망)에서 별도로 관리한다.
-          if (environment.matchesProfiles("local")) {
+          // 로컬 프로메테우스가 인증 없이 스크래핑하도록 application-local.yaml에서만 켬(기본값 false).
+          if (actuatorPrometheusPublic) {
             auth.requestMatchers(HttpMethod.GET, "/actuator/prometheus").permitAll();
           }
 

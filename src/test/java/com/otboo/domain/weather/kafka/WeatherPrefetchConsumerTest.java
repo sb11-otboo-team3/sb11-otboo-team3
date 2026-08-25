@@ -133,6 +133,22 @@ class WeatherPrefetchConsumerTest {
   }
 
   @Test
+  @DisplayName("기상청 응답 자체가 없으면(null) 아무것도 저장하지 않고 수집 성공으로 세지도 않는다")
+  void consume_nullResponse_doesNothing() throws Exception {
+    Grid grid = gridOf(60, 127);
+    VilageFcstBaseTime baseTime = new VilageFcstBaseTime(LocalDate.of(2026, 8, 25), LocalTime.of(2, 0));
+
+    given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.of(grid));
+    given(baseTimeResolver.resolve(any(LocalDateTime.class))).willReturn(baseTime);
+    given(kmaWeatherClient.getForecast(60, 127, baseTime)).willReturn(Mono.empty());
+
+    weatherPrefetchConsumer.consume(payloadOf(60, 127));
+
+    verify(weatherPersister, never()).persist(any(), any());
+    assertThat(meterRegistry.counter("weather.prefetch.grid.collected").count()).isZero();
+  }
+
+  @Test
   @DisplayName("메시지의 격자를 찾을 수 없으면 예외를 던진다")
   void consume_gridNotFound_throwsException() throws Exception {
     given(gridRepository.findByXAndY(60, 127)).willReturn(Optional.empty());
