@@ -1131,6 +1131,21 @@ concurrency:
 
 따라서 실행 중인 배포를 완료한 뒤 가장 최신 Git SHA를 후속 배포하는 정책으로 운영합니다.
 
+또한 각 Workflow는 이미지 Build 및 ECS 배포 전에
+자신의 Git SHA가 현재 `develop` HEAD와 동일한지 다시 확인합니다.
+
+따라서 이전 Commit Workflow가 늦게 실행되거나 재실행되더라도
+최신 `develop`보다 오래된 이미지가 운영 ECS Service를 덮어쓰지 않도록 차단합니다.
+
+```text
+Workflow Git SHA == 현재 develop HEAD
+→ 계속 진행
+
+Workflow Git SHA != 현재 develop HEAD
+→ stale 실행으로 판단
+→ 이미지 Build 또는 ECS 배포 차단
+```
+
 ### 자동 배포 검증 기준
 
 Issue #131은 `develop` Merge 후 실제 Workflow에서 다음 항목을 검증합니다.

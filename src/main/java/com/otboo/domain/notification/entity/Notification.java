@@ -10,7 +10,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.time.Instant;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -20,36 +20,63 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class Notification extends BaseEntity {
 
-  @ManyToOne(fetch = FetchType.LAZY, optional = false)
-  @JoinColumn(name = "receiver_id", nullable = false)
-  private User receiver;
+    @Column(name = "event_id", nullable = false, unique = true, updatable = false)
+    private UUID eventId;
 
-  @Column(name = "title", nullable = false, length = 255)
-  private String title;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "receiver_id", nullable = false)
+    private User receiver;
 
-  @Column(name = "content", nullable = false, columnDefinition = "TEXT")
-  private String content;
+    @Column(name = "title", nullable = false, length = 255)
+    private String title;
 
-  @Enumerated(EnumType.STRING)
-  @Column(name = "level", nullable = false, length = 20)
-  private NotificationLevel level;
+    @Column(name = "content", nullable = false, columnDefinition = "TEXT")
+    private String content;
 
-  private Notification(
-      User receiver,
-      String title,
-      String content,
-      NotificationLevel level) {
-    this.receiver = receiver;
-    this.title = title;
-    this.content = content;
-    this.level = level;
-  }
+    @Enumerated(EnumType.STRING)
+    @Column(name = "level", nullable = false, length = 20)
+    private NotificationLevel level;
 
-  public static Notification create(
-      User user,
-      String title,
-      String content,
-      NotificationLevel level) {
-    return new Notification(user, title, content, level);
-  }
+    private Notification(
+            UUID eventId,
+            User receiver,
+            String title,
+            String content,
+            NotificationLevel level) {
+        this.eventId = eventId;
+        this.receiver = receiver;
+        this.title = title;
+        this.content = content;
+        this.level = level;
+    }
+
+    public static Notification create(
+            UUID eventId,
+            User user,
+            String title,
+            String content,
+            NotificationLevel level) {
+        return new Notification(
+                eventId,
+                user,
+                title,
+                content,
+                level
+        );
+    }
+
+    public static Notification create(
+            User user,
+            String title,
+            String content,
+            NotificationLevel level
+    ) {
+        return new Notification(
+                UUID.randomUUID(),
+                user,
+                title,
+                content,
+                level
+        );
+    }
 }

@@ -6,7 +6,15 @@
       "Principal": {
         "Service": "ecs-tasks.amazonaws.com"
       },
-      "Action": "sts:AssumeRole"
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "ArnLike": {
+          "aws:SourceArn": "arn:aws:ecs:ap-northeast-2:310567229825:*"
+        },
+        "StringEquals": {
+          "aws:SourceAccount": "310567229825"
+        }
+      }
     }
   ]
 }

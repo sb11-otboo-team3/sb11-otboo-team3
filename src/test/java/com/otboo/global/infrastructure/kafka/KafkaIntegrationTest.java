@@ -98,6 +98,22 @@ class KafkaIntegrationTest {
         assertThat(sentToDlt).isTrue();
         assertThat(dltKafkaConsumer.getMessage()).isEqualTo(message);
         assertThat(dltKafkaConsumer.getPartition()).isEqualTo(partition);
+
+        String nextMessage = "kafka-after-dlt-test";
+
+        kafkaTemplate.send(
+                FAILURE_TOPIC,
+                partition,
+                null,
+                nextMessage
+        ).get(5, TimeUnit.SECONDS);
+
+        boolean nextMessageConsumed =
+                failingKafkaConsumer.awaitNextMessage(5, TimeUnit.SECONDS);
+
+        assertThat(nextMessageConsumed).isTrue();
+        assertThat(failingKafkaConsumer.getSuccessfulMessage())
+                .isEqualTo(nextMessage);
     }
 
     @TestConfiguration
@@ -150,15 +166,25 @@ class KafkaIntegrationTest {
 
         private final AtomicInteger attemptCount = new AtomicInteger();
 
+        private final CountDownLatch nextMessageLatch = new CountDownLatch(1);
+
+        private final AtomicReference<String> successfulMessage =
+                new AtomicReference<>();
+
         @KafkaListener(
                 topics = FAILURE_TOPIC,
                 groupId = "otboo-kafka-retry-test-consumer"
         )
         void consume(String payload) {
-            attemptCount.incrementAndGet();
-            latch.countDown();
+            if ("kafka-retry-test".equals(payload)) {
+                attemptCount.incrementAndGet();
+                latch.countDown();
 
-            throw new IllegalStateException("Kafka 재시도 검증용 예외");
+                throw new IllegalStateException("Kafka 재시도 검증용 예외");
+            }
+
+            successfulMessage.set(payload);
+            nextMessageLatch.countDown();
         }
 
         boolean await(long timeout, TimeUnit timeUnit) throws InterruptedException {
@@ -167,6 +193,15 @@ class KafkaIntegrationTest {
 
         int getAttemptCount() {
             return attemptCount.get();
+        }
+
+        boolean awaitNextMessage(long timeout, TimeUnit timeUnit)
+                throws InterruptedException {
+            return nextMessageLatch.await(timeout, timeUnit);
+        }
+
+        String getSuccessfulMessage() {
+            return successfulMessage.get();
         }
     }
 

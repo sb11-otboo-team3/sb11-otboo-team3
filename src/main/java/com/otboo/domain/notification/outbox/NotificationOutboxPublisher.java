@@ -15,54 +15,55 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class NotificationOutboxPublisher {
 
-  private static final int PUBLISH_BATCH_SIZE = 10;
-  private static final int MAX_RETRY_COUNT = 3;
+    private static final int PUBLISH_BATCH_SIZE = 10;
+    private static final int MAX_RETRY_COUNT = 3;
 
-  private final NotificationOutboxRepository notificationOutboxRepository;
-  private final NotificationKafkaProducer notificationKafkaProducer;
+    private final NotificationOutboxRepository notificationOutboxRepository;
+    private final NotificationKafkaProducer notificationKafkaProducer;
 
-  @Scheduled(fixedDelayString = "${app.notification.outbox.publish-delay-ms:3000}")
-  @SchedulerLock(
-      name = "notificationOutboxPublisher",
-      lockAtMostFor = "PT2M",
-      lockAtLeastFor = "PT1S"
-  )
-  @Transactional
-  public void publishPending() {
-    List<NotificationOutbox> outboxes =
-        notificationOutboxRepository.findPendingOrderByCreatedAtAsc(PUBLISH_BATCH_SIZE);
+    @Scheduled(fixedDelayString = "${app.notification.outbox.publish-delay-ms:3000}")
+    @SchedulerLock(
+            name = "notificationOutboxPublisher",
+            lockAtMostFor = "PT2M",
+            lockAtLeastFor = "PT1S"
+    )
+    @Transactional
+    public void publishPending() {
+        List<NotificationOutbox> outboxes =
+                notificationOutboxRepository.findPendingOrderByCreatedAtAsc(PUBLISH_BATCH_SIZE);
 
-    for (NotificationOutbox outbox : outboxes) {
-      publish(outbox);
+        for (NotificationOutbox outbox : outboxes) {
+            publish(outbox);
+        }
     }
-  }
 
-  private void publish(NotificationOutbox outbox) {
-    NotificationCreatedMessage message = new NotificationCreatedMessage(
-        outbox.getReceiverId(),
-        outbox.getTitle(),
-        outbox.getContent(),
-        outbox.getLevel(),
-        outbox.getOccurredAt()
-    );
+    private void publish(NotificationOutbox outbox) {
+        NotificationCreatedMessage message = new NotificationCreatedMessage(
+                outbox.getId(),
+                outbox.getReceiverId(),
+                outbox.getTitle(),
+                outbox.getContent(),
+                outbox.getLevel(),
+                outbox.getOccurredAt()
+        );
 
-    try {
-      notificationKafkaProducer.send(message);
-      outbox.markPublished();
-    } catch (Exception exception) {
-      if (outbox.getRetryCount() + 1 >= MAX_RETRY_COUNT) {
-        outbox.markFailed();
-      } else {
-        outbox.markRetry();
-      }
+        try {
+            notificationKafkaProducer.send(message);
+            outbox.markPublished();
+        } catch (Exception exception) {
+            if (outbox.getRetryCount() + 1 >= MAX_RETRY_COUNT) {
+                outbox.markFailed();
+            } else {
+                outbox.markRetry();
+            }
 
-      log.warn(
-          "알림 Outbox Kafka 발행 실패: outboxId={}, retryCount={}, status={}",
-          outbox.getId(),
-          outbox.getRetryCount(),
-          outbox.getStatus(),
-          exception
-      );
+            log.warn(
+                    "알림 Outbox Kafka 발행 실패: outboxId={}, retryCount={}, status={}",
+                    outbox.getId(),
+                    outbox.getRetryCount(),
+                    outbox.getStatus(),
+                    exception
+            );
+        }
     }
-  }
 }
