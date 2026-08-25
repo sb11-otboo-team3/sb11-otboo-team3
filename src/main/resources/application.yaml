@@ -76,6 +76,14 @@ kma:
   vilage-fcst:
     api-key: ${KMA_API_KEY}
     base-url: https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0
+openrouter:
+  api-key: ${OPENROUTER_API_KEY}
+  base-url: https://openrouter.ai/api/v1
+  model: ${OPENROUTER_MODEL:nvidia/nemotron-3.5-lightning:free}
+  vision-model: ${OPENROUTER_VISION_MODEL:dots-studio/dots-3-note-preview:free}
+
+recommendation:
+  llm-enabled: ${RECOMMENDATION_LLM_ENABLED:true}
 app:
   websocket:
     allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://localhost:3000,http://localhost:8080}

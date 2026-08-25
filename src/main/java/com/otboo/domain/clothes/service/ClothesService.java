@@ -1,11 +1,13 @@
 package com.otboo.domain.clothes.service;
 
+import com.otboo.domain.clothes.dto.request.ClothesAttributeRequest;
 import com.otboo.domain.clothes.dto.request.ClothesCreateRequest;
 import com.otboo.domain.clothes.dto.request.ClothesUpdateRequest;
 import com.otboo.domain.clothes.dto.response.ClothesListResponse;
 import com.otboo.domain.clothes.dto.response.ClothesResponse;
 import com.otboo.domain.clothes.entity.*;
 import com.otboo.domain.clothes.exception.*;
+import com.otboo.domain.clothes.llm.ClothesAttributeAutoTagger;
 import com.otboo.domain.clothes.mapper.ClothesMapper;
 import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeRepository;
@@ -14,17 +16,20 @@ import com.otboo.global.infrastructure.storage.FileStorage;
 import com.otboo.global.infrastructure.storage.StorageDirectory;
 import com.otboo.global.infrastructure.storage.StoredFile;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ClothesService {
@@ -36,6 +41,7 @@ public class ClothesService {
     private final AttributeSelectableValueRepository selectableValueRepository;
     private final ClothesMapper clothesMapper;
     private final ClothesWriteTransactionalService clothesWriteTransactionalService;
+    private final ClothesAttributeAutoTagger clothesAttributeAutoTagger;
     private final FileStorage fileStorage;
 
     public ClothesResponse create(UUID currentUserId, ClothesCreateRequest request, MultipartFile image) {
@@ -44,12 +50,40 @@ public class ClothesService {
         }
 
         String imageKey = null;
+        ClothesCreateRequest requestToSave = request;
         if (image != null && !image.isEmpty()) {
             StoredFile storedFile = fileStorage.upload(StorageDirectory.CLOTHES, currentUserId, image);
             imageKey = storedFile.objectKey();
+
+            requestToSave = mergeWithAutoTaggedAttributes(request, image);
         }
 
-        return clothesWriteTransactionalService.create(request, imageKey);
+        return clothesWriteTransactionalService.create(requestToSave, imageKey);
+    }
+
+    private ClothesCreateRequest mergeWithAutoTaggedAttributes(ClothesCreateRequest request, MultipartFile image) {
+        List<ClothesAttributeRequest> providedAttributes =
+                request.attributes() == null ? List.of() : request.attributes();
+
+        byte[] imageBytes;
+        try {
+            imageBytes = image.getBytes();
+        } catch (IOException e) {
+            log.warn("이미지 바이트 읽기 실패, 자동 태깅 없이 진행합니다.", e);
+            return request;
+        }
+
+        List<ClothesAttributeRequest> taggedAttributes = clothesAttributeAutoTagger
+                .tagMissingRequiredAttributes(providedAttributes, imageBytes, image.getContentType());
+
+        if (taggedAttributes.isEmpty()) {
+            return request;
+        }
+
+        List<ClothesAttributeRequest> mergedAttributes = new ArrayList<>(providedAttributes);
+        mergedAttributes.addAll(taggedAttributes);
+
+        return new ClothesCreateRequest(request.ownerId(), request.name(), request.type(), mergedAttributes);
     }
 
     public ClothesResponse update(UUID currentUserId, UUID clothesId, ClothesUpdateRequest request, MultipartFile image) {
@@ -139,8 +173,7 @@ public class ClothesService {
         long totalCount = clothesRepository.countClothes(ownerId, typeEqual);
 
         return new ClothesListResponse(
-                data, nextCursor, nextIdAfter, hasNext, totalCount, "createdAt",
-                "DESCENDING");
+                data, nextCursor, nextIdAfter, hasNext, totalCount, "createdAt","DESCENDING");
     }
 
     private Instant parseCursor(String cursor, UUID idAfter) {

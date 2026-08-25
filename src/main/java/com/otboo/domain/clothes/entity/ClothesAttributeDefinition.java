@@ -12,6 +12,9 @@ public class ClothesAttributeDefinition extends SoftDeletableEntity {
     @Column(nullable = false, unique = true, length = 100)
     private String name;
 
+    @Column(nullable = false)
+    private boolean required;
+
     protected ClothesAttributeDefinition() {
     }
 
@@ -23,7 +26,15 @@ public class ClothesAttributeDefinition extends SoftDeletableEntity {
         return name;
     }
 
+    public boolean isRequired() {
+        return required;
+    }
+
     public void updateName(String name) {
         this.name = name;
+    }
+
+    public void updateRequired(boolean required) {
+        this.required = required;
     }
 }

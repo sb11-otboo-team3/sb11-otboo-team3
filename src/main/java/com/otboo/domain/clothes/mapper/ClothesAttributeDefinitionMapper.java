@@ -22,6 +22,7 @@ public class ClothesAttributeDefinitionMapper {
                 definition.getId(),
                 definition.getName(),
                 values,
+                definition.isRequired(),
                 definition.getCreatedAt()
         );
     }

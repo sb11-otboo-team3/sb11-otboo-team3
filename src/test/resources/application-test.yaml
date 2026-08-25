@@ -84,6 +84,15 @@ kma:
     api-key: test-api-key
     base-url: https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0
 
+openrouter:
+  api-key: test-api-key
+  base-url: https://openrouter.ai/api/v1
+  model: test-model
+  vision-model: test-vision-model
+
+recommendation:
+  llm-enabled: true
+
 app:
   # Client 생성만 하며 실제 Elasticsearch 접속은 발생하지 않는다.
   search:

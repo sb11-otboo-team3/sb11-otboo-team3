@@ -56,6 +56,8 @@ public class ClothesWriteTransactionalService {
         List<ClothesAttributeRequest> attributeRequests =
                 request.attributes() == null ? List.of() : request.attributes();
 
+        validateRequiredAttributes(attributeRequests);
+
         Map<UUID, ClothesAttributeDefinition> definitionById = resolveDefinitions(attributeRequests);
         Map<UUID, List<String>> activeValuesByDefinitionId = resolveActiveValues(definitionById.values());
         List<ClothesAttribute> attributes = saveAttributes(clothes, attributeRequests, definitionById,
@@ -90,8 +92,11 @@ public class ClothesWriteTransactionalService {
         // 기존과 동일한 (clothes_id, definition_id) 조합을 다시 저장할 때 유니크 제약 위반이 발생한다.
         clothesAttributeRepository.flush();
 
+
         List<ClothesAttributeRequest> attributeRequests =
                 request.attributes() == null ? List.of() : request.attributes();
+
+        validateRequiredAttributes(attributeRequests);
 
         Map<UUID, ClothesAttributeDefinition> definitionById =
                 resolveDefinitions(attributeRequests);
@@ -101,6 +106,27 @@ public class ClothesWriteTransactionalService {
                 saveAttributes(clothes, attributeRequests, definitionById, activeValuesByDefinitionId);
 
         return clothesMapper.toResponse(clothes, attributes, activeValuesByDefinitionId);
+    }
+
+    private void validateRequiredAttributes(List<ClothesAttributeRequest> attributeRequests) {
+        List<ClothesAttributeDefinition> requiredDefinitions =
+                definitionRepository.findByDeletedAtIsNullAndRequiredTrue();
+        if (requiredDefinitions.isEmpty()) {
+            return;
+        }
+
+        Set<UUID> providedDefinitionIds = attributeRequests.stream()
+                .map(ClothesAttributeRequest::definitionId)
+                .collect(Collectors.toSet());
+
+        List<String> missingNames = requiredDefinitions.stream()
+                .filter(definition -> !providedDefinitionIds.contains(definition.getId()))
+                .map(ClothesAttributeDefinition::getName)
+                .toList();
+
+        if (!missingNames.isEmpty()) {
+            throw new RequiredClothesAttributeMissingException(missingNames);
+        }
     }
 
     private Map<UUID, ClothesAttributeDefinition> resolveDefinitions(

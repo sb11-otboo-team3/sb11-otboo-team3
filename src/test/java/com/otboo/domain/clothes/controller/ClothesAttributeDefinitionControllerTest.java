@@ -55,8 +55,7 @@ class ClothesAttributeDefinitionControllerTest {
     @WithMockUser(roles = "USER")
     void 목록_조회는_인증만_되면_200을_반환한다() throws Exception {
         // given
-        ClothesAttributeDefinitionResponse response = new ClothesAttributeDefinitionResponse(
-                UUID.randomUUID(), "색상", List.of("빨강", "파랑"), Instant.now());
+        ClothesAttributeDefinitionResponse response = new ClothesAttributeDefinitionResponse(UUID.randomUUID(), "색상", List.of("빨강", "파랑"), false, Instant.now());
         given(clothesAttributeDefinitionService.getList("createdAt", "ASCENDING", null))
                 .willReturn(List.of(response));
 
@@ -74,9 +73,8 @@ class ClothesAttributeDefinitionControllerTest {
     void 관리자가_등록하면_201을_반환한다() throws Exception {
         // given
         ClothesAttributeDefinitionRequest request =
-                new ClothesAttributeDefinitionRequest("색상", List.of("빨강"));
-        ClothesAttributeDefinitionResponse response = new ClothesAttributeDefinitionResponse(
-                UUID.randomUUID(), "색상", List.of("빨강"), Instant.now());
+                new ClothesAttributeDefinitionRequest("색상", List.of("빨강"), false);
+        ClothesAttributeDefinitionResponse response = new ClothesAttributeDefinitionResponse(UUID.randomUUID(), "색상", List.of("빨강"), false, Instant.now());
         given(clothesAttributeDefinitionService.create(any(ClothesAttributeDefinitionRequest.class)))
                 .willReturn(response);
 
@@ -94,7 +92,7 @@ class ClothesAttributeDefinitionControllerTest {
     void 일반_사용자가_등록하면_403을_반환한다() throws Exception {
         // given
         ClothesAttributeDefinitionRequest request =
-                new ClothesAttributeDefinitionRequest("색상", List.of("빨강"));
+                new ClothesAttributeDefinitionRequest("색상", List.of("빨강"), false);
 
         // when & then
         mockMvc.perform(post("/api/clothes/attribute-defs")
@@ -109,7 +107,7 @@ class ClothesAttributeDefinitionControllerTest {
     void 이름이_빈_문자열이면_400을_반환한다() throws Exception {
         // given
         ClothesAttributeDefinitionRequest request =
-                new ClothesAttributeDefinitionRequest("   ", List.of());
+                new ClothesAttributeDefinitionRequest("   ", List.of(), false);
 
         // when & then
         mockMvc.perform(post("/api/clothes/attribute-defs")
@@ -124,7 +122,7 @@ class ClothesAttributeDefinitionControllerTest {
     void 이미_등록된_이름이면_400을_반환한다() throws Exception {
         // given
         ClothesAttributeDefinitionRequest request =
-                new ClothesAttributeDefinitionRequest("색상", List.of());
+                new ClothesAttributeDefinitionRequest("색상", List.of(), false);
         given(clothesAttributeDefinitionService.create(any(ClothesAttributeDefinitionRequest.class)))
                 .willThrow(new DuplicateAttributeDefinitionNameException("색상"));
 
@@ -142,9 +140,8 @@ class ClothesAttributeDefinitionControllerTest {
         // given
         UUID definitionId = UUID.randomUUID();
         ClothesAttributeDefinitionRequest request =
-                new ClothesAttributeDefinitionRequest("톤", List.of("네이비"));
-        ClothesAttributeDefinitionResponse response = new ClothesAttributeDefinitionResponse(
-                definitionId, "톤", List.of("네이비"), Instant.now());
+                new ClothesAttributeDefinitionRequest("톤", List.of("네이비"), false);
+        ClothesAttributeDefinitionResponse response = new ClothesAttributeDefinitionResponse(definitionId, "톤", List.of("네이비"), false, Instant.now());
         given(clothesAttributeDefinitionService.update(eq(definitionId), any(ClothesAttributeDefinitionRequest.class)))
                 .willReturn(response);
 
@@ -163,7 +160,7 @@ class ClothesAttributeDefinitionControllerTest {
         // given
         UUID definitionId = UUID.randomUUID();
         ClothesAttributeDefinitionRequest request =
-                new ClothesAttributeDefinitionRequest("톤", List.of());
+                new ClothesAttributeDefinitionRequest("톤", List.of(), false);
         given(clothesAttributeDefinitionService.update(eq(definitionId), any(ClothesAttributeDefinitionRequest.class)))
                 .willThrow(new ClothesAttributeDefinitionNotFoundException(definitionId));
 

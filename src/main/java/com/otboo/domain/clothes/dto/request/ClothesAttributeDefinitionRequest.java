@@ -6,6 +6,7 @@ import java.util.List;
 public record ClothesAttributeDefinitionRequest(
         @NotBlank
         String name,
-        List<@NotBlank String> selectableValues
+        List<@NotBlank String> selectableValues,
+        boolean required
 ) {
 }

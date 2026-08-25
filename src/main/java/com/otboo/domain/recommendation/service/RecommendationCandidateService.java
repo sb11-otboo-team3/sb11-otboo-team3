@@ -22,4 +22,8 @@ public class RecommendationCandidateService {
         return candidates.stream()
                 .collect(Collectors.groupingBy(Clothes::getType));
     }
+
+    public List<Clothes> getByIds(List<UUID> clothesIds) {
+        return clothesRepository.findByIdInAndDeletedAtIsNull(clothesIds);
+    }
 }
