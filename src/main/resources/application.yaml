@@ -79,6 +79,9 @@ kma:
 app:
   websocket:
     allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://localhost:3000,http://localhost:8080}
+  search:
+    connect-timeout: 3s
+    socket-timeout: 5s
   storage:
     s3:
       region: ${AWS_REGION:ap-northeast-2}

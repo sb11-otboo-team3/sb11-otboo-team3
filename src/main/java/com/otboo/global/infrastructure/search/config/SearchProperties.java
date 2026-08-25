@@ -1,6 +1,10 @@
 package com.otboo.global.infrastructure.search.config;
 
+import java.time.Duration;
+
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -9,7 +13,13 @@ import org.springframework.validation.annotation.Validated;
 public record SearchProperties(
 
         @NotBlank(message = "검색 엔드포인트는 필수입니다.")
-        String endpoint
+        String endpoint,
+
+        @NotNull(message = "검색 연결 타임아웃은 필수입니다.")
+        Duration connectTimeout,
+
+        @NotNull(message = "검색 응답 타임아웃은 필수입니다.")
+        Duration socketTimeout
 
 ) {
 }

@@ -15,10 +15,21 @@ public class SearchConfig {
     public RestHighLevelClient searchClient(
             SearchProperties searchProperties
     ) {
+        int connectTimeoutMillis =
+                Math.toIntExact(searchProperties.connectTimeout().toMillis());
+
+        int socketTimeoutMillis =
+                Math.toIntExact(searchProperties.socketTimeout().toMillis());
+
         return new RestHighLevelClient(
                 RestClient.builder(
-                        HttpHost.create(searchProperties.endpoint())
-                )
+                                HttpHost.create(searchProperties.endpoint())
+                        )
+                        .setRequestConfigCallback(requestConfigBuilder ->
+                                requestConfigBuilder
+                                        .setConnectTimeout(connectTimeoutMillis)
+                                        .setSocketTimeout(socketTimeoutMillis)
+                        )
         );
     }
 }

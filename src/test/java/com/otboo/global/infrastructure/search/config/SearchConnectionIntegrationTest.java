@@ -20,7 +20,9 @@ class SearchConnectionIntegrationTest {
             new ApplicationContextRunner()
                     .withUserConfiguration(SearchConfig.class)
                     .withPropertyValues(
-                            "app.search.endpoint=http://localhost:9200"
+                            "app.search.endpoint=http://localhost:9200",
+                            "app.search.connect-timeout=3s",
+                            "app.search.socket-timeout=5s"
                     );
 
     @Test
