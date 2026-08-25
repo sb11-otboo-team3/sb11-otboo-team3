@@ -26,6 +26,7 @@ import com.otboo.domain.feed.core.dto.response.FeedDto;
 import com.otboo.domain.feed.core.entity.Feed;
 import com.otboo.domain.feed.core.mapper.FeedMapper;
 import com.otboo.domain.feed.core.repository.FeedRepository;
+import com.otboo.domain.feed.core.search.FeedSearchService;
 import com.otboo.domain.feed.like.repository.FeedLikeRepository;
 import com.otboo.domain.follow.repository.FollowRepository;
 import com.otboo.domain.user.entity.User;
@@ -88,6 +89,9 @@ class FeedCommandServiceTest {
 
   @Mock
   private FeedAuthorListCache feedAuthorListCache;
+
+  @Mock
+  private FeedSearchService feedSearchService;
 
   @Spy
   private ObjectMapper objectMapper = new ObjectMapper();

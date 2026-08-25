@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 import com.otboo.domain.feed.core.cache.FeedAuthorListCache;
+import com.otboo.domain.feed.core.search.FeedSearchService;
 import com.otboo.domain.notification.event.NotificationEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import com.otboo.domain.feed.core.exception.FeedNotFoundException;
@@ -51,6 +52,9 @@ class FeedLikeServiceTest {
 
   @Mock
   private FeedAuthorListCache feedAuthorListCache;
+
+  @Mock
+  private FeedSearchService feedSearchService;
 
   @Spy
   private ObjectMapper objectMapper = new ObjectMapper();

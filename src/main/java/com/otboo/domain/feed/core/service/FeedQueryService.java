@@ -9,7 +9,6 @@ import com.otboo.domain.clothes.repository.AttributeSelectableValueRepository;
 import com.otboo.domain.clothes.repository.ClothesAttributeRepository;
 import com.otboo.domain.feed.clothes.entity.FeedClothes;
 import com.otboo.domain.feed.clothes.repository.FeedClothesRepository;
-import com.otboo.domain.feed.comment.exception.InvalidFeedCommentCursorException;
 import com.otboo.domain.feed.core.cache.FeedAuthorListCache;
 import com.otboo.domain.feed.core.dto.request.SortBy;
 import com.otboo.domain.feed.core.dto.request.SortDirection;
@@ -19,12 +18,16 @@ import com.otboo.domain.feed.core.entity.Feed;
 import com.otboo.domain.feed.core.exception.InvalidFeedCursorException;
 import com.otboo.domain.feed.core.mapper.FeedMapper;
 import com.otboo.domain.feed.core.repository.FeedRepository;
+import com.otboo.domain.feed.core.search.FeedSearchResult;
+import com.otboo.domain.feed.core.search.FeedSearchService;
 import com.otboo.domain.feed.like.repository.FeedLikeRepository;
 import com.otboo.domain.weather.dto.WeatherSummaryDto;
 import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -45,6 +48,7 @@ public class FeedQueryService {
   private final ClothesAttributeRepository clothesAttributeRepository;
   private final AttributeSelectableValueRepository attributeSelectableValueRepository;
   private final FeedAuthorListCache feedAuthorListCache;
+  private final FeedSearchService feedSearchService;
   private final FeedMapper feedMapper;
   private final ObjectMapper objectMapper;
 
@@ -62,7 +66,6 @@ public class FeedQueryService {
   ) {
     validateCursor(cursor, idAfter, sortBy);
 
-    // 피드 목록 조회를 Redis 캐시 대상으로 할지 판단
     boolean cacheableAuthorFeeds = authorIdEqual != null
         && keywordLike == null
         && skyStatusEqual == null
@@ -82,6 +85,25 @@ public class FeedQueryService {
 
       if (cachedResponse.isPresent()) {
         return cachedResponse.get();
+      }
+    }
+
+    if (keywordLike != null && !keywordLike.isBlank()) {
+      try {
+        return getFeedsBySearch(
+            cursor,
+            idAfter,
+            limit,
+            sortBy,
+            sortDirection,
+            keywordLike,
+            skyStatusEqual,
+            precipitationTypeEqual,
+            authorIdEqual,
+            currentUserId
+        );
+      } catch (IllegalStateException exception) {
+        // Elasticsearch 검색 실패 시 기존 DB 검색으로 fallback
       }
     }
 
@@ -153,7 +175,58 @@ public class FeedQueryService {
     return response;
   }
 
-  // cursor와 idAfter는 둘 다 있거나 둘 다 없어야 함
+  private FeedDtoCursorResponse getFeedsBySearch(
+      String cursor,
+      UUID idAfter,
+      int limit,
+      SortBy sortBy,
+      SortDirection sortDirection,
+      String keywordLike,
+      SkyStatus skyStatusEqual,
+      PrecipitationType precipitationTypeEqual,
+      UUID authorIdEqual,
+      UUID currentUserId
+  ) {
+    FeedSearchResult searchResult = feedSearchService.search(
+        cursor,
+        idAfter,
+        limit,
+        sortBy,
+        sortDirection,
+        keywordLike,
+        skyStatusEqual,
+        precipitationTypeEqual,
+        authorIdEqual
+    );
+
+    List<Feed> feeds = feedRepository.findFeedsByIds(searchResult.feedIds());
+    feeds = sortBySearchResultOrder(feeds, searchResult.feedIds());
+
+    List<FeedDto> data = toFeedDtos(feeds, currentUserId);
+
+    return new FeedDtoCursorResponse(
+        data,
+        searchResult.nextCursor(),
+        searchResult.nextIdAfter(),
+        searchResult.hasNext(),
+        searchResult.totalCount(),
+        sortBy.name(),
+        sortDirection.name()
+    );
+  }
+
+  private List<Feed> sortBySearchResultOrder(List<Feed> feeds, List<UUID> feedIds) {
+    Map<UUID, Integer> orderByFeedId = new HashMap<>();
+
+    for (int i = 0; i < feedIds.size(); i++) {
+      orderByFeedId.put(feedIds.get(i), i);
+    }
+
+    return feeds.stream()
+        .sorted(Comparator.comparing(feed -> orderByFeedId.get(feed.getId())))
+        .toList();
+  }
+
   private void validateCursor(String cursor, UUID idAfter, SortBy sortBy) {
     boolean hasCursor = cursor != null && !cursor.isBlank();
     boolean hasIdAfter = idAfter != null;
