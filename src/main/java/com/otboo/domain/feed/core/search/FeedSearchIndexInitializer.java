@@ -44,50 +44,72 @@ public class FeedSearchIndexInitializer implements ApplicationRunner {
     CreateIndexRequest request = new CreateIndexRequest(INDEX_NAME);
 
     request.source("""
-        {
-          "settings": {
-            "number_of_shards": 1,
-            "number_of_replicas": 0,
-            "analysis": {
-              "analyzer": {
-                "korean_text_analyzer": {
-                  "type": "custom",
-                  "tokenizer": "standard",
-                  "filter": [
-                    "lowercase"
-                  ]
-                }
-              }
+    {
+      "settings": {
+        "number_of_shards": 1,
+        "number_of_replicas": 0,
+        "index": {
+          "max_ngram_diff": 19
+        },
+        "analysis": {
+          "tokenizer": {
+            "feed_content_ngram_tokenizer": {
+              "type": "ngram",
+              "min_gram": 1,
+              "max_gram": 20,
+              "token_chars": [
+                "letter",
+                "digit"
+              ]
             }
           },
-          "mappings": {
-            "properties": {
-              "id": {
-                "type": "keyword"
-              },
-              "authorId": {
-                "type": "keyword"
-              },
-              "content": {
-                "type": "text",
-                "analyzer": "korean_text_analyzer"
-              },
-              "skyStatus": {
-                "type": "keyword"
-              },
-              "precipitationType": {
-                "type": "keyword"
-              },
-              "createdAt": {
-                "type": "date"
-              },
-              "likeCount": {
-                "type": "long"
-              }
+          "analyzer": {
+            "feed_content_index_analyzer": {
+              "type": "custom",
+              "tokenizer": "feed_content_ngram_tokenizer",
+              "filter": [
+                "lowercase"
+              ]
+            },
+            "feed_content_search_analyzer": {
+              "type": "custom",
+              "tokenizer": "standard",
+              "filter": [
+                "lowercase"
+              ]
             }
           }
         }
-        """, XContentType.JSON);
+      },
+      "mappings": {
+        "properties": {
+          "id": {
+            "type": "keyword"
+          },
+          "authorId": {
+            "type": "keyword"
+          },
+          "content": {
+            "type": "text",
+            "analyzer": "feed_content_index_analyzer",
+            "search_analyzer": "feed_content_search_analyzer"
+          },
+          "skyStatus": {
+            "type": "keyword"
+          },
+          "precipitationType": {
+            "type": "keyword"
+          },
+          "createdAt": {
+            "type": "date"
+          },
+          "likeCount": {
+            "type": "long"
+          }
+        }
+      }
+    }
+    """, XContentType.JSON);
 
     searchClient.indices().create(request, RequestOptions.DEFAULT);
 

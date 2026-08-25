@@ -200,6 +200,11 @@ public class FeedQueryService {
     );
 
     List<Feed> feeds = feedRepository.findFeedsByIds(searchResult.feedIds());
+
+    if (feeds.size() != searchResult.feedIds().size()) {
+      throw new IllegalStateException("Elasticsearch 검색 결과와 DB 조회 결과가 일치하지 않습니다.");
+    }
+
     feeds = sortBySearchResultOrder(feeds, searchResult.feedIds());
 
     List<FeedDto> data = toFeedDtos(feeds, currentUserId);
