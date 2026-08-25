@@ -2,7 +2,8 @@ package com.otboo.domain.weather.kafka;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -66,8 +67,10 @@ class WeatherPrefetchSchedulerTest {
     given(clock.instant()).willReturn(Instant.now(), Instant.now());
     given(activeGridFinder.findActiveGrids())
         .willReturn(List.of(gridOf(60, 127), gridOf(61, 128), gridOf(62, 129)));
-    willThrow(new IllegalStateException("발행 실패"))
-        .given(weatherPrefetchProducer).send(new GridForecastRequestedMessage(61, 128));
+    // 나머지 두 격자는 stub 안 된 인자로 호출되는데, strict stub 모드에서 "다른 인자로 이미 stub된
+    // 메서드를 호출했다"고 오탐(PotentialStubbingProblem)하는 걸 막기 위해 lenient 처리.
+    lenient().doThrow(new IllegalStateException("발행 실패"))
+        .when(weatherPrefetchProducer).send(new GridForecastRequestedMessage(61, 128));
 
     weatherPrefetchScheduler.publishActiveGrids();
 
