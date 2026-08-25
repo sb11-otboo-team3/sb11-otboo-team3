@@ -42,6 +42,7 @@ class WeatherPrefetchSchedulerTest {
     meterRegistry = new SimpleMeterRegistry();
     weatherPrefetchScheduler = new WeatherPrefetchScheduler(
         activeGridFinder, weatherPrefetchProducer, meterRegistry, clock);
+    weatherPrefetchScheduler.registerActiveGridCountGauge();
   }
 
   private Grid gridOf(int x, int y) {
@@ -106,5 +107,34 @@ class WeatherPrefetchSchedulerTest {
     assertThat(timer).isNotNull();
     assertThat(timer.count()).isEqualTo(1);
     assertThat(timer.totalTime(TimeUnit.SECONDS)).isEqualTo(7.0);
+  }
+
+  @Test
+  @DisplayName("이번 실행에서 조회된 활성 격자 수를 게이지로 기록한다")
+  void recordsActiveGridCountGauge() {
+    given(clock.instant()).willReturn(Instant.now(), Instant.now());
+    given(activeGridFinder.findActiveGrids())
+        .willReturn(List.of(gridOf(60, 127), gridOf(61, 128), gridOf(62, 129)));
+
+    weatherPrefetchScheduler.publishActiveGrids();
+
+    assertThat(meterRegistry.get("weather.prefetch.active.grid.count").gauge().value())
+        .isEqualTo(3.0);
+  }
+
+  @Test
+  @DisplayName("여러 번 실행하면 게이지는 가장 최근 실행 값으로 갱신된다")
+  void activeGridCountGauge_reflectsLatestRun() {
+    given(clock.instant()).willReturn(
+        Instant.now(), Instant.now(), Instant.now(), Instant.now());
+    given(activeGridFinder.findActiveGrids())
+        .willReturn(List.of(gridOf(60, 127), gridOf(61, 128)))
+        .willReturn(List.of(gridOf(60, 127)));
+
+    weatherPrefetchScheduler.publishActiveGrids();
+    weatherPrefetchScheduler.publishActiveGrids();
+
+    assertThat(meterRegistry.get("weather.prefetch.active.grid.count").gauge().value())
+        .isEqualTo(1.0);
   }
 }

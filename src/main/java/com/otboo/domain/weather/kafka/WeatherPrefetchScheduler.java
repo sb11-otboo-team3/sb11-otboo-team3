@@ -2,11 +2,14 @@ package com.otboo.domain.weather.kafka;
 
 import com.otboo.domain.weather.entity.Grid;
 import com.otboo.domain.weather.util.ActiveGridFinder;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PostConstruct;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
@@ -23,11 +26,23 @@ public class WeatherPrefetchScheduler {
   private static final String PUBLISHED_COUNTER = "weather.prefetch.publish.count";
   private static final String PUBLISH_FAILED_COUNTER = "weather.prefetch.publish.failed";
   private static final String PUBLISH_DURATION_TIMER = "weather.prefetch.publish.duration";
+  private static final String ACTIVE_GRID_COUNT_GAUGE = "weather.prefetch.active.grid.count";
 
   private final ActiveGridFinder activeGridFinder;
   private final WeatherPrefetchProducer weatherPrefetchProducer;
   private final MeterRegistry meterRegistry;
   private final Clock clock;
+
+  // 누적 카운터가 아니라 "가장 최근 실행 시점" 값이라 Gauge로 발행한다 - WeatherPrefetchMetricsListener의
+  // 실패율 게이지와 같은 이유(예전 배치 정리 참고).
+  private final AtomicInteger activeGridCount = new AtomicInteger(0);
+
+  @PostConstruct
+  public void registerActiveGridCountGauge() {
+    Gauge.builder(ACTIVE_GRID_COUNT_GAUGE, activeGridCount, AtomicInteger::get)
+        .description("가장 최근 프리페치 실행 시점의 활성 격자 수")
+        .register(meterRegistry);
+  }
 
   // 기상청 발표 시각(02,05,08,11,14,17,20,23시) + 15분마다 실행. zone을 명시해서 배포 환경의 서버 기본
   // TZ가 뭐든 항상 한국 시각 기준 발표+15분에 돌게 한다.
@@ -37,6 +52,7 @@ public class WeatherPrefetchScheduler {
   public void publishActiveGrids() {
     Instant start = clock.instant();
     List<Grid> activeGrids = activeGridFinder.findActiveGrids();
+    activeGridCount.set(activeGrids.size());
     log.info("날씨 프리페치 발행 대상 활성 격자 수: {}", activeGrids.size());
 
     long published = 0;
