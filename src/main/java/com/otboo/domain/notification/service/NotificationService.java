@@ -31,8 +31,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @Transactional(readOnly = true)
 public class NotificationService {
 
-  // 1시간
-  private static final long SSE_TIMEOUT = 60L * 60L * 1000L;
+  // 장시간 SSE 연결 유지를 위해 서버 자체 timeout을 사용하지 않음
+  private static final long SSE_TIMEOUT = 0L;
   // 알림 재전송 상한 100개
   private static final int SSE_REPLAY_LIMIT = 100;
 

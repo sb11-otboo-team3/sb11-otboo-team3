@@ -6,6 +6,11 @@ spring:
   mvc:
     async:
       request-timeout: 3600000
+  task:
+    scheduling:
+      pool:
+        size: 4
+      thread-name-prefix: otboo-scheduler-
   jpa:
     open-in-view: false
   security:
@@ -83,6 +88,10 @@ app:
     init-password: ${ADMIN_INIT_PASSWORD}
   oauth2:
     redirect-uri: ${OAUTH2_REDIRECT_URI:http://localhost:5173/oauth2/redirect}
+  weather:
+    diff:
+      announcement-temp-threshold: ${WEATHER_DIFF_ANNOUNCEMENT_TEMP_THRESHOLD:5.0}
+      daily-temp-rate-threshold-per-hour: ${WEATHER_DIFF_DAILY_TEMP_RATE_THRESHOLD_PER_HOUR:3.0}
 logging:
   pattern:
     level: "%5p [requestId:%X{requestId}] [userId:%X{userId}]"

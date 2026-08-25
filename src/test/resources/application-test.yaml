@@ -104,6 +104,11 @@ app:
   oauth2:
     redirect-uri: http://localhost:5173/oauth2/redirect
 
+  weather:
+    diff:
+      announcement-temp-threshold: 5.0
+      daily-temp-rate-threshold-per-hour: 3.0
+
 logging:
   level:
     root: WARN

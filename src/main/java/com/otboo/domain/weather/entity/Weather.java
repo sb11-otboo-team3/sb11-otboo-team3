@@ -111,7 +111,8 @@ public class Weather extends BaseEntity {
     this.windSpeed = windSpeed;
   }
 
-  // dailyTemperatureMin/Max는 이 row 하나만으론 계산할 수 없음(그날 다른 슬롯들을 모아야 함) - 호출부에서 집계해서 넘겨줌
+  // dailyTemperatureMin/Max는 이 row 하나만으론 계산할 수 없음(그날 다른 슬롯들을 모아야 함) - 호출부에서 집계해서 넘겨줌.
+  // average도 마찬가지로 이 row 하나론 못 구하지만 호출부가 안 넘겨주니 current로 대체(DailyForecastSelector 참고).
   public WeatherSummaryDto toSummaryDto(double dailyTemperatureMin, double dailyTemperatureMax) {
     return new WeatherSummaryDto(
         getId(),
@@ -121,7 +122,8 @@ public class Weather extends BaseEntity {
             orElseZero(temperatureCurrent),
             orElseZero(temperatureComparedToDayBefore),
             dailyTemperatureMin,
-            dailyTemperatureMax
+            dailyTemperatureMax,
+            orElseZero(temperatureCurrent)
         )
     );
   }
@@ -144,7 +146,9 @@ public class Weather extends BaseEntity {
             orElseZero(temperatureCurrent),
             orElseZero(temperatureComparedToDayBefore),
             orElseZero(temperatureMin != null ? temperatureMin : temperatureCurrent),
-            orElseZero(temperatureMax != null ? temperatureMax : temperatureCurrent)
+            orElseZero(temperatureMax != null ? temperatureMax : temperatureCurrent),
+            // 이 슬롯 하나론 하루 평균을 못 구함 - 일별 대표값 선정(DailyForecastSelector)에서 실제로 채워짐.
+            orElseZero(temperatureCurrent)
         ),
         new WindSpeedDto(correctedWindSpeed, WindStrength.fromSpeed(correctedWindSpeed))
     );

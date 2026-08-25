@@ -10,6 +10,7 @@ import static org.mockito.Mockito.mock;
 
 import com.otboo.global.infrastructure.storage.StorageDirectory;
 import com.otboo.global.infrastructure.storage.StoredFile;
+import com.otboo.global.infrastructure.storage.ThumbnailGenerator;
 import com.otboo.global.infrastructure.storage.config.S3Properties;
 import com.otboo.global.infrastructure.storage.exception.UnsupportedStorageFileTypeException;
 import com.otboo.global.infrastructure.storage.validation.ImageFileValidator;
@@ -53,11 +54,19 @@ class S3FileStorageTest {
     private static final String BUCKET = "test-storage-bucket";
     private static final long PRESIGNED_URL_EXPIRATION_SECONDS = 600L;
     private static final long MAX_FILE_SIZE_BYTES = 10L * 1024 * 1024;
-    private static final byte[] JPEG_BYTES = {
-            (byte) 0xFF,
-            (byte) 0xD8,
-            (byte) 0xFF
-    };
+    private static final byte[] JPEG_BYTES = createDummyJpegBytes();
+
+    private static byte[] createDummyJpegBytes() {
+        try {
+            java.awt.image.BufferedImage image =
+                new java.awt.image.BufferedImage(10, 10, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(image, "jpg", outputStream);
+            return outputStream.toByteArray();
+        } catch (java.io.IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     private static final UUID OWNER_ID =
             UUID.fromString("11111111-1111-1111-1111-111111111111");
@@ -92,13 +101,15 @@ class S3FileStorageTest {
 
         S3ObjectKeyGenerator objectKeyGenerator =
                 new S3ObjectKeyGenerator(() -> OBJECT_ID);
+        ThumbnailGenerator thumbnailGenerator = new ThumbnailGenerator();
 
         s3FileStorage = new S3FileStorage(
                 s3Client,
                 s3Presigner,
                 s3Properties,
                 imageFileValidator,
-                objectKeyGenerator
+                objectKeyGenerator,
+                thumbnailGenerator
         );
     }
 
@@ -134,22 +145,23 @@ class S3FileStorageTest {
         // then
         assertThat(result.objectKey()).isEqualTo(OBJECT_KEY);
         assertThat(result.contentType()).isEqualTo("image/jpeg");
-        assertThat(result.size()).isEqualTo(3L);
+        assertThat(result.size()).isEqualTo(JPEG_BYTES.length);
+        assertThat(result.thumbnailKey()).isNull();
 
         ArgumentCaptor<PutObjectRequest> requestCaptor =
-                ArgumentCaptor.forClass(PutObjectRequest.class);
+            ArgumentCaptor.forClass(PutObjectRequest.class);
 
-        verify(s3Client).putObject(
-                requestCaptor.capture(),
-                any(RequestBody.class)
+        // 원본만 업로드하므로 1회만 호출된다.
+        verify(s3Client, org.mockito.Mockito.times(1)).putObject(
+            requestCaptor.capture(),
+            any(RequestBody.class)
         );
 
         PutObjectRequest request = requestCaptor.getValue();
-
         assertThat(request.bucket()).isEqualTo(BUCKET);
         assertThat(request.key()).isEqualTo(OBJECT_KEY);
         assertThat(request.contentType()).isEqualTo("image/jpeg");
-        assertThat(request.contentLength()).isEqualTo(3L);
+        assertThat(request.contentLength()).isEqualTo(JPEG_BYTES.length);
     }
 
     @Test
@@ -476,5 +488,96 @@ class S3FileStorageTest {
         );
 
         verifyNoInteractions(s3Client);
+    }
+
+    @Test
+    @DisplayName("uploadWithThumbnail 호출 시 원본과 썸네일을 함께 S3에 저장하고 두 Object Key를 모두 반환한다")
+    void uploadWithThumbnailStoresOriginalAndThumbnail() throws Exception {
+        // given
+        MockMultipartFile image = new MockMultipartFile(
+            "image",
+            "profile.jpg",
+            "image/jpeg",
+            JPEG_BYTES
+        );
+
+        given(
+            s3Client.putObject(
+                any(PutObjectRequest.class),
+                any(RequestBody.class)
+            )
+        ).willReturn(
+            PutObjectResponse.builder()
+                .eTag("test-etag")
+                .build()
+        );
+
+        // when
+        StoredFile result = s3FileStorage.uploadWithThumbnail(
+            StorageDirectory.PROFILES,
+            OWNER_ID,
+            image
+        );
+
+        // then
+        assertThat(result.objectKey()).isEqualTo(OBJECT_KEY);
+        assertThat(result.contentType()).isEqualTo("image/jpeg");
+        assertThat(result.size()).isEqualTo(JPEG_BYTES.length);
+        assertThat(result.thumbnailKey()).isNotNull();
+
+        // 원본 업로드 1회 + 썸네일 업로드 1회, 총 2회 호출된다.
+        verify(s3Client, org.mockito.Mockito.times(2)).putObject(
+            any(PutObjectRequest.class),
+            any(RequestBody.class)
+        );
+    }
+
+    @Test
+    @DisplayName("WEBP 이미지는 uploadWithThumbnail을 호출해도 썸네일 없이 원본만 저장된다")
+    void uploadWithThumbnailSkipsThumbnailForWebp() throws Exception {
+        // given
+        byte[] webpBytes = createDummyWebpBytes();
+        MockMultipartFile image = new MockMultipartFile(
+            "image",
+            "profile.webp",
+            "image/webp",
+            webpBytes
+        );
+
+        given(
+            s3Client.putObject(
+                any(PutObjectRequest.class),
+                any(RequestBody.class)
+            )
+        ).willReturn(
+            PutObjectResponse.builder()
+                .eTag("test-etag")
+                .build()
+        );
+
+        // when
+        StoredFile result = s3FileStorage.uploadWithThumbnail(
+            StorageDirectory.PROFILES,
+            OWNER_ID,
+            image
+        );
+
+        // then
+        assertThat(result.thumbnailKey()).isNull();
+
+        // 썸네일을 생성하지 않으므로 원본만 1회 업로드된다.
+        verify(s3Client, org.mockito.Mockito.times(1)).putObject(
+            any(PutObjectRequest.class),
+            any(RequestBody.class)
+        );
+    }
+
+    private byte[] createDummyWebpBytes() {
+        // RIFF....WEBP 최소 시그니처 (ImageContentType.matchesSignature 통과용)
+        return new byte[]{
+            0x52, 0x49, 0x46, 0x46,  // "RIFF"
+            0x00, 0x00, 0x00, 0x00,  // 파일 크기 (더미, 실제로 안 씀)
+            0x57, 0x45, 0x42, 0x50   // "WEBP"
+        };
     }
 }

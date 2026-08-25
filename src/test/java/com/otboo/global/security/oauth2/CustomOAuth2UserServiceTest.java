@@ -67,26 +67,24 @@ class CustomOAuth2UserServiceTest {
   }
 
   @Test
-  @DisplayName("연동 이력은 없지만 이메일이 같은 기존 계정이 있으면 자동으로 연동한다")
-  void linkOrCreateUserLinksToExistingAccountByEmail() {
+  @DisplayName("이메일이 같은 기존 계정이 있어도 자동으로 연동하지 않고 새 계정을 생성한다")
+  void createNewUserEvenWhenEmailMatchesExistingAccount() {
     // given
-    User existingUser = User.create("same@otboo.io", "기존유저", "encoded-password");
-    UUID userId = UUID.randomUUID();
-    ReflectionTestUtils.setField(existingUser, "id", userId);
-
     OAuth2UserInfo userInfo = fakeUserInfo("google-id-2", "same@otboo.io", "새이름");
 
     given(oAuthAccountRepository.findByProviderAndProviderUserId(OAuthProvider.GOOGLE, "google-id-2"))
         .willReturn(Optional.empty());
-    given(userRepository.findByEmail("same@otboo.io")).willReturn(Optional.of(existingUser));
+    given(passwordEncoder.encode(any())).willReturn("encoded-random-password");
+    given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
 
     // when
     User result = customOAuth2UserService.findOrCreateUser(OAuthProvider.GOOGLE, userInfo);
 
-    // then
-    assertThat(result).isEqualTo(existingUser);
+    // then: 실제 이메일이 아니라 Provider별 가상 이메일로 신규 생성된다.
+    assertThat(result.getEmail()).contains("google-id-2").contains("google.otboo.io");
+    verify(userRepository, never()).findByEmail(any());
+    verify(userRepository).save(any(User.class));
     verify(oAuthAccountRepository).save(any(OAuthAccount.class));
-    verify(userRepository, never()).save(any());
   }
 
   @Test
@@ -97,15 +95,14 @@ class CustomOAuth2UserServiceTest {
 
     given(oAuthAccountRepository.findByProviderAndProviderUserId(OAuthProvider.GOOGLE, "google-id-3"))
         .willReturn(Optional.empty());
-    given(userRepository.findByEmail("brand-new@otboo.io")).willReturn(Optional.empty());
     given(passwordEncoder.encode(any())).willReturn("encoded-random-password");
     given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
 
     // when
     User result = customOAuth2UserService.findOrCreateUser(OAuthProvider.GOOGLE, userInfo);
 
-    // then
-    assertThat(result.getEmail()).isEqualTo("brand-new@otboo.io");
+    // then: 이제 실제 이메일이 아니라 항상 Provider별 가상 이메일을 사용한다.
+    assertThat(result.getEmail()).contains("google-id-3").contains("google.otboo.io");
     verify(userRepository).save(any(User.class));
     verify(oAuthAccountRepository).save(any(OAuthAccount.class));
   }

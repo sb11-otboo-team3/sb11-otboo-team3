@@ -66,7 +66,7 @@ class ProfileControllerTest {
     LocationDto location = new LocationDto(37.5, 127.0, 60, 127, List.of("서울특별시", "강남구"));
     ProfileDto response = new ProfileDto(
         userId, "테스트유저", null, LocalDate.of(2000, 1, 1),
-        location, 3, "https://example.com/image.jpg"
+        location, 3, "https://example.com/image.jpg", "https://example.com/thumbnail.jpg"
     );
     given(profileService.getProfile(userId, userId)).willReturn(response);
 
@@ -112,7 +112,7 @@ class ProfileControllerTest {
     LocationDto location = new LocationDto(37.5, 127.0, 60, 127, List.of("서울특별시", "강남구", "역삼동"));
     ProfileDto response = new ProfileDto(
         userId, "새이름", Gender.MALE, LocalDate.of(1995, 5, 5),
-        location, 3, null
+        location, 3, null, null
     );
     given(profileService.updateProfile(any(UUID.class), any(UUID.class), any(ProfileUpdateRequest.class), any()))
         .willReturn(response);
@@ -244,7 +244,7 @@ class ProfileControllerTest {
     LocationDto location = new LocationDto(null, null, null, null, List.of());
     ProfileDto response = new ProfileDto(
         userId, "이미지테스트", null, null, location, null,
-        "https://example.com/uploaded-image.jpg"
+        "https://example.com/uploaded-image.jpg", "https://example.com/uploaded-thumbnail.jpg"
     );
     given(profileService.updateProfile(any(UUID.class), any(UUID.class), any(ProfileUpdateRequest.class), any()))
         .willReturn(response);

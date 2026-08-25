@@ -16,8 +16,8 @@ public class DirectMessageCleanupScheduler {
   private final JobLauncher jobLauncher;
   private final Job directMessageCleanupJob;
 
-  // 매일 새벽 2시 삭제
-  @Scheduled(cron = "0 0 2 * * *")
+  // 매일 21시 15분 삭제
+  @Scheduled(cron = "0 15 21 * * *", zone = "Asia/Seoul")
   public void runDirectMessageCleanupJob() throws Exception {
     JobParameters jobParameters = new JobParametersBuilder()
         .addLocalDateTime("runAt", LocalDateTime.now())

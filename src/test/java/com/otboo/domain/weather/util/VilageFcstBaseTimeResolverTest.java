@@ -1,6 +1,7 @@
 package com.otboo.domain.weather.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -80,5 +81,55 @@ class VilageFcstBaseTimeResolverTest {
     // then
     assertThat(result.baseDate()).isEqualTo(LocalDate.of(2026, 7, 29));
     assertThat(result.baseTime()).isEqualTo(LocalTime.of(23, 0));
+  }
+
+  @Test
+  @DisplayName("다음 발표시각을 구하면 같은 날의 한 슬롯 뒤를 반환한다")
+  void nextReturnsNextSlotOnSameDay() {
+    // given
+    VilageFcstBaseTime current = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(11, 0));
+
+    // when
+    VilageFcstBaseTime result = resolver.next(current);
+
+    // then
+    assertThat(result.baseDate()).isEqualTo(LocalDate.of(2026, 7, 30));
+    assertThat(result.baseTime()).isEqualTo(LocalTime.of(14, 0));
+  }
+
+  @Test
+  @DisplayName("다음 발표시각이 하루의 마지막 슬롯(23시)이면 다음날의 첫 슬롯(02시)을 반환한다")
+  void nextReturnsNextDayFirstSlotWhenAtLastSlot() {
+    // given
+    VilageFcstBaseTime current = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(23, 0));
+
+    // when
+    VilageFcstBaseTime result = resolver.next(current);
+
+    // then
+    assertThat(result.baseDate()).isEqualTo(LocalDate.of(2026, 7, 31));
+    assertThat(result.baseTime()).isEqualTo(LocalTime.of(2, 0));
+  }
+
+  @Test
+  @DisplayName("목록에 없는 발표시각으로 이전 발표시각을 구하면 조용히 값을 지어내지 않고 예외를 던진다")
+  void previousThrowsWhenBaseTimeIsUnknown() {
+    // given
+    VilageFcstBaseTime current = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(9, 30));
+
+    // when & then
+    assertThatThrownBy(() -> resolver.previous(current))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  @DisplayName("목록에 없는 발표시각으로 다음 발표시각을 구하면 조용히 값을 지어내지 않고 예외를 던진다")
+  void nextThrowsWhenBaseTimeIsUnknown() {
+    // given
+    VilageFcstBaseTime current = new VilageFcstBaseTime(LocalDate.of(2026, 7, 30), LocalTime.of(9, 30));
+
+    // when & then
+    assertThatThrownBy(() -> resolver.next(current))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 }

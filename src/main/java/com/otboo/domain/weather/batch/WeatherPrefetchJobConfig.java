@@ -2,10 +2,7 @@ package com.otboo.domain.weather.batch;
 
 import com.otboo.domain.weather.entity.Grid;
 import com.otboo.domain.weather.exception.KmaApiException;
-import com.otboo.domain.weather.repository.GridRepository;
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
+import com.otboo.domain.weather.util.ActiveGridFinder;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,7 +33,6 @@ import org.springframework.transaction.PlatformTransactionManager;
 @RequiredArgsConstructor
 public class WeatherPrefetchJobConfig {
 
-  private static final Duration ACTIVE_WINDOW = Duration.ofDays(3);
   // 격자 하나 처리 자체가 무거운 작업(기상청 네트워크 호출 + 재시도)이라, 여러 개를 묶어서 커밋 오버헤드를
   // 줄이는 이점보다 격자 단위로 바로바로 병렬 처리하는 이점이 커서 청크 크기를 1로 잡는다.
   private static final int CHUNK_SIZE = 1;
@@ -50,8 +46,7 @@ public class WeatherPrefetchJobConfig {
   private static final long BACKOFF_MAX_INTERVAL_MS = 2000;
   private static final double BACKOFF_MULTIPLIER = 2.0;
 
-  private final GridRepository gridRepository;
-  private final Clock clock;
+  private final ActiveGridFinder activeGridFinder;
 
   @Bean
   public Job weatherPrefetchJob(
@@ -70,9 +65,8 @@ public class WeatherPrefetchJobConfig {
   @Bean
   @StepScope
   public ListItemReader<Grid> activeGridReader() {
-    Instant threshold = clock.instant().minus(ACTIVE_WINDOW);
-    List<Grid> activeGrids = gridRepository.findByLastRequestedAtAfter(threshold);
-    log.info("날씨 프리패치 대상 활성 격자 수: {}, threshold={}", activeGrids.size(), threshold);
+    List<Grid> activeGrids = activeGridFinder.findActiveGrids();
+    log.info("날씨 프리패치 대상 활성 격자 수: {}", activeGrids.size());
     return new ListItemReader<>(activeGrids);
   }
 
@@ -123,7 +117,8 @@ public class WeatherPrefetchJobConfig {
         .listener(new SkipListener<Grid, GridForecast>() {
           @Override
           public void onSkipInProcess(Grid item, Throwable t) {
-            log.error("날씨 프리패치 - 격자 처리 스킵(재시도 {}번 다 실패), grid=({},{})",
+            // 이번 사이클 전체가 비어, 그 구간의 발표별 급변 diff도 같이 유실됨(WeatherPersister 참고).
+            log.error("날씨 프리패치 - 격자 처리 스킵(재시도 {}번 다 실패), diff 유실 가능, grid=({},{})",
                 RETRY_LIMIT, item.getX(), item.getY(), t);
           }
         })

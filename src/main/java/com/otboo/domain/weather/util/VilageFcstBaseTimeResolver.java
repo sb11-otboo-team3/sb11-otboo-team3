@@ -40,12 +40,33 @@ public class VilageFcstBaseTimeResolver {
 
   // 현재 슬롯의 앞 시간대를 리턴
   public VilageFcstBaseTime previous(VilageFcstBaseTime current) {
-    int index = BASE_TIMES.indexOf(current.baseTime());
+    int index = requireKnownBaseTime(current);
     if (index > 0) {
       return new VilageFcstBaseTime(current.baseDate(), BASE_TIMES.get(index - 1));
     }
 
     LocalTime lastSlotOfDay = BASE_TIMES.get(BASE_TIMES.size() - 1);
     return new VilageFcstBaseTime(current.baseDate().minusDays(1), lastSlotOfDay);
+  }
+
+  // 현재 슬롯의 다음 시간대를 리턴
+  public VilageFcstBaseTime next(VilageFcstBaseTime current) {
+    int index = requireKnownBaseTime(current);
+    if (index < BASE_TIMES.size() - 1) {
+      return new VilageFcstBaseTime(current.baseDate(), BASE_TIMES.get(index + 1));
+    }
+
+    LocalTime firstSlotOfDay = BASE_TIMES.get(0);
+    return new VilageFcstBaseTime(current.baseDate().plusDays(1), firstSlotOfDay);
+  }
+
+  // indexOf가 -1(못 찾음)을 돌려주면 "0번째 슬롯"과 똑같이 취급돼 조용히 엉뚱한 값으로 새는 게
+  // 기존 버그였다 - 목록에 없는 baseTime이 들어오면 계산하지 말고 바로 터뜨린다.
+  private int requireKnownBaseTime(VilageFcstBaseTime current) {
+    int index = BASE_TIMES.indexOf(current.baseTime());
+    if (index < 0) {
+      throw new IllegalArgumentException("알 수 없는 기상청 발표 시각: " + current.baseTime());
+    }
+    return index;
   }
 }

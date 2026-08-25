@@ -8,6 +8,7 @@ import com.otboo.domain.profile.repository.ProfileRepository;
 import com.otboo.domain.user.dto.UserSummary;
 import com.otboo.domain.user.entity.User;
 import com.otboo.domain.user.repository.UserRepository;
+import com.otboo.global.infrastructure.storage.FileStorage;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,7 +19,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
-import com.otboo.global.infrastructure.storage.FileStorage;
 
 @ExtendWith(MockitoExtension.class)
 class UserSummaryMapperTest {
@@ -46,8 +46,8 @@ class UserSummaryMapperTest {
   }
 
   @Test
-  @DisplayName("프로필이 있는 유저는 imageUrl이 포함된 UserSummary를 반환한다")
-  void toUserSummaryWithProfileReturnsUserSummaryWithImageUrl() throws Exception {
+  @DisplayName("썸네일이 있는 프로필은 썸네일 URL을 사용한다")
+  void toUserSummaryWithThumbnailReturnsThumbnailUrl() throws Exception {
     // given
     User user = User.create("summarytest@otboo.io", "요약테스트", "encoded-password");
     UUID userId = UUID.randomUUID();
@@ -56,10 +56,11 @@ class UserSummaryMapperTest {
     Profile profile = Profile.createDefault(user);
     ReflectionTestUtils.setField(profile, "userId", userId);
     ReflectionTestUtils.setField(profile, "imageKey", "profiles/" + userId + "/abc.jpg");
+    ReflectionTestUtils.setField(profile, "thumbnailKey", "profiles/" + userId + "/thumb_abc.jpg");
 
     given(profileRepository.findByUserId(userId)).willReturn(Optional.of(profile));
-    given(fileStorage.generateReadUrl("profiles/" + userId + "/abc.jpg"))
-        .willReturn("https://example.com/presigned-url");
+    given(fileStorage.generateReadUrl("profiles/" + userId + "/thumb_abc.jpg"))
+        .willReturn("https://example.com/presigned-thumbnail-url");
 
     // when
     UserSummary result = userSummaryMapper.toUserSummary(user);
@@ -67,7 +68,31 @@ class UserSummaryMapperTest {
     // then
     assertThat(result.userId()).isEqualTo(userId);
     assertThat(result.name()).isEqualTo("요약테스트");
-    assertThat(result.profileImageUrl()).isEqualTo("https://example.com/presigned-url");
+    assertThat(result.profileImageUrl()).isEqualTo("https://example.com/presigned-thumbnail-url");
+  }
+
+  @Test
+  @DisplayName("썸네일이 없는 프로필(예전 데이터)은 원본 이미지 URL로 대체한다")
+  void toUserSummaryWithoutThumbnailFallsBackToImageUrl() throws Exception {
+    // given
+    User user = User.create("nothumb@otboo.io", "썸네일없음", "encoded-password");
+    UUID userId = UUID.randomUUID();
+    ReflectionTestUtils.setField(user, "id", userId);
+
+    Profile profile = Profile.createDefault(user);
+    ReflectionTestUtils.setField(profile, "userId", userId);
+    ReflectionTestUtils.setField(profile, "imageKey", "profiles/" + userId + "/abc.jpg");
+    // thumbnailKey는 설정하지 않음 (예전에 생성된 프로필 상황 재현)
+
+    given(profileRepository.findByUserId(userId)).willReturn(Optional.of(profile));
+    given(fileStorage.generateReadUrl("profiles/" + userId + "/abc.jpg"))
+        .willReturn("https://example.com/presigned-original-url");
+
+    // when
+    UserSummary result = userSummaryMapper.toUserSummary(user);
+
+    // then
+    assertThat(result.profileImageUrl()).isEqualTo("https://example.com/presigned-original-url");
   }
 
   @Test
@@ -104,13 +129,13 @@ class UserSummaryMapperTest {
     Profile profile1 = Profile.createDefault(user1);
     ReflectionTestUtils.setField(profile1, "userId", userId1);
     ReflectionTestUtils.setField(profile1, "imageKey", "profiles/" + userId1 + "/abc.jpg");
+    ReflectionTestUtils.setField(profile1, "thumbnailKey", "profiles/" + userId1 + "/thumb_abc.jpg");
 
     List<UUID> userIds = List.of(userId1, userId2);
-
     given(userRepository.findAllById(userIds)).willReturn(List.of(user1, user2));
     given(profileRepository.findAllById(userIds)).willReturn(List.of(profile1));
-    given(fileStorage.generateReadUrl("profiles/" + userId1 + "/abc.jpg"))
-        .willReturn("https://example.com/user1.jpg");
+    given(fileStorage.generateReadUrl("profiles/" + userId1 + "/thumb_abc.jpg"))
+        .willReturn("https://example.com/user1-thumb.jpg");
 
     // when
     List<UserSummary> result = userSummaryMapper.toUserSummaries(userIds);
@@ -125,7 +150,7 @@ class UserSummaryMapperTest {
         .filter(s -> s.userId().equals(userId1))
         .findFirst()
         .orElseThrow();
-    assertThat(summary1.profileImageUrl()).isEqualTo("https://example.com/user1.jpg");
+    assertThat(summary1.profileImageUrl()).isEqualTo("https://example.com/user1-thumb.jpg");
 
     UserSummary summary2 = result.stream()
         .filter(s -> s.userId().equals(userId2))

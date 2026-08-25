@@ -28,15 +28,21 @@ public class ProfileUpdateTransactionalService {
       ProfileUpdateRequest request,
       WeatherAPILocation location,
       String newImageKey,
-      String profileImageUrl
+      String newThumbnailKey,
+      String profileImageUrl,
+      String thumbnailUrl
   ) {
     Profile profile = profileRepository.findById(userId)
         .orElseThrow(() -> new ProfileNotFoundException(userId));
 
     String oldImageKey = profile.getImageKey();
+    String oldThumbnailKey = profile.getThumbnailKey();
 
     if (newImageKey != null) {
       eventPublisher.publishEvent(new FileReplacementEvent(oldImageKey, newImageKey));
+    }
+    if (newThumbnailKey != null) {
+      eventPublisher.publishEvent(new FileReplacementEvent(oldThumbnailKey, newThumbnailKey));
     }
 
     if (request.name() != null) {
@@ -50,7 +56,6 @@ public class ProfileUpdateTransactionalService {
     Double longitude = null;
     Integer x = null;
     Integer y = null;
-
     if (location != null) {
       latitude = location.latitude();
       longitude = location.longitude();
@@ -78,8 +83,11 @@ public class ProfileUpdateTransactionalService {
     if (newImageKey != null) {
       profile.updateImageKey(newImageKey);
     }
+    if (newThumbnailKey != null) {
+      profile.updateThumbnailKey(newThumbnailKey);
+    }
 
-    return ProfileDto.from(profile, profileImageUrl);
+    return ProfileDto.from(profile, profileImageUrl, thumbnailUrl);
   }
 
   private String nameAt(List<String> locationNames, int index) {

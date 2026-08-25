@@ -86,7 +86,7 @@ class FeedQueryServiceTest {
         UUID.randomUUID(),
         SkyStatus.CLEAR,
         new PrecipitationDto(PrecipitationType.NONE, 0.0, 0.0),
-        new TemperatureDto(20.0, 0.0, 18.0, 25.0)
+        new TemperatureDto(20.0, 0.0, 18.0, 25.0, 20.0)
     );
 
     Feed feed1 = Feed.create(
@@ -226,7 +226,7 @@ class FeedQueryServiceTest {
         UUID.randomUUID(),
         SkyStatus.CLEAR,
         new PrecipitationDto(PrecipitationType.NONE, 0.0, 0.0),
-        new TemperatureDto(20.0, 0.0, 18.0, 25.0)
+        new TemperatureDto(20.0, 0.0, 18.0, 25.0, 20.0)
     );
 
     Feed feed1 = Feed.create(

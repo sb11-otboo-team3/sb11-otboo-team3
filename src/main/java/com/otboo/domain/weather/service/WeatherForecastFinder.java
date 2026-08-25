@@ -15,12 +15,15 @@ import com.otboo.domain.weather.util.VilageFcstBaseTime;
 import com.otboo.domain.weather.util.VilageFcstBaseTimeResolver;
 import com.otboo.domain.weather.util.WeatherGrid;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -66,19 +69,90 @@ public class WeatherForecastFinder {
         .subscribeOn(Schedulers.boundedElastic())
         .flatMap(cached -> cached.isEmpty()
             ? fetchFromDbOrKma(weatherGrid, location, baseTime, forecastedAt)
-            : cacheHit(cached, weatherGrid, forecastedAt, location));
+            : cacheHit(cached, weatherGrid, location, baseTime, forecastedAt));
   }
 
   private List<WeatherDto> findCachedForecasts(WeatherGrid weatherGrid, Instant forecastedAt) {
-    return weatherForecastCache.find(weatherGrid, forecastedAt).orElseGet(List::of);
+    List<WeatherDto> cached = weatherForecastCache.find(weatherGrid, forecastedAt).orElseGet(List::of);
+    if (cached.isEmpty()) {
+      log.info("날씨 조회 - 캐시 미스, x={}, y={}, forecastedAt={}", weatherGrid.x(), weatherGrid.y(), forecastedAt);
+    }
+    return cached;
   }
 
-  //캐시에 있으면 가져오기.
+  //캐시에 있으면 가져오되, "오늘" 대표 슬롯이 지금 시각 기준으로도 여전히 최근접인지 DB로 확인한다 -
+  // 캐시가 오래 전에 만들어진 채 시간만 흐르면 대표 슬롯이 실제 지금과 어긋날 수 있어서(다음 발표
+  // 전까지는 캐시가 재계산 없이 그대로 나가는 구조라서), 어긋나 있으면 DB 기준으로 다시 뽑아
+  // 캐시까지 갱신한다. 기상청을 다시 부르는 게 아니라 이미 저장된 DB 데이터로만 재계산하는 거라
+  // 비용이 크지 않다. 검증하려는 DB마저 비어있으면(캐시는 있는데 DB 데이터가 사라진 비정상 상황)
+  // 캐시를 못 믿는 것이므로 일반 캐시 미스와 동일하게 DB/기상청 조회로 넘어간다.
   private Mono<List<WeatherDto>> cacheHit(
-      List<WeatherDto> cached, WeatherGrid weatherGrid, Instant forecastedAt, WeatherAPILocation location
+      List<WeatherDto> cached, WeatherGrid weatherGrid, WeatherAPILocation location,
+      VilageFcstBaseTime baseTime, Instant forecastedAt
   ) {
     log.debug("날씨 조회 - 캐시 히트, x={}, y={}, forecastedAt={}", weatherGrid.x(), weatherGrid.y(), forecastedAt);
-    return Mono.just(cached.stream().map(dto -> withLocation(dto, location)).toList());
+    return Mono.fromCallable(() -> refreshIfTodayRepresentativeStale(cached, weatherGrid, forecastedAt))
+        .subscribeOn(Schedulers.boundedElastic())
+        .flatMap(validated -> validated.isPresent()
+            ? Mono.just(validated.get().stream().map(dto -> withLocation(dto, location)).toList())
+            : fallbackToDbOrKmaAfterCacheDistrust(weatherGrid, location, baseTime, forecastedAt));
+  }
+
+  private Mono<List<WeatherDto>> fallbackToDbOrKmaAfterCacheDistrust(
+      WeatherGrid weatherGrid, WeatherAPILocation location, VilageFcstBaseTime baseTime, Instant forecastedAt
+  ) {
+    log.warn("날씨 조회 - 캐시는 있는데 검증용 DB 조회가 비어있음(비정상), 기상청부터 다시, x={}, y={}",
+        weatherGrid.x(), weatherGrid.y());
+    return fetchFromDbOrKma(weatherGrid, location, baseTime, forecastedAt);
+  }
+
+  // 캐시된 "오늘" 대표의 forecastAt이 DB의 실제 슬롯들 중 지금 이 순간 진짜 최근접인 것과 다르면
+  // DB 기준으로 다시 뽑아 캐시까지 새로 쓴 결과를 담아 리턴한다. 같으면 재계산 없이 캐시를 그대로 담아
+  // 리턴하고, 검증용 DB 조회 자체가 비어있으면(캐시를 못 믿는 상황) 빈 Optional로 그 사실만 알린다.
+  private Optional<List<WeatherDto>> refreshIfTodayRepresentativeStale(
+      List<WeatherDto> cached, WeatherGrid weatherGrid, Instant forecastedAt
+  ) {
+    Instant now = clock.instant();
+    LocalDate today = now.atZone(KST).toLocalDate();
+
+    Instant cachedTodayForecastAt = cached.stream()
+        .filter(dto -> dto.forecastAt().atZone(KST).toLocalDate().equals(today))
+        .map(WeatherDto::forecastAt)
+        .findFirst()
+        .orElse(null);
+    if (cachedTodayForecastAt == null) {
+      // 캐시에 오늘 항목 자체가 없는 경계 케이스 - 건드리지 않는다(다음 발표에서 자연히 정리됨).
+      return Optional.of(cached);
+    }
+
+    Grid grid = gridResolver.findOrRegister(weatherGrid);
+    List<Weather> existing = weatherRepository.findByGridAndForecastedAt(grid, forecastedAt);
+    if (existing.isEmpty()) {
+      return Optional.empty(); // DB에도 없음 - 캐시를 못 믿으니 호출부가 DB/기상청부터 다시 타게 함.
+    }
+
+    // 거리가 완전히 같으면(정확히 중간 시각) forecastAt 오름차순을 2차 기준으로 못박는다 -
+    // findByGridAndForecastedAt는 ORDER BY가 없어서 순서를 전혀 보장 안 하기 때문에,
+    // DailyForecastSelector.closest()와 다른 슬롯을 고를 위험이 있다(둘 다 같은 규칙을 써야
+    // "캐시된 대표가 여전히 최신인지" 비교가 의미 있어짐).
+    Instant freshestTodayForecastAt = existing.stream()
+        .filter(weather -> weather.getForecastAt().atZone(KST).toLocalDate().equals(today))
+        .min(Comparator
+            .<Weather, Duration>comparing(weather -> Duration.between(now, weather.getForecastAt()).abs())
+            .thenComparing(Weather::getForecastAt))
+        .map(Weather::getForecastAt)
+        .orElse(null);
+
+    if (freshestTodayForecastAt == null || freshestTodayForecastAt.equals(cachedTodayForecastAt)) {
+      return Optional.of(cached); // 이미 최신 - 재계산 불필요.
+    }
+
+    log.info("날씨 조회 - 캐시된 오늘 대표가 지금 시각과 어긋남(cached={}, 실제 최근접={}), DB 기준 재계산, x={}, y={}",
+        cachedTodayForecastAt, freshestTodayForecastAt, weatherGrid.x(), weatherGrid.y());
+    List<WeatherDto> allForecasts = existing.stream().map(weather -> weather.toDto(null)).toList();
+    List<WeatherDto> recomputed = dailyForecastSelector.select(allForecasts, now);
+    weatherForecastCache.save(weatherGrid, forecastedAt, recomputed);
+    return Optional.of(recomputed);
   }
 
   private record GridAndExisting(Grid grid, List<Weather> existing) {
@@ -197,7 +271,8 @@ public class WeatherForecastFinder {
               dto.temperature().current(),
               dto.temperature().comparedToDayBefore(),
               range.min(),
-              range.max()
+              range.max(),
+              dto.temperature().average()
           );
           return new WeatherDto(
               dto.id(), dto.forecastedAt(), dto.forecastAt(), dto.location(),
