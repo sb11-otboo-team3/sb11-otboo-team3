@@ -2,6 +2,7 @@ package com.otboo.domain.feed.core.search;
 
 import com.otboo.domain.feed.core.entity.Feed;
 import com.otboo.domain.feed.core.repository.FeedRepository;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -36,10 +37,10 @@ public class FeedSearchReindexService {
           )
       );
 
-      for (Feed feed : feedSlice.getContent()) {
-        feedSearchService.index(feed);
-        indexedCount++;
-      }
+      List<Feed> feeds = feedSlice.getContent();
+
+      feedSearchService.indexAll(feeds);
+      indexedCount += feeds.size();
 
       page++;
     } while (feedSlice.hasNext());

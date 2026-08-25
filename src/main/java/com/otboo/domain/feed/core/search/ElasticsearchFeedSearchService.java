@@ -16,6 +16,8 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.ElasticsearchException;
+import org.elasticsearch.action.bulk.BulkRequest;
+import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.search.SearchRequest;
@@ -73,6 +75,56 @@ public class ElasticsearchFeedSearchService implements FeedSearchService {
       log.warn(
           "피드 Elasticsearch 인덱스 실패 - DB 저장은 유지, feedId={}",
           feed.getId(),
+          exception
+      );
+    }
+  }
+
+  @Override
+  public void indexAll(List<Feed> feeds) {
+    if (feeds.isEmpty()) {
+      return;
+    }
+
+    BulkRequest bulkRequest = new BulkRequest()
+        .setRefreshPolicy(WriteRequest.RefreshPolicy.WAIT_UNTIL);
+
+    for (Feed feed : feeds) {
+      try {
+        WeatherSummaryDto weatherSummary =
+            objectMapper.convertValue(feed.getWeatherSnapshot(), WeatherSummaryDto.class);
+
+        FeedSearchDocument document = FeedSearchDocument.from(feed, weatherSummary);
+        String source = objectMapper.writeValueAsString(document);
+
+        bulkRequest.add(
+            new IndexRequest(INDEX_NAME)
+                .id(feed.getId().toString())
+                .source(source, XContentType.JSON)
+        );
+      } catch (JsonProcessingException exception) {
+        log.warn(
+            "피드 검색 문서 직렬화 실패 - bulk 색인에서 제외, feedId={}",
+            feed.getId(),
+            exception
+        );
+      }
+    }
+
+    if (bulkRequest.numberOfActions() == 0) {
+      return;
+    }
+
+    try {
+      BulkResponse response = searchClient.bulk(bulkRequest, RequestOptions.DEFAULT);
+
+      if (response.hasFailures()) {
+        log.warn("피드 Elasticsearch bulk 색인 일부 실패: {}", response.buildFailureMessage());
+      }
+    } catch (IOException | ElasticsearchException exception) {
+      log.warn(
+          "피드 Elasticsearch bulk 색인 실패 - reindex 일부 실패 가능, size={}",
+          feeds.size(),
           exception
       );
     }
