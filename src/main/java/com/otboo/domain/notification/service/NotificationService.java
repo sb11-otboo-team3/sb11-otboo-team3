@@ -183,7 +183,7 @@ public class NotificationService {
 
     Notification notification = Notification.create(eventId, receiver, title, content, level);
 
-    Notification savedNotification = notificationRepository.save(notification);
+    Notification savedNotification = notificationRepository.saveAndFlush(notification);
 
     NotificationDto notificationDto = NotificationMapper.toDto(savedNotification);
 

@@ -24,6 +24,6 @@ class MultipartConfigurationTest {
                 .isEqualTo(DataSize.ofMegabytes(10));
 
         assertThat(multipartProperties.getMaxRequestSize())
-                .isGreaterThan(DataSize.ofMegabytes(10));
+                .isEqualTo(DataSize.ofMegabytes(11));
     }
 }

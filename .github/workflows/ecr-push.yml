@@ -364,6 +364,28 @@ jobs:
           container-name: ${{ env.ECS_CONTAINER_NAME }}
           image: ${{ steps.ecs-deployment.outputs.target-image }}
 
+      - name: Validate latest develop commit before ECS deployment
+        if: steps.ecs-deployment.outputs.deploy-required == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LATEST_DEVELOP_SHA="$(
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/git/ref/heads/develop" \
+              --jq '.object.sha'
+          )"
+
+          echo "Deployment SHA: ${GITHUB_SHA}"
+          echo "Latest develop SHA: ${LATEST_DEVELOP_SHA}"
+
+          if [ "$GITHUB_SHA" != "$LATEST_DEVELOP_SHA" ]; then
+            echo "A newer develop commit exists. Stale ECS deployment is blocked."
+            exit 1
+          fi
+
       - name: Deploy Amazon ECS task definition
         if: steps.ecs-deployment.outputs.deploy-required == 'true'
         uses: aws-actions/amazon-ecs-deploy-task-definition@c465972ecbd160473f22e683363b422a5412a3de # v2.6.3

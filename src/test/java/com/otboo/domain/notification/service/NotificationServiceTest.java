@@ -124,6 +124,7 @@ class NotificationServiceTest {
     @Test
     @DisplayName("알림 생성 성공 테스트")
     void createNotification_success() {
+        // given
         UUID eventId = UUID.randomUUID();
         UUID receiverId = UUID.randomUUID();
         UUID notificationId = UUID.randomUUID();
@@ -133,29 +134,56 @@ class NotificationServiceTest {
         given(notificationRepository.findByEventId(eventId))
                 .willReturn(Optional.empty());
 
-        given(userRepository.findById(receiverId)).willReturn(Optional.of(receiver));
-        given(notificationRepository.save(any(Notification.class)))
+        given(userRepository.findById(receiverId))
+                .willReturn(Optional.of(receiver));
+
+        given(notificationRepository.saveAndFlush(any(Notification.class)))
                 .willAnswer(invocation -> {
                     Notification notification = invocation.getArgument(0);
-                    ReflectionTestUtils.setField(notification, "id", notificationId);
-                    ReflectionTestUtils.setField(notification, "createdAt", Instant.now());
+
+                    ReflectionTestUtils.setField(
+                            notification,
+                            "id",
+                            notificationId
+                    );
+
+                    ReflectionTestUtils.setField(
+                            notification,
+                            "createdAt",
+                            Instant.now()
+                    );
+
                     return notification;
                 });
-        given(sseEmitterRegistry.get(receiverId)).willReturn(Optional.empty());
 
-        NotificationDto result = notificationService.createNotification(
-                eventId,
-                receiverId,
-                "새 알림",
-                "알림 내용",
-                NotificationLevel.INFO
-        );
+        given(sseEmitterRegistry.get(receiverId))
+                .willReturn(Optional.empty());
 
-        assertThat(result.id()).isEqualTo(notificationId);
-        assertThat(result.receiverId()).isEqualTo(receiverId);
-        assertThat(result.title()).isEqualTo("새 알림");
+        // when
+        NotificationDto result =
+                notificationService.createNotification(
+                        eventId,
+                        receiverId,
+                        "새 알림",
+                        "알림 내용",
+                        NotificationLevel.INFO
+                );
 
-        verify(notificationRepository).save(any(Notification.class));
+        // then
+        assertThat(result.id())
+                .isEqualTo(notificationId);
+
+        assertThat(result.receiverId())
+                .isEqualTo(receiverId);
+
+        assertThat(result.title())
+                .isEqualTo("새 알림");
+
+        verify(notificationRepository)
+                .saveAndFlush(any(Notification.class));
+
+        verify(notificationRepository, never())
+                .save(any(Notification.class));
     }
 
     private User createUser(UUID userId) {
@@ -350,11 +378,22 @@ class NotificationServiceTest {
                 .willReturn(Optional.empty());
 
         given(userRepository.findById(receiverId)).willReturn(Optional.of(receiver));
-        given(notificationRepository.save(any(Notification.class)))
+        given(notificationRepository.saveAndFlush(any(Notification.class)))
                 .willAnswer(invocation -> {
                     Notification notification = invocation.getArgument(0);
-                    ReflectionTestUtils.setField(notification, "id", notificationId);
-                    ReflectionTestUtils.setField(notification, "createdAt", Instant.now());
+
+                    ReflectionTestUtils.setField(
+                            notification,
+                            "id",
+                            notificationId
+                    );
+
+                    ReflectionTestUtils.setField(
+                            notification,
+                            "createdAt",
+                            Instant.now()
+                    );
+
                     return notification;
                 });
         given(sseEmitterRegistry.get(receiverId)).willReturn(Optional.empty());
