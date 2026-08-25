@@ -128,6 +128,36 @@ class RecommendationTransactionalServiceTest {
     }
 
     @Test
+    void 캐시된_조합_속_옷이_일부만_삭제되어_불완전하게_조회되면_기존_로직으로_폴백한다() {
+        //given
+        UUID ownerId = UUID.randomUUID();
+        Clothes top = new Clothes(owner, "상의", null, ClothesType.TOP);
+        ReflectionTestUtils.setField(top, "id", UUID.randomUUID());
+        Clothes fallbackTop = new Clothes(owner, "폴백상의", null, ClothesType.TOP);
+        ReflectionTestUtils.setField(fallbackTop, "id", UUID.randomUUID());
+        UUID deletedBottomId = UUID.randomUUID();
+        RankedOutfit rankedOutfit = new RankedOutfit(List.of(top.getId(), deletedBottomId));
+
+        // 캐시된 조합은 옷 2개(top, deletedBottomId)였는데, deletedBottomId가 삭제되어 top 1개만 조회됨
+        given(recommendationEngine.resolveFromRanked(List.of(top.getId(), deletedBottomId)))
+                .willReturn(List.of(top));
+        given(recommendationEngine.recommend(ownerId, 5.0, 10.0, PrecipitationType.NONE, 3))
+                .willReturn(List.of(fallbackTop));
+        given(clothesAttributeRepository.findByClothesIn(List.of(fallbackTop))).willReturn(List.of());
+        given(selectableValueRepository.findByDefinitionInAndDeletedAtIsNullOrderByDisplayOrderAsc(List.of()))
+                .willReturn(List.of());
+        given(clothesMapper.toResponse(eq(fallbackTop), any(), any())).willReturn(clothesResponse(fallbackTop));
+
+        //when
+        List<RecommendationClothesResponse> result = service.recommend(
+                ownerId, 5.0, 10.0, PrecipitationType.NONE, 3, Optional.of(List.of(rankedOutfit)));
+
+        //then
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).clothesId()).isEqualTo(fallbackTop.getId());
+    }
+
+    @Test
     void LLM_랭킹_결과가_여러_개면_재호출마다_같은_것만_나오지_않는다() {
         //given
         UUID ownerId = UUID.randomUUID();
