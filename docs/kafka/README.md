@@ -146,34 +146,56 @@ otboo-feed-index-consumer
 도메인별 비즈니스 예외의 재시도 여부는
 실제 도메인 Producer·Consumer 구현 시 별도로 결정합니다.
 
-### DLT 운영 및 재처리 기준
-
-재시도를 모두 소진하여 DLT로 전달된 메시지는
-자동으로 원본 Topic에 다시 전달하지 않습니다.
-
-DLT 메시지가 발생하면 다음 순서로 확인합니다.
+### DLT 수동 재처리 절차
 
 1. 애플리케이션 로그에서 Consumer 최종 실패 원인을 확인합니다.
 2. 운영자 권한으로 해당 DLT의 메시지를 확인합니다.
-3. 원본 메시지의 Topic, Partition, Key, Payload, `eventId`를 확인합니다.
+3. 원본 메시지의 Topic, Partition, Offset, Key, Payload, `eventId`를 확인합니다.
 4. 코드 오류, 데이터 오류, 외부 의존성 장애 등 실패 원인을 먼저 해결합니다.
 5. 재처리가 필요하다고 판단한 메시지만 원본 Topic으로 수동 재발행합니다.
-6. 재발행 시 기존 메시지의 Key, Payload, `eventId`와 원본 Partition을 유지합니다.
-7. 사용하는 재발행 도구가 Partition을 명시적으로 지정할 수 있는 경우에만 원본 Partition 보존 방식으로 재발행합니다.
+6. 일반 메시지는 기존 Key, Payload, `eventId`와 원본 Partition을 유지합니다.
+7. 사용하는 재발행 도구가 Partition을 명시적으로 지정할 수 있는지 먼저 확인합니다.
 
 `eventId`를 새로 생성하면 동일 비즈니스 이벤트가 새로운 이벤트로 인식되어
 중복 처리가 발생할 수 있으므로 DLT 재처리 과정에서도 기존 `eventId`를 유지합니다.
 
-또한 원본 Partition을 변경하면 Key가 `null`인 메시지의 경우
-기존 Partition 내 처리 순서를 보장할 수 없습니다.
+#### `eventId`가 없는 레거시 메시지
 
-따라서 수동 재발행 시에는 원본 Partition을 명시적으로 유지하고,
-사용하는 재발행 도구가 Partition 지정 기능을 지원하는지 먼저 확인합니다.
-Partition을 명시할 수 없는 도구로는 순서 보존이 필요한 메시지를 재발행하지 않습니다.
+rolling deployment 이전에 발행되어 `eventId`가 없는 레거시 메시지는
+Consumer에서 원본 Kafka 레코드의 Topic, Partition, Offset을 기준으로
+deterministic fallback `eventId`를 생성합니다.
 
-DLT 전체를 주기적으로 원본 Topic으로 자동 Replay하는 방식은 사용하지 않습니다.
-실패 원인이 해결되지 않은 상태에서 자동 Replay하면 동일한 메시지가
-Consumer 재시도와 DLT 전달을 반복하는 장애 루프가 발생할 수 있기 때문입니다.
+따라서 이러한 메시지를 DLT에서 원본 Topic으로 그대로 재발행하면
+새로운 Offset이 부여되어 fallback `eventId`가 기존 처리 시점과 달라질 수 있습니다.
+
+`eventId`가 없는 레거시 메시지는 원칙적으로 그대로 수동 재발행하지 않습니다.
+
+불가피하게 재처리해야 하는 경우에는 최초 처리 대상이었던
+원본 Topic, Partition, Offset을 기준으로 기존 Consumer와 동일한 규칙으로
+fallback `eventId`를 계산하고, 해당 값을 재발행 Payload의 `eventId`에 명시한 뒤 재발행합니다.
+
+fallback `eventId` 생성 기준은 다음과 같습니다.
+
+- 원본 Topic
+- 원본 Partition
+- 원본 Offset
+
+재발행 후 새로 생성되는 Topic, Partition, Offset을 기준으로
+fallback `eventId`를 다시 계산해서는 안 됩니다.
+
+#### 순서 보장이 필요한 메시지
+
+원본 Partition을 유지해서 메시지를 수동 재발행하더라도
+Kafka는 해당 Partition의 현재 끝에 새로운 Offset을 부여합니다.
+
+따라서 원본 Partition만 유지하는 것으로는 기존 처리 순서가 복원되지 않습니다.
+
+처리 순서가 중요한 메시지는 DLT 메시지를 원본 Topic에 수동 재발행하지 않습니다.
+이 경우에는 장애 원인을 해결한 뒤 Consumer Group의 Offset을
+재처리가 필요한 원본 Offset으로 조정하여 해당 위치부터 다시 소비하는 방식을 사용합니다.
+
+Consumer Group Offset을 변경하기 전에는
+재처리 범위와 중복 처리 가능성을 반드시 확인합니다.
 
 ---
 

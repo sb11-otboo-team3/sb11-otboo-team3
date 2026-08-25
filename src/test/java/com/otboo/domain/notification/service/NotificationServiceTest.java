@@ -249,7 +249,7 @@ class NotificationServiceTest {
                 .isEqualTo(existingNotification.getId());
 
         verify(userRepository, never()).findById(any());
-        verify(notificationRepository, never()).save(any(Notification.class));
+        verify(notificationRepository, never()).saveAndFlush(any(Notification.class));
 
         verify(sseEmitterRegistry, never()).get(any());
     }
@@ -308,7 +308,7 @@ class NotificationServiceTest {
                 )
         ).isInstanceOf(NotificationUserNotFoundException.class);
 
-        verify(notificationRepository, never()).save(any(Notification.class));
+        verify(notificationRepository, never()).saveAndFlush(any(Notification.class));
     }
 
     @Test

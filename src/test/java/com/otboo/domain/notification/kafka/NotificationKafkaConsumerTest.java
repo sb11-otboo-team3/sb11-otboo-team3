@@ -116,9 +116,8 @@ class NotificationKafkaConsumerTest {
     }
 
     @Test
-    @DisplayName("eventId가 없는 기존 Kafka 메시지는 record 위치 기반 eventId를 사용한다")
-    void consumeLegacyMessageWithoutEventIdUsesDeterministicEventId()
-            throws Exception {
+    @DisplayName("eventId가 없는 기존 메시지는 레코드 위치에 따라 결정적인 eventId를 생성한다")
+    void consume_legacyMessageUsesDeterministicEventIdByRecordPosition() throws Exception {
 
         // given
         UUID receiverId = UUID.randomUUID();
@@ -133,9 +132,10 @@ class NotificationKafkaConsumerTest {
                         Instant.parse("2026-08-20T01:00:00Z")
                 );
 
-        String payload = objectMapper.writeValueAsString(message);
+        String payload =
+                objectMapper.writeValueAsString(message);
 
-        ConsumerRecord<String, String> record =
+        ConsumerRecord<String, String> firstRecord =
                 new ConsumerRecord<>(
                         NotificationKafkaTopics.NOTIFICATION_CREATED,
                         2,
@@ -144,9 +144,30 @@ class NotificationKafkaConsumerTest {
                         payload
                 );
 
+        ConsumerRecord<String, String> differentPartitionRecord =
+                new ConsumerRecord<>(
+                        NotificationKafkaTopics.NOTIFICATION_CREATED,
+                        3,
+                        123L,
+                        null,
+                        payload
+                );
+
+        ConsumerRecord<String, String> differentOffsetRecord =
+                new ConsumerRecord<>(
+                        NotificationKafkaTopics.NOTIFICATION_CREATED,
+                        2,
+                        124L,
+                        null,
+                        payload
+                );
+
         // when
-        notificationKafkaConsumer.consume(record);
-        notificationKafkaConsumer.consume(record);
+        notificationKafkaConsumer.consume(firstRecord);
+        notificationKafkaConsumer.consume(firstRecord);
+
+        notificationKafkaConsumer.consume(differentPartitionRecord);
+        notificationKafkaConsumer.consume(differentOffsetRecord);
 
         // then
         ArgumentCaptor<UUID> eventIdCaptor =
@@ -154,7 +175,7 @@ class NotificationKafkaConsumerTest {
 
         verify(
                 notificationService,
-                org.mockito.Mockito.times(2)
+                org.mockito.Mockito.times(4)
         ).createNotification(
                 eventIdCaptor.capture(),
                 org.mockito.ArgumentMatchers.eq(receiverId),
@@ -163,13 +184,32 @@ class NotificationKafkaConsumerTest {
                 org.mockito.ArgumentMatchers.eq(NotificationLevel.INFO)
         );
 
-        assertThat(eventIdCaptor.getAllValues().get(0))
+        UUID firstEventId =
+                eventIdCaptor.getAllValues().get(0);
+
+        UUID repeatedEventId =
+                eventIdCaptor.getAllValues().get(1);
+
+        UUID differentPartitionEventId =
+                eventIdCaptor.getAllValues().get(2);
+
+        UUID differentOffsetEventId =
+                eventIdCaptor.getAllValues().get(3);
+
+        assertThat(firstEventId)
                 .isNotNull();
 
-        assertThat(eventIdCaptor.getAllValues().get(1))
-                .isEqualTo(
-                        eventIdCaptor.getAllValues().get(0)
-                );
+        assertThat(repeatedEventId)
+                .isEqualTo(firstEventId);
+
+        assertThat(differentPartitionEventId)
+                .isNotEqualTo(firstEventId);
+
+        assertThat(differentOffsetEventId)
+                .isNotEqualTo(firstEventId);
+
+        assertThat(differentPartitionEventId)
+                .isNotEqualTo(differentOffsetEventId);
     }
 
     @Test
