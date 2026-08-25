@@ -67,6 +67,13 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("security.actuator.prometheus-public 기본값(false)에서는 /actuator/prometheus도 인증 없이 접근하면 401을 반환한다")
+    void prometheusEndpointRequiresAuthenticationByDefault() throws Exception {
+        mockMvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     @DisplayName("정상 JWT를 포함하면 보호된 API에 접근할 수 있다")
     void validJwtAllowsAccessToProtectedEndpoint() throws Exception {
         // given

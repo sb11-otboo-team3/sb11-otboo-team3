@@ -77,3 +77,6 @@ app:
     init-email: ${ADMIN_INIT_EMAIL}
     init-name: ${ADMIN_INIT_NAME}
     init-password: ${ADMIN_INIT_PASSWORD}
+weather:
+  prefetch:
+    cron: "${WEATHER_PREFETCH_CRON:0 15 5,8,11,14,17,20 * * *}"

@@ -10,6 +10,7 @@ import com.otboo.global.security.oauth2.HttpCookieOAuth2AuthorizationRequestRepo
 import com.otboo.global.security.oauth2.OAuth2LoginFailureHandler;
 import com.otboo.global.security.oauth2.OAuth2LoginSuccessHandler;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -45,6 +46,7 @@ public class SecurityConfig {
   @Bean
   public SecurityFilterChain securityFilterChain(
       HttpSecurity http,
+      @Value("${security.actuator.prometheus-public:false}") boolean actuatorPrometheusPublic,
       JwtProvider jwtProvider,
       UserRepository userRepository,
       ObjectProvider<CustomOAuth2UserService> customOAuth2UserServiceProvider,
@@ -74,33 +76,40 @@ public class SecurityConfig {
                 response.sendError(HttpStatus.UNAUTHORIZED.value()))
             .accessDeniedHandler((request, response, accessDeniedException) ->
                 response.sendError(HttpStatus.FORBIDDEN.value())))
-        .authorizeHttpRequests(auth -> auth
-            // 프론트엔드 정적 리소스 접근 허용
-            .requestMatchers(
-                "/",
-                "/index.html",
-                "/assets/**",
-                "/*.svg",
-                "/favicon.ico",
-                "/error"
-            ).permitAll()
+        .authorizeHttpRequests(auth -> {
+          auth
+              // 프론트엔드 정적 리소스 접근 허용
+              .requestMatchers(
+                  "/",
+                  "/index.html",
+                  "/assets/**",
+                  "/*.svg",
+                  "/favicon.ico",
+                  "/error"
+              ).permitAll()
 
-            .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
-            .requestMatchers(HttpMethod.POST, "/api/auth/sign-in").permitAll()
-            .requestMatchers(HttpMethod.POST, "/api/auth/reset-password").permitAll()
-            .requestMatchers(HttpMethod.POST, "/api/auth/refresh").permitAll()
-            .requestMatchers(HttpMethod.POST, "/api/auth/sign-out").permitAll()
-            .requestMatchers(HttpMethod.GET, "/api/auth/csrf-token").permitAll()
-            .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
-            .requestMatchers("/ws/**").permitAll()
-            .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
-            .requestMatchers(
-                "/swagger-ui/**",
-                "/swagger-ui.html",
-                "/v3/api-docs/**"
-            ).permitAll()
-            .anyRequest().authenticated()
-        )
+              .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
+              .requestMatchers(HttpMethod.POST, "/api/auth/sign-in").permitAll()
+              .requestMatchers(HttpMethod.POST, "/api/auth/reset-password").permitAll()
+              .requestMatchers(HttpMethod.POST, "/api/auth/refresh").permitAll()
+              .requestMatchers(HttpMethod.POST, "/api/auth/sign-out").permitAll()
+              .requestMatchers(HttpMethod.GET, "/api/auth/csrf-token").permitAll()
+              .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+              .requestMatchers("/ws/**").permitAll()
+              .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
+              .requestMatchers(
+                  "/swagger-ui/**",
+                  "/swagger-ui.html",
+                  "/v3/api-docs/**"
+              ).permitAll();
+
+          // 로컬 프로메테우스가 인증 없이 스크래핑하도록 application-local.yaml에서만 켬(기본값 false).
+          if (actuatorPrometheusPublic) {
+            auth.requestMatchers(HttpMethod.GET, "/actuator/prometheus").permitAll();
+          }
+
+          auth.anyRequest().authenticated();
+        })
         .addFilterBefore(
             new JwtAuthenticationFilter(jwtProvider, userRepository),
             UsernamePasswordAuthenticationFilter.class
