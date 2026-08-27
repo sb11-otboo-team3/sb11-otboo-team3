@@ -192,6 +192,22 @@ public class NotificationService {
     return notificationDto;
   }
 
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public NotificationDto createNotification(
+      UUID receiverId,
+      String title,
+      String content,
+      NotificationLevel level
+  ) {
+    return createNotification(
+        UUID.randomUUID(),
+        receiverId,
+        title,
+        content,
+        level
+    );
+  }
+
   private void sendToClientAfterCommit(UUID receiverId, NotificationDto notificationDto) {
     if (TransactionSynchronizationManager.isSynchronizationActive()) {
       TransactionSynchronizationManager.registerSynchronization(
