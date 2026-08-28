@@ -4,6 +4,7 @@ import static com.otboo.domain.follow.entity.QFollow.follow;
 
 import com.otboo.domain.follow.entity.Follow;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 import java.util.List;
@@ -72,11 +73,10 @@ public class FollowRepositoryImpl implements FollowRepositoryCustom {
 
     String normalizedCursor = cursor.trim().toLowerCase();
 
-    return follow.followee.name.lower().gt(normalizedCursor)
-        .or(
-            follow.followee.name.lower().eq(normalizedCursor)
-                .and(follow.id.gt(idAfter))
-        );
+    return Expressions.booleanTemplate(
+        "({0}, {1}) > ({2}, {3})",
+        follow.followee.name.lower(), follow.id, normalizedCursor, idAfter
+    );
   }
 
   @Override
@@ -133,11 +133,10 @@ public class FollowRepositoryImpl implements FollowRepositoryCustom {
 
     String normalizedCursor = cursor.trim().toLowerCase();
 
-    return follow.follower.name.lower().gt(normalizedCursor)
-        .or(
-            follow.follower.name.lower().eq(normalizedCursor)
-                .and(follow.id.gt(idAfter))
-        );
+    return Expressions.booleanTemplate(
+        "({0}, {1}) > ({2}, {3})",
+        follow.follower.name.lower(), follow.id, normalizedCursor, idAfter
+    );
   }
 
   @Override

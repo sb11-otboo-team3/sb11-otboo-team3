@@ -8,6 +8,7 @@ import com.otboo.domain.user.exception.InvalidUserCursorException;
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
@@ -79,20 +80,18 @@ public class UserRepositoryImpl implements UserRepositoryCustom {
       return null;
     }
 
+    String op = isDesc ? "<" : ">";
+
     try {
       if ("createdAt".equalsIgnoreCase(sortBy)) {
         Instant cursorCreatedAt = Instant.parse(cursor);
-        return isDesc
-            ? user.createdAt.lt(cursorCreatedAt)
-              .or(user.createdAt.eq(cursorCreatedAt).and(user.id.lt(idAfter)))
-            : user.createdAt.gt(cursorCreatedAt)
-              .or(user.createdAt.eq(cursorCreatedAt).and(user.id.gt(idAfter)));
+        return Expressions.booleanTemplate(
+            "({0}, {1}) " + op + " ({2}, {3})", user.createdAt, user.id, cursorCreatedAt, idAfter
+        );
       } else {
-        return isDesc
-            ? user.email.lt(cursor)
-              .or(user.email.eq(cursor).and(user.id.lt(idAfter)))
-            : user.email.gt(cursor)
-              .or(user.email.eq(cursor).and(user.id.gt(idAfter)));
+        return Expressions.booleanTemplate(
+            "({0}, {1}) " + op + " ({2}, {3})", user.email, user.id, cursor, idAfter
+        );
       }
     } catch (DateTimeParseException e) {
       throw new InvalidUserCursorException();
