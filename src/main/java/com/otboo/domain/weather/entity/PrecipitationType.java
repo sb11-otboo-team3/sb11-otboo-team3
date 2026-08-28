@@ -1,0 +1,9 @@
+package com.otboo.domain.weather.entity;
+
+public enum PrecipitationType {
+  NONE,
+  RAIN,
+  RAIN_SNOW,
+  SNOW,
+  SHOWER // 소나기
+}

@@ -1,0 +1,44 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadBucketMetadata",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation"
+      ],
+      "Resource": "arn:aws:s3:::otboo-prod-assets-310567229825-ap-northeast-2"
+    },
+    {
+      "Sid": "ListApplicationPrefixes",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::otboo-prod-assets-310567229825-ap-northeast-2",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "profiles",
+            "profiles/*",
+            "clothes",
+            "clothes/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ManageApplicationObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::otboo-prod-assets-310567229825-ap-northeast-2/profiles/*",
+        "arn:aws:s3:::otboo-prod-assets-310567229825-ap-northeast-2/clothes/*"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+spring:
+  config:
+    activate:
+      on-profile: local
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:otboo}
+    username: ${DB_USERNAME:otboo}
+    password: ${DB_PASSWORD:otboo}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+
+  batch:
+    jdbc:
+      initialize-schema: never
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:local-dev-google-client-id}
+            client-secret: ${GOOGLE_CLIENT_SECRET:local-dev-google-client-secret}
+          kakao:
+            client-id: ${KAKAO_CLIENT_ID:local-dev-kakao-client-id}
+            client-secret: ${KAKAO_CLIENT_SECRET:local-dev-kakao-client-secret}
+            client-authentication-method: client_secret_post
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            client-name: Kakao
+            scope:
+              - profile_nickname
+              - account_email
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
+
+jwt:
+  secret: ${JWT_SECRET:3WayDafV59YynmTwCpaDtnpeur8sokrAkQ+wFlXO4QY=}
+  access-expiration: ${JWT_ACCESS_EXPIRATION:900000}
+  refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
+  admin-access-expiration: ${JWT_ADMIN_ACCESS_EXPIRATION:300000}
+
+app:
+  search:
+    endpoint: ${SEARCH_ENDPOINT:http://localhost:9200}
+  websocket:
+    allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://localhost:3000,http://localhost:8080}
+  admin:
+    init-password: ${ADMIN_INIT_PASSWORD:LocalAdmin1234!}
+  oauth2:
+    redirect-uri: ${OAUTH2_REDIRECT_URI:http://localhost:5173/oauth2/redirect}
+
+kakao:
+  local:
+    api-key: ${KAKAO_REST_API_KEY:kakao-rest-api-key}
+    base-url: https://dapi.kakao.com
+
+kma:
+  vilage-fcst:
+    api-key: ${KMA_API_KEY:kma-api-key}
+    base-url: https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0
+
+security:
+  actuator:
+    # 로컬 compose.yaml의 프로메테우스가 인증 없이 /actuator/prometheus를 긁어갈 수 있게 로컬만 허용.
+    prometheus-public: true
+
+weather:
+  cleanup:
+    # TODO: 로컬 테스트용 임시 오버라이드 - 확인 끝나면 이 줄 지울 것 (운영은 새벽 4시 그대로, WeatherCleanupScheduler 기본값 참고)
+    cron: "0 * * * * *"
+  prefetch:
+    # TODO: 로컬 테스트용 임시 오버라이드 - 확인 끝나면 이 줄 지울 것 (운영은 발표시각+15분 그대로, WeatherPrefetchScheduler 기본값 참고)
+    cron: "0 */10 * * * *"
+
+logging:
+  level:
+    root: INFO
+    com.otboo: DEBUG

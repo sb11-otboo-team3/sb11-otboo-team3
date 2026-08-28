@@ -1,0 +1,129 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+  servlet:
+    multipart:
+      max-file-size: ${IMAGE_MAX_FILE_SIZE_BYTES:10485760}B
+      max-request-size: ${MULTIPART_MAX_REQUEST_SIZE_BYTES:11534336}B
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchRestClientAutoConfiguration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  datasource:
+    url: jdbc:h2:mem:otboo;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  flyway:
+    enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  batch:
+    jdbc:
+      initialize-schema: always
+    job:
+      enabled: false
+  cache:
+    type: simple
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: test-google-client-id
+            client-secret: test-google-client-secret
+          kakao:
+            client-id: test-kakao-client-id
+            client-secret: test-kakao-client-secret
+            client-authentication-method: client_secret_post
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            client-name: Kakao
+            scope:
+              - profile_nickname
+              - account_email
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+  health:
+    redis:
+      enabled: false
+
+jwt:
+  secret: k3kXIvo3YdC0cNUP2yMc9Rmhell9Te3CTFBlP3UA+ts=
+  access-expiration: 900000
+  refresh-expiration: 604800000
+  admin-access-expiration: 300000
+
+kakao:
+  local:
+    api-key: test-api-key
+    base-url: https://dapi.kakao.com
+
+kma:
+  vilage-fcst:
+    api-key: test-api-key
+    base-url: https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0
+
+openrouter:
+  api-key: test-api-key
+  base-url: https://openrouter.ai/api/v1
+  model: test-model
+  vision-model: test-vision-model
+
+recommendation:
+  llm-enabled: true
+
+app:
+  # Client 생성만 하며 실제 Elasticsearch 접속은 발생하지 않는다.
+  search:
+    endpoint: http://localhost:9200
+    connect-timeout: 3s
+    socket-timeout: 5s
+  websocket:
+    allowed-origin-patterns: http://localhost:5173,http://localhost:3000,http://localhost:8080
+
+  storage:
+    s3:
+      region: ap-northeast-2
+      bucket: test-storage-bucket
+      presigned-url-expiration-seconds: 600
+
+    image:
+      max-file-size-bytes: 10485760
+
+  admin:
+    init-email: admin@otboo.io
+    init-name: admin
+    init-password: admin1234!
+
+  oauth2:
+    redirect-uri: http://localhost:5173/oauth2/redirect
+
+  weather:
+    diff:
+      announcement-temp-threshold: 5.0
+      daily-temp-rate-threshold-per-hour: 3.0
+
+logging:
+  level:
+    root: WARN

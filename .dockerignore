@@ -1,0 +1,33 @@
+# Git
+.git
+.github
+.gitignore
+.gitattributes
+
+# Gradle 빌드 결과 및 캐시
+.gradle
+build
+out
+
+# IDE
+.idea
+.vscode
+*.iml
+
+# 환경변수 및 민감정보
+.env
+.env.*
+
+# 로컬 Docker Compose
+compose.yaml
+compose.yml
+docker-compose.yaml
+docker-compose.yml
+
+# 문서 및 로컬 설정
+README.md
+.coderabbit.yaml
+
+# OS 및 로그
+.DS_Store
+*.log

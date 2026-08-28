@@ -1,0 +1,203 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.5.16'
+	id 'io.spring.dependency-management' version '1.1.7'
+	id 'jacoco'
+}
+
+group = 'com.otboo'
+version = '0.0.1-SNAPSHOT'
+description = 'Personalized outfit recommendation service'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+// macOS Apple Silicon에서 Reactor Netty가 macOS native DNS resolver를
+// 정상적으로 사용할 수 있도록 아키텍처별 native artifact를 추가
+def currentOs = System.getProperty('os.name').toLowerCase()
+def currentArch = System.getProperty('os.arch').toLowerCase()
+def isMacArm = currentOs.contains('mac') &&
+		(currentArch == 'aarch64' || currentArch == 'arm64')
+
+dependencies {
+	// Web
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+	// Monitoring
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+	// OpenAPI / Swagger
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17'
+
+	// Security
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+
+    //OAuth2 Client
+	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+
+	// 이미지 리사이징 (프로필 썸네일)
+	implementation 'net.coobird:thumbnailator:0.4.20'
+
+	// JWT
+	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+
+	// Real-time communication
+	implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+	// Reactive HTTP client (WebClient) - 서블릿 웹서버는 그대로 두고 WebClient만 쓰기 위함
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+	// HTML 파싱 (구매 링크 추출) - 요청은 WebClient가 담당하고, Jsoup은 이미 받아온 HTML 파싱 전용으로만 사용
+	implementation 'org.jsoup:jsoup:1.18.3'
+
+	// macOS Apple Silicon용 Netty native DNS resolver
+	if (isMacArm) {
+		runtimeOnly('io.netty:netty-resolver-dns-native-macos') {
+			artifact {
+				classifier = 'osx-aarch_64'
+			}
+		}
+	}
+
+	// Cache
+	implementation 'org.springframework.boot:spring-boot-starter-cache'
+	implementation 'com.github.ben-manes.caffeine:caffeine'
+
+	// Database
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	runtimeOnly 'org.postgresql:postgresql'
+
+	// Flyway
+	implementation 'org.flywaydb:flyway-core'
+	implementation 'org.flywaydb:flyway-database-postgresql'
+
+	// Querydsl
+	implementation 'com.querydsl:querydsl-jpa:5.1.0:jakarta'
+	annotationProcessor 'com.querydsl:querydsl-apt:5.1.0:jakarta'
+	annotationProcessor 'jakarta.annotation:jakarta.annotation-api'
+	annotationProcessor 'jakarta.persistence:jakarta.persistence-api'
+
+	// Redis
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+	// 로컬 Elasticsearch OSS 7.10.2와 운영 OpenSearch 1.x의 공통 호환 Client
+	implementation 'org.elasticsearch.client:elasticsearch-rest-high-level-client:7.10.2'
+	implementation 'org.elasticsearch.client:elasticsearch-rest-client:7.10.2'
+
+	// Kafka
+	implementation 'org.springframework.kafka:spring-kafka'
+
+	// Amazon MSK IAM 인증
+	implementation 'software.amazon.msk:aws-msk-iam-auth:2.3.6'
+
+	// Retry (파일 삭제 등 부수 작업 재시도)
+	implementation 'org.springframework.retry:spring-retry'
+	implementation 'org.springframework.boot:spring-boot-starter-aop'
+
+	// AWS SDK
+	implementation platform('software.amazon.awssdk:bom:2.48.0')
+	implementation 'software.amazon.awssdk:s3'
+
+	// Spring Batch
+	implementation 'org.springframework.boot:spring-boot-starter-batch'
+
+	// ShedLock (서버 여러 대에서 같은 @Scheduled 배치가 동시에 중복 실행되는 것 방지)
+	implementation 'net.javacrumbs.shedlock:shedlock-spring:7.7.0'
+	implementation 'net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.7.0'
+
+	// Prometheus 메트릭 노출 (날씨 프리페치 배치 커스텀 메트릭용) - Actuator가 이미 micrometer-core를
+	// 가져오므로 레지스트리 구현체만 추가하면 /actuator/prometheus에서 Prometheus 텍스트 포맷으로 노출됨
+	implementation 'io.micrometer:micrometer-registry-prometheus'
+
+	// Configuration metadata
+	annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+	// Lombok
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+
+	// Test
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'org.springframework.security:spring-security-test'
+	testImplementation 'org.springframework.batch:spring-batch-test'
+	testImplementation 'org.springframework.kafka:spring-kafka-test'
+
+	// Test database
+	testRuntimeOnly 'com.h2database:h2'
+
+	// WebClient 테스트용 목 HTTP 서버
+	testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+
+	// Testcontainers (Flyway 마이그레이션을 실제 PostgreSQL에서 검증하는 통합 테스트용)
+	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+	testImplementation 'org.testcontainers:junit-jupiter'
+	testImplementation 'org.testcontainers:postgresql'
+
+	testCompileOnly 'org.projectlombok:lombok'
+	testAnnotationProcessor 'org.projectlombok:lombok'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+def jacocoExcludePatterns = [
+		'**/Q*.class'
+]
+
+def jacocoClassDirectories = files(
+		sourceSets.main.output.classesDirs.files.collect { classDirectory ->
+			fileTree(
+					dir: classDirectory,
+					exclude: jacocoExcludePatterns
+			)
+		}
+)
+
+tasks.named('test') {
+	useJUnitPlatform()
+
+	// 테스트 완료 후 커버리지 보고서 생성
+	finalizedBy tasks.named('jacocoTestReport')
+}
+
+tasks.named('jacocoTestReport') {
+	dependsOn tasks.named('test')
+
+	classDirectories.setFrom(jacocoClassDirectories)
+
+	reports {
+		html.required = true
+		xml.required = true
+		csv.required = false
+	}
+}
+
+tasks.named('jacocoTestCoverageVerification') {
+	dependsOn tasks.named('test')
+
+	classDirectories.setFrom(jacocoClassDirectories)
+
+	violationRules {
+		rule {
+			element = 'BUNDLE'
+
+			limit {
+				counter = 'LINE'
+				value = 'COVEREDRATIO'
+				minimum = 0.80
+			}
+		}
+	}
+}
+
+tasks.named('check') {
+	dependsOn tasks.named('jacocoTestCoverageVerification')
+}

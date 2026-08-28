@@ -1,0 +1,112 @@
+spring:
+  application:
+    name: otboo
+  profiles:
+    default: local
+  servlet:
+    multipart:
+      max-file-size: ${IMAGE_MAX_FILE_SIZE_BYTES:10485760}B
+      max-request-size: ${MULTIPART_MAX_REQUEST_SIZE_BYTES:11534336}B
+  mvc:
+    async:
+      request-timeout: 3600000
+  task:
+    scheduling:
+      pool:
+        size: 4
+      thread-name-prefix: otboo-scheduler-
+  jpa:
+    open-in-view: false
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope:
+              - email
+              - profile
+          kakao:
+            client-id: ${KAKAO_CLIENT_ID}
+            client-secret: ${KAKAO_CLIENT_SECRET}
+            client-authentication-method: client_secret_post
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            client-name: Kakao
+            scope:
+              - profile_nickname
+              - account_email
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
+  datasource:
+    hikari:
+      # 기본값(10)보다 늘림 - 날씨 프리패치 배치가 동시성 10(WeatherPrefetchJobConfig.CONCURRENCY)으로
+      # 격자를 병렬 처리하는데, 기본 풀이면 배치가 커넥션을 거의 다 차지해서 그 순간 일반 API 요청이
+      # 밀릴 수 있음. RDS(db.t4g.micro) 쪽 max_connections는 약 112개라 이 정도는 여유 있음.
+      maximum-pool-size: 15
+  batch:
+    job:
+      enabled: false
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+      # Elasticsearch 7.10.2 / OpenSearch 1.x 호환을 위해
+      # SearchConfig에서 RestHighLevelClient를 직접 구성하므로
+      # Spring Boot의 별도 RestClient 자동 구성을 사용하지 않는다.
+      - org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchRestClientAutoConfiguration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+kakao:
+  local:
+    api-key: ${KAKAO_REST_API_KEY}
+    base-url: https://dapi.kakao.com
+kma:
+  vilage-fcst:
+    api-key: ${KMA_API_KEY}
+    base-url: https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0
+openrouter:
+  api-key: ${OPENROUTER_API_KEY}
+  base-url: https://openrouter.ai/api/v1
+  model: ${OPENROUTER_MODEL:nvidia/nemotron-3.5-lightning:free}
+  vision-model: ${OPENROUTER_VISION_MODEL:dots-studio/dots-3-note-preview:free}
+
+recommendation:
+  llm-enabled: ${RECOMMENDATION_LLM_ENABLED:true}
+app:
+  websocket:
+    allowed-origin-patterns: ${WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://localhost:3000,http://localhost:8080}
+  search:
+    connect-timeout: 3s
+    socket-timeout: 5s
+  storage:
+    s3:
+      region: ${AWS_REGION:ap-northeast-2}
+      bucket: ${S3_BUCKET:local-storage-bucket}
+      presigned-url-expiration-seconds: ${S3_PRESIGNED_URL_EXPIRATION_SECONDS:600}
+    image:
+      max-file-size-bytes: ${IMAGE_MAX_FILE_SIZE_BYTES:10485760}
+  admin:
+    init-email: ${ADMIN_INIT_EMAIL:admin@otboo.io}
+    init-name: ${ADMIN_INIT_NAME:admin}
+    init-password: ${ADMIN_INIT_PASSWORD}
+  oauth2:
+    redirect-uri: ${OAUTH2_REDIRECT_URI:http://localhost:5173/oauth2/redirect}
+  weather:
+    diff:
+      announcement-temp-threshold: ${WEATHER_DIFF_ANNOUNCEMENT_TEMP_THRESHOLD:5.0}
+      daily-temp-rate-threshold-per-hour: ${WEATHER_DIFF_DAILY_TEMP_RATE_THRESHOLD_PER_HOUR:3.0}
+logging:
+  pattern:
+    level: "%5p [requestId:%X{requestId}] [userId:%X{userId}]"

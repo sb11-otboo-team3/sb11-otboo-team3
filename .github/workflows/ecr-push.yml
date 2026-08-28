@@ -1,0 +1,658 @@
+name: Build and Push ECR Image
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ecr-push-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: otboo/backend
+  ECS_CLUSTER: otboo-prod-cluster
+  ECS_SERVICE: otboo-prod-backend-service
+  ECS_CONTAINER_NAME: otboo-backend
+  ALB_NAME: otboo-prod-alb
+
+jobs:
+  validate-source:
+    name: Validate Deployment Source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - name: Validate latest develop commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_REF" != "refs/heads/develop" ]; then
+            echo "Production deployment is allowed only from develop."
+            exit 1
+          fi
+
+          LATEST_DEVELOP_SHA="$(
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/git/ref/heads/develop" \
+              --jq '.object.sha'
+          )"
+
+          echo "Requested SHA: ${GITHUB_SHA}"
+          echo "Latest develop SHA: ${LATEST_DEVELOP_SHA}"
+
+          if [ "$GITHUB_SHA" != "$LATEST_DEVELOP_SHA" ]; then
+            echo "This workflow does not target the latest develop commit."
+            exit 1
+          fi
+
+  quality-gate:
+    name: CI Quality Gate
+    needs: validate-source
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  build-and-push:
+    name: Build and Push ECR Image
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Validate latest develop commit before image build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LATEST_DEVELOP_SHA="$(
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/git/ref/heads/develop" \
+              --jq '.object.sha'
+          )"
+
+          echo "Requested SHA: ${GITHUB_SHA}"
+          echo "Latest develop SHA: ${LATEST_DEVELOP_SHA}"
+
+          if [ "$GITHUB_SHA" != "$LATEST_DEVELOP_SHA" ]; then
+            echo "A newer develop commit exists. Stale image build is blocked."
+            exit 1
+          fi
+
+      - name: Checkout source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@b040164c4934333d597f3f9c67502ff28f814e9c # v2.1.6
+
+      - name: Check existing immutable image
+        id: existing-image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ERROR_FILE="$(mktemp)"
+
+          set +e
+          EXISTING_DIGEST="$(
+            aws ecr describe-images \
+              --repository-name "$ECR_REPOSITORY" \
+              --image-ids imageTag="$GITHUB_SHA" \
+              --region "$AWS_REGION" \
+              --query 'imageDetails[0].imageDigest' \
+              --output text \
+              --no-cli-pager \
+              2>"$ERROR_FILE"
+          )"
+          DESCRIBE_STATUS=$?
+          set -e
+
+          if [ "$DESCRIBE_STATUS" -eq 0 ]; then
+            test -n "$EXISTING_DIGEST"
+            test "$EXISTING_DIGEST" != "None"
+
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "digest=$EXISTING_DIGEST" >> "$GITHUB_OUTPUT"
+            echo "Existing immutable image found for ${GITHUB_SHA}."
+
+            rm -f "$ERROR_FILE"
+            exit 0
+          fi
+
+          if grep -q "ImageNotFoundException" "$ERROR_FILE"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No existing image found for ${GITHUB_SHA}."
+
+            rm -f "$ERROR_FILE"
+            exit 0
+          fi
+
+          cat "$ERROR_FILE"
+          rm -f "$ERROR_FILE"
+          exit "$DESCRIBE_STATUS"
+
+      - name: Validate existing immutable image
+        if: steps.existing-image.outputs.exists == 'true'
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          EXISTING_DIGEST: ${{ steps.existing-image.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+
+          docker pull \
+            --platform linux/amd64 \
+            "$IMAGE_URI"
+
+          PULLED_DIGEST="$(
+            docker image inspect "$IMAGE_URI" \
+              --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+            | grep "^${REGISTRY}/${ECR_REPOSITORY}@" \
+            | head -n 1 \
+            | cut -d '@' -f 2
+          )"
+
+          IMAGE_OS="$(
+            docker image inspect "$IMAGE_URI" \
+              --format '{{.Os}}'
+          )"
+
+          IMAGE_ARCH="$(
+            docker image inspect "$IMAGE_URI" \
+              --format '{{.Architecture}}'
+          )"
+
+          IMAGE_REVISION="$(
+            docker image inspect "$IMAGE_URI" \
+              --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'
+          )"
+
+          test "$PULLED_DIGEST" = "$EXISTING_DIGEST" || {
+            echo "Pulled image digest does not match the ECR digest."
+            exit 1
+          }
+
+          test "$IMAGE_OS" = "linux" || {
+            echo "Existing image OS is not linux: $IMAGE_OS"
+            exit 1
+          }
+
+          test "$IMAGE_ARCH" = "amd64" || {
+            echo "Existing image architecture is not amd64: $IMAGE_ARCH"
+            exit 1
+          }
+
+          test "$IMAGE_REVISION" = "$GITHUB_SHA" || {
+            echo "Existing image revision label does not match GITHUB_SHA."
+            exit 1
+          }
+
+          echo "Existing immutable image matches the requested Git SHA."
+          echo "Digest: ${EXISTING_DIGEST}"
+          echo "Platform: ${IMAGE_OS}/${IMAGE_ARCH}"
+          echo "Revision: ${IMAGE_REVISION}"
+
+      - name: Set up Docker Buildx
+        if: steps.existing-image.outputs.exists != 'true'
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Build and push Docker image
+        if: steps.existing-image.outputs.exists != 'true'
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          provenance: false
+          push: true
+          tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          build-args: |
+            IMAGE_SOURCE_COMMIT=${{ github.sha }}
+
+      - name: Resolve final image digest
+        id: final-image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IMAGE_DIGEST="$(
+            aws ecr describe-images \
+              --repository-name "$ECR_REPOSITORY" \
+              --image-ids imageTag="$GITHUB_SHA" \
+              --region "$AWS_REGION" \
+              --query 'imageDetails[0].imageDigest' \
+              --output text \
+              --no-cli-pager
+          )"
+
+          test -n "$IMAGE_DIGEST"
+          test "$IMAGE_DIGEST" != "None"
+
+          echo "digest=$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Print pushed image information
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_DIGEST: ${{ steps.final-image.outputs.digest }}
+        shell: bash
+        run: |
+          echo "Image URI: ${REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+          echo "Image Digest: ${IMAGE_DIGEST}"
+
+  deploy-to-ecs:
+    name: Deploy to Amazon ECS
+    needs: build-and-push
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Validate latest develop commit before ECS deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LATEST_DEVELOP_SHA="$(
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/git/ref/heads/develop" \
+              --jq '.object.sha'
+          )"
+
+          echo "Deployment SHA: ${GITHUB_SHA}"
+          echo "Latest develop SHA: ${LATEST_DEVELOP_SHA}"
+
+          if [ "$GITHUB_SHA" != "$LATEST_DEVELOP_SHA" ]; then
+            echo "A newer develop commit exists. Stale ECS deployment is blocked."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials for ECS deployment
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_ECS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve current ECS deployment
+        id: ecs-deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TASK_DEFINITION_ARN="$(
+            aws ecs describe-services \
+              --cluster "$ECS_CLUSTER" \
+              --services "$ECS_SERVICE" \
+              --region "$AWS_REGION" \
+              --query 'services[0].taskDefinition' \
+              --output text \
+              --no-cli-pager
+          )"
+
+          test -n "$TASK_DEFINITION_ARN"
+          test "$TASK_DEFINITION_ARN" != "None"
+
+          CURRENT_IMAGE="$(
+            aws ecs describe-task-definition \
+              --task-definition "$TASK_DEFINITION_ARN" \
+              --region "$AWS_REGION" \
+              --query "taskDefinition.containerDefinitions[?name=='${ECS_CONTAINER_NAME}'].image | [0]" \
+              --output text \
+              --no-cli-pager
+          )"
+
+          test -n "$CURRENT_IMAGE"
+          test "$CURRENT_IMAGE" != "None"
+
+          AWS_ACCOUNT_ID="$(
+            aws sts get-caller-identity \
+              --query 'Account' \
+              --output text \
+              --no-cli-pager
+          )"
+
+          TARGET_IMAGE="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${GITHUB_SHA}"
+
+          echo "task-definition-arn=$TASK_DEFINITION_ARN" >> "$GITHUB_OUTPUT"
+          echo "current-image=$CURRENT_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "target-image=$TARGET_IMAGE" >> "$GITHUB_OUTPUT"
+
+          if [ "$CURRENT_IMAGE" = "$TARGET_IMAGE" ]; then
+            echo "deploy-required=false" >> "$GITHUB_OUTPUT"
+            echo "ECS service already uses the requested Git SHA image."
+          else
+            echo "deploy-required=true" >> "$GITHUB_OUTPUT"
+            echo "A new ECS deployment is required."
+          fi
+
+          echo "Current task definition: $TASK_DEFINITION_ARN"
+          echo "Current image: $CURRENT_IMAGE"
+          echo "Target image: $TARGET_IMAGE"
+
+      - name: Render Amazon ECS task definition
+        id: task-def
+        if: steps.ecs-deployment.outputs.deploy-required == 'true'
+        uses: aws-actions/amazon-ecs-render-task-definition@138c24f321fdbdf7edee4a685519d253cae2cdea # v1.9.0
+        with:
+          task-definition-arn: ${{ steps.ecs-deployment.outputs.task-definition-arn }}
+          container-name: ${{ env.ECS_CONTAINER_NAME }}
+          image: ${{ steps.ecs-deployment.outputs.target-image }}
+
+      - name: Validate latest develop commit before ECS deployment
+        if: steps.ecs-deployment.outputs.deploy-required == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LATEST_DEVELOP_SHA="$(
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/git/ref/heads/develop" \
+              --jq '.object.sha'
+          )"
+
+          echo "Deployment SHA: ${GITHUB_SHA}"
+          echo "Latest develop SHA: ${LATEST_DEVELOP_SHA}"
+
+          if [ "$GITHUB_SHA" != "$LATEST_DEVELOP_SHA" ]; then
+            echo "A newer develop commit exists. Stale ECS deployment is blocked."
+            exit 1
+          fi
+
+      - name: Deploy Amazon ECS task definition
+        if: steps.ecs-deployment.outputs.deploy-required == 'true'
+        uses: aws-actions/amazon-ecs-deploy-task-definition@c465972ecbd160473f22e683363b422a5412a3de # v2.6.3
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Verify ECS deployment
+        env:
+          TARGET_IMAGE: ${{ steps.ecs-deployment.outputs.target-image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TASKS_JSON="$(mktemp)"
+          TARGET_HEALTH_JSON="$(mktemp)"
+          RUNNING_IPS_FILE="$(mktemp)"
+
+          trap 'rm -f "$TASKS_JSON" "$TARGET_HEALTH_JSON" "$RUNNING_IPS_FILE"' EXIT
+
+          SERVICE_INFO="$(
+            aws ecs describe-services \
+              --cluster "$ECS_CLUSTER" \
+              --services "$ECS_SERVICE" \
+              --region "$AWS_REGION" \
+              --query 'services[0].[taskDefinition,desiredCount,runningCount,pendingCount,loadBalancers[0].targetGroupArn]' \
+              --output text \
+              --no-cli-pager
+          )"
+
+          read -r \
+            SERVICE_TASK_DEFINITION \
+            DESIRED_COUNT \
+            RUNNING_COUNT \
+            PENDING_COUNT \
+            TARGET_GROUP_ARN \
+            <<< "$SERVICE_INFO"
+
+          test -n "$SERVICE_TASK_DEFINITION"
+          test "$SERVICE_TASK_DEFINITION" != "None"
+
+          test "$DESIRED_COUNT" -gt 0
+
+          test "$RUNNING_COUNT" -eq "$DESIRED_COUNT" || {
+            echo "Running task count does not match desired count."
+            echo "Desired: $DESIRED_COUNT"
+            echo "Running: $RUNNING_COUNT"
+            exit 1
+          }
+
+          test "$PENDING_COUNT" -eq 0 || {
+            echo "ECS service still has pending tasks: $PENDING_COUNT"
+            exit 1
+          }
+
+          test -n "$TARGET_GROUP_ARN"
+          test "$TARGET_GROUP_ARN" != "None"
+
+          SERVICE_IMAGE="$(
+            aws ecs describe-task-definition \
+              --task-definition "$SERVICE_TASK_DEFINITION" \
+              --region "$AWS_REGION" \
+              --query "taskDefinition.containerDefinitions[?name=='${ECS_CONTAINER_NAME}'].image | [0]" \
+              --output text \
+              --no-cli-pager
+          )"
+
+          test "$SERVICE_IMAGE" = "$TARGET_IMAGE" || {
+            echo "Service task definition image does not match the target image."
+            echo "Service image: $SERVICE_IMAGE"
+            echo "Target image: $TARGET_IMAGE"
+            exit 1
+          }
+
+          mapfile -t TASK_ARNS < <(
+            aws ecs list-tasks \
+              --cluster "$ECS_CLUSTER" \
+              --service-name "$ECS_SERVICE" \
+              --desired-status RUNNING \
+              --region "$AWS_REGION" \
+              --query 'taskArns[]' \
+              --output text \
+              --no-cli-pager \
+            | tr '\t' '\n' \
+            | sed '/^$/d'
+          )
+
+          test "${#TASK_ARNS[@]}" -eq "$DESIRED_COUNT" || {
+            echo "RUNNING task ARN count does not match desired count."
+            echo "Expected: $DESIRED_COUNT"
+            echo "Found: ${#TASK_ARNS[@]}"
+            exit 1
+          }
+
+          aws ecs describe-tasks \
+            --cluster "$ECS_CLUSTER" \
+            --tasks "${TASK_ARNS[@]}" \
+            --region "$AWS_REGION" \
+            --output json \
+            --no-cli-pager \
+            > "$TASKS_JSON"
+
+          python3 - \
+            "$TASKS_JSON" \
+            "$SERVICE_TASK_DEFINITION" \
+            "$TARGET_IMAGE" \
+            "$ECS_CONTAINER_NAME" \
+            > "$RUNNING_IPS_FILE" <<'PY'
+          import json
+          import sys
+
+          path, expected_task_definition, expected_image, container_name = sys.argv[1:]
+
+          with open(path, encoding="utf-8") as f:
+              payload = json.load(f)
+
+          tasks = payload.get("tasks", [])
+
+          if not tasks:
+              raise SystemExit("No RUNNING ECS tasks were returned.")
+
+          for task in tasks:
+              task_arn = task.get("taskArn")
+
+              if task.get("lastStatus") != "RUNNING":
+                  raise SystemExit(
+                      f"Task is not RUNNING: {task_arn}"
+                  )
+
+              if task.get("taskDefinitionArn") != expected_task_definition:
+                  raise SystemExit(
+                      f"Task definition mismatch: {task_arn}"
+                  )
+
+              containers = [
+                  container
+                  for container in task.get("containers", [])
+                  if container.get("name") == container_name
+              ]
+
+              if len(containers) != 1:
+                  raise SystemExit(
+                      f"Container {container_name} not found exactly once: {task_arn}"
+                  )
+
+              actual_image = containers[0].get("image")
+
+              if actual_image != expected_image:
+                  raise SystemExit(
+                      f"Task image mismatch: {task_arn}\n"
+                      f"Expected: {expected_image}\n"
+                      f"Actual:   {actual_image}"
+                  )
+
+              private_ip = None
+
+              for attachment in task.get("attachments", []):
+                  if attachment.get("type") != "ElasticNetworkInterface":
+                      continue
+
+                  details = {
+                      item.get("name"): item.get("value")
+                      for item in attachment.get("details", [])
+                  }
+
+                  private_ip = details.get("privateIPv4Address")
+
+                  if private_ip:
+                      break
+
+              if not private_ip:
+                  raise SystemExit(
+                      f"Private IPv4 address not found: {task_arn}"
+                  )
+
+              print(private_ip)
+          PY
+
+          aws elbv2 describe-target-health \
+            --target-group-arn "$TARGET_GROUP_ARN" \
+            --region "$AWS_REGION" \
+            --output json \
+            --no-cli-pager \
+            > "$TARGET_HEALTH_JSON"
+
+          python3 - \
+            "$TARGET_HEALTH_JSON" \
+            "$RUNNING_IPS_FILE" <<'PY'
+          import json
+          import sys
+
+          health_path, ips_path = sys.argv[1:]
+
+          with open(health_path, encoding="utf-8") as f:
+              payload = json.load(f)
+
+          with open(ips_path, encoding="utf-8") as f:
+              running_ips = {
+                  line.strip()
+                  for line in f
+                  if line.strip()
+              }
+
+          health_by_target = {
+              item["Target"]["Id"]: item["TargetHealth"]["State"]
+              for item in payload.get("TargetHealthDescriptions", [])
+          }
+
+          for ip in running_ips:
+              state = health_by_target.get(ip)
+
+              if state != "healthy":
+                  raise SystemExit(
+                      f"Target is not healthy: {ip} state={state}"
+                  )
+
+          print("All RUNNING ECS task targets are healthy.")
+          PY
+
+          ALB_DNS="$(
+            aws elbv2 describe-load-balancers \
+              --names "$ALB_NAME" \
+              --region "$AWS_REGION" \
+              --query 'LoadBalancers[0].DNSName' \
+              --output text \
+              --no-cli-pager
+          )"
+
+          test -n "$ALB_DNS"
+          test "$ALB_DNS" != "None"
+
+          HEALTH_RESPONSE="$(
+            curl \
+              --fail \
+              --silent \
+              --show-error \
+              --max-time 20 \
+              "https://otboo.work/actuator/health"
+          )"
+
+          printf '%s' "$HEALTH_RESPONSE" | python3 -c '
+          import json
+          import sys
+
+          payload = json.load(sys.stdin)
+
+          if payload.get("status") != "UP":
+              raise SystemExit(
+                  f"Application health is not UP: {payload}"
+              )
+
+          print("Application health status: UP")
+          '
+
+          echo "Verified task definition: $SERVICE_TASK_DEFINITION"
+          echo "Verified image: $TARGET_IMAGE"
+          echo "ALB DNS: $ALB_DNS"
+
+      - name: Print ECS deployment result
+        shell: bash
+        run: |
+          echo "Target image: ${{ steps.ecs-deployment.outputs.target-image }}"
+
+          if [ "${{ steps.ecs-deployment.outputs.deploy-required }}" = "true" ]; then
+            echo "ECS deployment completed successfully."
+          else
+            echo "Deployment skipped because ECS already uses this Git SHA image."
+          fi
