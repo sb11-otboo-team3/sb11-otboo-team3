@@ -9,6 +9,7 @@ import com.otboo.domain.weather.entity.PrecipitationType;
 import com.otboo.domain.weather.entity.SkyStatus;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
@@ -179,27 +180,19 @@ public class FeedRepositoryImpl implements FeedRepositoryCustom {
       return null;
     }
 
+    String op = sortDirection == SortDirection.ASCENDING ? ">" : "<";
+
     if (sortBy == SortBy.createdAt) {
       Instant cursorCreatedAt = Instant.parse(cursor);
-
-      if (sortDirection == SortDirection.ASCENDING) {
-        return feed.createdAt.gt(cursorCreatedAt)
-            .or(feed.createdAt.eq(cursorCreatedAt).and(feed.id.gt(idAfter)));
-      }
-
-      return feed.createdAt.lt(cursorCreatedAt)
-          .or(feed.createdAt.eq(cursorCreatedAt).and(feed.id.lt(idAfter)));
+      return Expressions.booleanTemplate(
+          "({0}, {1}) " + op + " ({2}, {3})", feed.createdAt, feed.id, cursorCreatedAt, idAfter
+      );
     }
 
     long cursorLikeCount = Long.parseLong(cursor);
-
-    if (sortDirection == SortDirection.ASCENDING) {
-      return feed.likeCount.gt(cursorLikeCount)
-          .or(feed.likeCount.eq(cursorLikeCount).and(feed.id.gt(idAfter)));
-    }
-
-    return feed.likeCount.lt(cursorLikeCount)
-        .or(feed.likeCount.eq(cursorLikeCount).and(feed.id.lt(idAfter)));
+    return Expressions.booleanTemplate(
+        "({0}, {1}) " + op + " ({2}, {3})", feed.likeCount, feed.id, cursorLikeCount, idAfter
+    );
   }
 
   private OrderSpecifier<?> feedOrder(SortBy sortBy, SortDirection sortDirection) {

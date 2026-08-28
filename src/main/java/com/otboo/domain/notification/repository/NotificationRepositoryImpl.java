@@ -4,6 +4,7 @@ import static com.otboo.domain.notification.entity.QNotification.notification;
 
 import com.otboo.domain.notification.entity.Notification;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
@@ -47,11 +48,10 @@ public class NotificationRepositoryImpl implements NotificationRepositoryCustom{
 
     Instant cursorCreatedAt = Instant.parse(cursor);
 
-    return notification.createdAt.lt(cursorCreatedAt)
-        .or(
-            notification.createdAt.eq(cursorCreatedAt)
-                .and(notification.id.lt(idAfter))
-        );
+    return Expressions.booleanTemplate(
+        "({0}, {1}) < ({2}, {3})",
+        notification.createdAt, notification.id, cursorCreatedAt, idAfter
+    );
   }
 
   @Override
@@ -84,13 +84,11 @@ public class NotificationRepositoryImpl implements NotificationRepositoryCustom{
         .join(notification.receiver).fetchJoin()
         .where(
             notification.receiver.id.eq(receiverId),
-            // lastEventId 알림보다 뒤에 있는 알림만 가져오기
-            notification.createdAt.gt(lastNotification.getCreatedAt())
-                .or(
-                    // 생성시간이 lastNotification과 같을땐 id가 lastEventId보다 큰 알림만 가져오기
-                    notification.createdAt.eq(lastNotification.getCreatedAt())
-                        .and(notification.id.gt(lastEventId))
-                )
+            Expressions.booleanTemplate(
+                "({0}, {1}) > ({2}, {3})",
+                notification.createdAt, notification.id,
+                lastNotification.getCreatedAt(), lastEventId
+            )
         )
         .orderBy(
             notification.createdAt.asc(),

@@ -4,6 +4,7 @@ import static com.otboo.domain.feed.comment.entity.QComment.comment;
 
 import com.otboo.domain.feed.comment.entity.Comment;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
@@ -49,11 +50,10 @@ public class FeedCommentRepositoryImpl implements FeedCommentRepositoryCustom {
 
     Instant cursorCreatedAt = Instant.parse(cursor);
 
-    return comment.createdAt.gt(cursorCreatedAt)
-        .or(
-            comment.createdAt.eq(cursorCreatedAt)
-                .and(comment.id.gt(idAfter))
-        );
+    return Expressions.booleanTemplate(
+        "({0}, {1}) > ({2}, {3})",
+        comment.createdAt, comment.id, cursorCreatedAt, idAfter
+    );
   }
 
   @Override

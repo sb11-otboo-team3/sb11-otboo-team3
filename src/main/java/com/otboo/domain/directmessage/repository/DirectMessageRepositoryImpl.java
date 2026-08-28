@@ -4,6 +4,7 @@ import static com.otboo.domain.directmessage.entity.QDirectMessage.directMessage
 
 import com.otboo.domain.directmessage.entity.DirectMessage;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
@@ -63,11 +64,10 @@ public class DirectMessageRepositoryImpl implements DirectMessageRepositoryCusto
 
     Instant cursorCreatedAt = Instant.parse(cursor);
 
-    return directMessage.createdAt.lt(cursorCreatedAt)
-        .or(
-            directMessage.createdAt.eq(cursorCreatedAt)
-                .and(directMessage.id.lt(idAfter))
-        );
+    return Expressions.booleanTemplate(
+        "({0}, {1}) < ({2}, {3})",
+        directMessage.createdAt, directMessage.id, cursorCreatedAt, idAfter
+    );
   }
 
   @Override
