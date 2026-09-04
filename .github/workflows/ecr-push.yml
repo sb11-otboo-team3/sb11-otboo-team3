@@ -16,17 +16,27 @@ concurrency:
 
 env:
   AWS_REGION: ap-northeast-2
+
   ECR_REPOSITORY: otboo/backend
+
   ECS_CLUSTER: otboo-prod-cluster
   ECS_SERVICE: otboo-prod-backend-service
   ECS_CONTAINER_NAME: otboo-backend
+
   ALB_NAME: otboo-prod-alb
+
+  # #279
+  # 데이터 EC2는 IAM SSM SendCommand 권한도 이 Instance ID로 제한되어 있다.
+  # Private IP는 workflow 실행 시 AWS에서 동적으로 조회한다.
+  DATA_INSTANCE_ID: i-0d059e995fac74ace
+
 
 jobs:
   validate-source:
     name: Validate Deployment Source
     runs-on: ubuntu-latest
     timeout-minutes: 5
+
     permissions:
       contents: read
 
@@ -57,12 +67,16 @@ jobs:
             exit 1
           fi
 
+
   quality-gate:
     name: CI Quality Gate
     needs: validate-source
+
     permissions:
       contents: read
+
     uses: ./.github/workflows/ci.yml
+
 
   build-and-push:
     name: Build and Push ECR Image
@@ -116,6 +130,7 @@ jobs:
           ERROR_FILE="$(mktemp)"
 
           set +e
+
           EXISTING_DIGEST="$(
             aws ecr describe-images \
               --repository-name "$ECR_REPOSITORY" \
@@ -126,7 +141,9 @@ jobs:
               --no-cli-pager \
               2>"$ERROR_FILE"
           )"
+
           DESCRIBE_STATUS=$?
+
           set -e
 
           if [ "$DESCRIBE_STATUS" -eq 0 ]; then
@@ -135,6 +152,7 @@ jobs:
 
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "digest=$EXISTING_DIGEST" >> "$GITHUB_OUTPUT"
+
             echo "Existing immutable image found for ${GITHUB_SHA}."
 
             rm -f "$ERROR_FILE"
@@ -143,6 +161,7 @@ jobs:
 
           if grep -q "ImageNotFoundException" "$ERROR_FILE"; then
             echo "exists=false" >> "$GITHUB_OUTPUT"
+
             echo "No existing image found for ${GITHUB_SHA}."
 
             rm -f "$ERROR_FILE"
@@ -151,6 +170,7 @@ jobs:
 
           cat "$ERROR_FILE"
           rm -f "$ERROR_FILE"
+
           exit "$DESCRIBE_STATUS"
 
       - name: Validate existing immutable image
@@ -223,7 +243,7 @@ jobs:
       - name: Build and push Docker image
         if: steps.existing-image.outputs.exists != 'true'
         id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@53b7df96c91f9dc12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: ./Dockerfile
@@ -264,6 +284,7 @@ jobs:
           echo "Image URI: ${REGISTRY}/${ECR_REPOSITORY}:${GITHUB_SHA}"
           echo "Image Digest: ${IMAGE_DIGEST}"
 
+
   deploy-to-ecs:
     name: Deploy to Amazon ECS
     needs: build-and-push
@@ -299,8 +320,179 @@ jobs:
           role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_ECS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # ----------------------------------------------------------------
+      # #279 Managed Redis / MSK / OpenSearch -> EC2 data stack
+      # ----------------------------------------------------------------
+
+      - name: Resolve production data instance
+        id: data-instance
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t DATA_INSTANCES < <(
+            aws ec2 describe-instances \
+              --region "$AWS_REGION" \
+              --instance-ids "$DATA_INSTANCE_ID" \
+              --filters \
+                "Name=tag:Name,Values=otboo-prod-data" \
+                "Name=tag:Project,Values=otboo" \
+                "Name=tag:Environment,Values=prod" \
+                "Name=instance-state-name,Values=running" \
+              --query 'Reservations[].Instances[].[InstanceId,PrivateIpAddress]' \
+              --output text \
+              --no-cli-pager
+          )
+
+          if [ "${#DATA_INSTANCES[@]}" -ne 1 ]; then
+            echo "Expected exactly one running otboo-prod-data instance."
+            echo "Found: ${#DATA_INSTANCES[@]}"
+            exit 1
+          fi
+
+          read -r RESOLVED_INSTANCE_ID DATA_PRIVATE_IP <<< "${DATA_INSTANCES[0]}"
+
+          test -n "$RESOLVED_INSTANCE_ID"
+          test "$RESOLVED_INSTANCE_ID" != "None"
+
+          test "$RESOLVED_INSTANCE_ID" = "$DATA_INSTANCE_ID" || {
+            echo "Resolved data instance does not match expected Instance ID."
+            echo "Expected: $DATA_INSTANCE_ID"
+            echo "Actual: $RESOLVED_INSTANCE_ID"
+            exit 1
+          }
+
+          test -n "$DATA_PRIVATE_IP"
+          test "$DATA_PRIVATE_IP" != "None"
+
+          echo "instance-id=$RESOLVED_INSTANCE_ID" >> "$GITHUB_OUTPUT"
+          echo "private-ip=$DATA_PRIVATE_IP" >> "$GITHUB_OUTPUT"
+
+          echo "Data instance: $RESOLVED_INSTANCE_ID"
+          echo "Data private IP: $DATA_PRIVATE_IP"
+
+      - name: Verify production data stack readiness
+        env:
+          DATA_INSTANCE_ID: ${{ steps.data-instance.outputs.instance-id }}
+          DATA_PRIVATE_IP: ${{ steps.data-instance.outputs.private-ip }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PARAMETERS_FILE="$(mktemp)"
+          trap 'rm -f "$PARAMETERS_FILE"' EXIT
+
+          python3 - "$DATA_PRIVATE_IP" > "$PARAMETERS_FILE" <<'PY'
+          import json
+          import sys
+
+          private_ip = sys.argv[1]
+
+          commands = [
+              "set -euo pipefail",
+              "systemctl is-active --quiet otboo-data-stack.service",
+              "test \"$(docker inspect -f '{{.State.Health.Status}}' otboo-prod-redis)\" = \"healthy\"",
+              "test \"$(docker inspect -f '{{.State.Health.Status}}' otboo-prod-kafka)\" = \"healthy\"",
+              "test \"$(docker inspect -f '{{.State.Health.Status}}' otboo-prod-opensearch)\" = \"healthy\"",
+              f"ss -lnt | grep -Fq '{private_ip}:6379'",
+              f"ss -lnt | grep -Fq '{private_ip}:9092'",
+              f"ss -lnt | grep -Fq '{private_ip}:9200'",
+              "echo 'otboo data stack readiness: READY'",
+          ]
+
+          json.dump({"commands": commands}, sys.stdout)
+          PY
+
+          COMMAND_ID="$(
+            aws ssm send-command \
+              --region "$AWS_REGION" \
+              --instance-ids "$DATA_INSTANCE_ID" \
+              --document-name AWS-RunShellScript \
+              --parameters "file://${PARAMETERS_FILE}" \
+              --query 'Command.CommandId' \
+              --output text \
+              --no-cli-pager
+          )"
+
+          test -n "$COMMAND_ID"
+          test "$COMMAND_ID" != "None"
+
+          echo "Readiness command: $COMMAND_ID"
+
+          READY=false
+
+          for attempt in $(seq 1 60); do
+            STATUS="$(
+              aws ssm get-command-invocation \
+                --region "$AWS_REGION" \
+                --command-id "$COMMAND_ID" \
+                --instance-id "$DATA_INSTANCE_ID" \
+                --query 'Status' \
+                --output text \
+                --no-cli-pager \
+                2>/dev/null || true
+            )"
+
+            case "$STATUS" in
+              Success)
+                READY=true
+                break
+                ;;
+
+              Failed|Cancelled|TimedOut|Undeliverable|Terminated)
+                echo "Data stack readiness check failed: $STATUS"
+
+                aws ssm get-command-invocation \
+                  --region "$AWS_REGION" \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$DATA_INSTANCE_ID" \
+                  --query '{
+                    Status:Status,
+                    ResponseCode:ResponseCode,
+                    Output:StandardOutputContent,
+                    Error:StandardErrorContent
+                  }' \
+                  --output json \
+                  --no-cli-pager
+
+                exit 1
+                ;;
+            esac
+
+            echo "Waiting for data stack readiness... attempt=${attempt}"
+            sleep 5
+          done
+
+          if [ "$READY" != "true" ]; then
+            echo "Timed out waiting for data stack readiness."
+
+            aws ssm get-command-invocation \
+              --region "$AWS_REGION" \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$DATA_INSTANCE_ID" \
+              --output json \
+              --no-cli-pager || true
+
+            exit 1
+          fi
+
+          aws ssm get-command-invocation \
+            --region "$AWS_REGION" \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$DATA_INSTANCE_ID" \
+            --query '{
+              Status:Status,
+              ResponseCode:ResponseCode,
+              Output:StandardOutputContent,
+              Error:StandardErrorContent
+            }' \
+            --output json \
+            --no-cli-pager
+
       - name: Resolve current ECS deployment
         id: ecs-deployment
+        env:
+          DATA_PRIVATE_IP: ${{ steps.data-instance.outputs.private-ip }}
         shell: bash
         run: |
           set -euo pipefail
@@ -330,6 +522,15 @@ jobs:
           test -n "$CURRENT_IMAGE"
           test "$CURRENT_IMAGE" != "None"
 
+          CURRENT_ENV_JSON="$(
+            aws ecs describe-task-definition \
+              --task-definition "$TASK_DEFINITION_ARN" \
+              --region "$AWS_REGION" \
+              --query "taskDefinition.containerDefinitions[?name=='${ECS_CONTAINER_NAME}'].environment | [0]" \
+              --output json \
+              --no-cli-pager
+          )"
+
           AWS_ACCOUNT_ID="$(
             aws sts get-caller-identity \
               --query 'Account' \
@@ -339,21 +540,74 @@ jobs:
 
           TARGET_IMAGE="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${GITHUB_SHA}"
 
+          CONFIG_MATCHES="$(
+            CURRENT_ENV_JSON="$CURRENT_ENV_JSON" \
+            DATA_PRIVATE_IP="$DATA_PRIVATE_IP" \
+            python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          current_items = json.loads(
+              os.environ["CURRENT_ENV_JSON"] or "[]"
+          ) or []
+
+          current = {
+              item["name"]: item.get("value", "")
+              for item in current_items
+          }
+
+          private_ip = os.environ["DATA_PRIVATE_IP"]
+
+          expected = {
+              "REDIS_HOST": private_ip,
+              "REDIS_SSL_ENABLED": "false",
+              "KAFKA_BOOTSTRAP_SERVERS": f"{private_ip}:9092",
+              "KAFKA_SECURITY_PROTOCOL": "PLAINTEXT",
+              "SEARCH_ENDPOINT": f"http://{private_ip}:9200",
+          }
+
+          matches = True
+
+          for name, expected_value in expected.items():
+              actual_value = current.get(name)
+
+              if actual_value != expected_value:
+                  matches = False
+                  print(
+                      f"Configuration mismatch: {name} "
+                      f"expected={expected_value!r} "
+                      f"actual={actual_value!r}",
+                      file=sys.stderr,
+                  )
+
+          print("true" if matches else "false")
+          PY
+          )"
+
           echo "task-definition-arn=$TASK_DEFINITION_ARN" >> "$GITHUB_OUTPUT"
           echo "current-image=$CURRENT_IMAGE" >> "$GITHUB_OUTPUT"
           echo "target-image=$TARGET_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "config-matches=$CONFIG_MATCHES" >> "$GITHUB_OUTPUT"
 
-          if [ "$CURRENT_IMAGE" = "$TARGET_IMAGE" ]; then
+          if \
+            [ "$CURRENT_IMAGE" = "$TARGET_IMAGE" ] && \
+            [ "$CONFIG_MATCHES" = "true" ]; then
+
             echo "deploy-required=false" >> "$GITHUB_OUTPUT"
+
             echo "ECS service already uses the requested Git SHA image."
+            echo "EC2 data endpoint configuration also matches."
           else
             echo "deploy-required=true" >> "$GITHUB_OUTPUT"
+
             echo "A new ECS deployment is required."
           fi
 
           echo "Current task definition: $TASK_DEFINITION_ARN"
           echo "Current image: $CURRENT_IMAGE"
           echo "Target image: $TARGET_IMAGE"
+          echo "Data configuration matches: $CONFIG_MATCHES"
 
       - name: Render Amazon ECS task definition
         id: task-def
@@ -363,7 +617,14 @@ jobs:
           task-definition-arn: ${{ steps.ecs-deployment.outputs.task-definition-arn }}
           container-name: ${{ env.ECS_CONTAINER_NAME }}
           image: ${{ steps.ecs-deployment.outputs.target-image }}
+          environment-variables: |
+            REDIS_HOST=${{ steps.data-instance.outputs.private-ip }}
+            REDIS_SSL_ENABLED=false
+            KAFKA_BOOTSTRAP_SERVERS=${{ steps.data-instance.outputs.private-ip }}:9092
+            KAFKA_SECURITY_PROTOCOL=PLAINTEXT
+            SEARCH_ENDPOINT=http://${{ steps.data-instance.outputs.private-ip }}:9200
 
+      # stale develop 배포 역전을 막기 위해 실제 ECS deploy 직전에 다시 확인한다.
       - name: Validate latest develop commit before ECS deployment
         if: steps.ecs-deployment.outputs.deploy-required == 'true'
         env:
@@ -398,6 +659,7 @@ jobs:
       - name: Verify ECS deployment
         env:
           TARGET_IMAGE: ${{ steps.ecs-deployment.outputs.target-image }}
+          DATA_PRIVATE_IP: ${{ steps.data-instance.outputs.private-ip }}
         shell: bash
         run: |
           set -euo pipefail
@@ -462,6 +724,54 @@ jobs:
             exit 1
           }
 
+          # 실제 live Task Definition에 #279 endpoint 값이 들어갔는지 확인한다.
+          SERVICE_ENV_JSON="$(
+            aws ecs describe-task-definition \
+              --task-definition "$SERVICE_TASK_DEFINITION" \
+              --region "$AWS_REGION" \
+              --query "taskDefinition.containerDefinitions[?name=='${ECS_CONTAINER_NAME}'].environment | [0]" \
+              --output json \
+              --no-cli-pager
+          )"
+
+          SERVICE_ENV_JSON="$SERVICE_ENV_JSON" \
+          DATA_PRIVATE_IP="$DATA_PRIVATE_IP" \
+          python3 - <<'PY'
+          import json
+          import os
+
+          items = json.loads(
+              os.environ["SERVICE_ENV_JSON"] or "[]"
+          ) or []
+
+          current = {
+              item["name"]: item.get("value", "")
+              for item in items
+          }
+
+          private_ip = os.environ["DATA_PRIVATE_IP"]
+
+          expected = {
+              "REDIS_HOST": private_ip,
+              "REDIS_SSL_ENABLED": "false",
+              "KAFKA_BOOTSTRAP_SERVERS": f"{private_ip}:9092",
+              "KAFKA_SECURITY_PROTOCOL": "PLAINTEXT",
+              "SEARCH_ENDPOINT": f"http://{private_ip}:9200",
+          }
+
+          for name, expected_value in expected.items():
+              actual_value = current.get(name)
+
+              if actual_value != expected_value:
+                  raise SystemExit(
+                      f"Task definition configuration mismatch: "
+                      f"{name} expected={expected_value!r} "
+                      f"actual={actual_value!r}"
+                  )
+
+          print("EC2 data endpoint configuration verified.")
+          PY
+
           mapfile -t TASK_ARNS < <(
             aws ecs list-tasks \
               --cluster "$ECS_CLUSTER" \
@@ -499,7 +809,12 @@ jobs:
           import json
           import sys
 
-          path, expected_task_definition, expected_image, container_name = sys.argv[1:]
+          (
+              path,
+              expected_task_definition,
+              expected_image,
+              container_name,
+          ) = sys.argv[1:]
 
           with open(path, encoding="utf-8") as f:
               payload = json.load(f)
@@ -507,7 +822,9 @@ jobs:
           tasks = payload.get("tasks", [])
 
           if not tasks:
-              raise SystemExit("No RUNNING ECS tasks were returned.")
+              raise SystemExit(
+                  "No RUNNING ECS tasks were returned."
+              )
 
           for task in tasks:
               task_arn = task.get("taskArn")
@@ -530,7 +847,8 @@ jobs:
 
               if len(containers) != 1:
                   raise SystemExit(
-                      f"Container {container_name} not found exactly once: {task_arn}"
+                      f"Container {container_name} "
+                      f"not found exactly once: {task_arn}"
                   )
 
               actual_image = containers[0].get("image")
@@ -553,7 +871,9 @@ jobs:
                       for item in attachment.get("details", [])
                   }
 
-                  private_ip = details.get("privateIPv4Address")
+                  private_ip = details.get(
+                      "privateIPv4Address"
+                  )
 
                   if private_ip:
                       break
@@ -593,7 +913,10 @@ jobs:
 
           health_by_target = {
               item["Target"]["Id"]: item["TargetHealth"]["State"]
-              for item in payload.get("TargetHealthDescriptions", [])
+              for item in payload.get(
+                  "TargetHealthDescriptions",
+                  [],
+              )
           }
 
           for ip in running_ips:
@@ -601,7 +924,8 @@ jobs:
 
               if state != "healthy":
                   raise SystemExit(
-                      f"Target is not healthy: {ip} state={state}"
+                      f"Target is not healthy: "
+                      f"{ip} state={state}"
                   )
 
           print("All RUNNING ECS task targets are healthy.")
@@ -644,6 +968,7 @@ jobs:
 
           echo "Verified task definition: $SERVICE_TASK_DEFINITION"
           echo "Verified image: $TARGET_IMAGE"
+          echo "Verified data private IP: $DATA_PRIVATE_IP"
           echo "ALB DNS: $ALB_DNS"
 
       - name: Print ECS deployment result
@@ -654,5 +979,5 @@ jobs:
           if [ "${{ steps.ecs-deployment.outputs.deploy-required }}" = "true" ]; then
             echo "ECS deployment completed successfully."
           else
-            echo "Deployment skipped because ECS already uses this Git SHA image."
+            echo "Deployment skipped because ECS already uses the target image and EC2 data configuration."
           fi
