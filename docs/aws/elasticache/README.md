@@ -19,6 +19,15 @@
 > [EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 기준으로 합니다.
 
 
+> **#279 전환 전 구성 범위**
+>
+> 아래 `## 1`부터 이어지는 ElastiCache Endpoint, `REDIS_SSL_ENABLED=true`,
+> TLS, Subnet, Security Group 및 ECS 연동 값은 모두
+> **Issue #279 전환 이전의 Amazon ElastiCache 운영 구성**을 기록한 것입니다.
+>
+> Issue #279 이후 현재 운영 기준은
+> [EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 따릅니다.
+
 ## 1. 구성 목적
 
 운영 환경에서 애플리케이션 캐시와 재생성 가능한 임시 데이터를 관리하기 위해 Amazon ElastiCache for Redis OSS를 구성합니다.

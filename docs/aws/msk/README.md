@@ -31,6 +31,15 @@
 > [EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 참고합니다.
 
 
+> **#279 전환 전 구성 범위**
+>
+> 아래 `## 1`부터 이어지는 Amazon MSK Broker, IAM 인증, `SASL_SSL`,
+> 포트 `9098`, Subnet, Security Group 및 ECS 연동 값은 모두
+> **Issue #279 전환 이전의 Amazon MSK 운영 구성**을 기록한 것입니다.
+>
+> Issue #279 이후 현재 운영 기준은
+> [EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 따릅니다.
+
 ## 1. 구성 목적
 
 운영 환경에서 Kafka 기반 비동기 메시징을 사용할 수 있도록

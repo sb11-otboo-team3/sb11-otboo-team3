@@ -316,7 +316,9 @@ Consumer Group ID는 단순 배포나 코드 수정 과정에서 임의로 변�
 특정 Consumer가 과거 메시지를 처리하지 않아야 하는 요구사항이 있다면
 전역 설정을 변경하지 않고 해당 도메인의 Kafka 적용 이슈에서 별도로 결정합니다.
 
-실제 운영 환경은 다음 구성으로 구축했습니다.
+### #279 전환 전 Amazon MSK 운영 구성
+
+Issue #279 전환 이전 운영 Kafka는 다음 구성으로 구축했습니다.
 
 ```text
 Service: Amazon MSK Provisioned
@@ -350,7 +352,7 @@ Port: 9098
 Authentication Identity: ECS Task Role
 ```
 
-운영 Kafka 연결 주소는 다음 환경변수로 주입합니다.
+전환 전 Amazon MSK 연결 주소는 다음 환경변수로 주입했습니다.
 
 ```text
 KAFKA_BOOTSTRAP_SERVERS
@@ -361,7 +363,7 @@ Broker 주소와 AWS 인증정보는 소스 코드에 직접 작성하지 않습
 Consumer Group은 각 Consumer의 목적에 따라 결정하므로
 운영 공통 설정에는 전역 `group-id`를 지정하지 않습니다.
 
-실제 MSK Cluster, Subnet, Security Group, IAM Policy,
+Issue #279 전환 전 MSK Cluster, Subnet, Security Group, IAM Policy,
 ECS 연결, 운영 Produce·Consume 검증, 모니터링 및 삭제 절차는
 다음 문서에서 관리합니다.
 

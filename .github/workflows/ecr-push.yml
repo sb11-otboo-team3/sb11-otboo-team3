@@ -389,10 +389,11 @@ jobs:
           private_ip = sys.argv[1]
 
           commands = [
-              "set -euo pipefail",
+              "set -eu",
               "systemctl is-active --quiet otboo-data-stack.service",
               "test \"$(docker inspect -f '{{.State.Health.Status}}' otboo-prod-redis)\" = \"healthy\"",
               "test \"$(docker inspect -f '{{.State.Health.Status}}' otboo-prod-kafka)\" = \"healthy\"",
+              f"docker exec otboo-prod-kafka env | grep -Fq 'EXTERNAL://{private_ip}:9092'",
               "test \"$(docker inspect -f '{{.State.Health.Status}}' otboo-prod-opensearch)\" = \"healthy\"",
               f"ss -lnt | grep -Fq '{private_ip}:6379'",
               f"ss -lnt | grep -Fq '{private_ip}:9092'",

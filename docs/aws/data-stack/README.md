@@ -356,9 +356,9 @@ OpenSearch feeds _count
 
 ## 11. Rollback
 
-Managed 서비스는 EC2 전환 직후 즉시 삭제하지 않습니다.
+기존 Managed 서비스는 EC2 전환 직후 즉시 삭제하지 않습니다.
 
-안정화 기간 동안 다음 리소스를 Rollback 대상으로 유지합니다.
+안정화 기간 동안 다음 리소스를 Rollback 후보로 유지합니다.
 
 ```text
 Amazon ElastiCache
@@ -367,11 +367,122 @@ Amazon OpenSearch Service
 기존 ECS Task Definition Revision
 ```
 
-문제가 발생하면 기존 Task Definition Revision과 Managed endpoint로
-되돌린 뒤 ECS Service를 재배포합니다.
+다만 기존 Task Definition으로 되돌리는 것만으로
+EC2 전환 이후 생성된 Stateful 데이터를 복구할 수 있는 것은 아닙니다.
 
-Managed 서비스 삭제 후에는 이 Rollback 경로를 사용할 수 없으므로
-실제 기능 검증과 안정화가 끝난 뒤 삭제합니다.
+Rollback 절차는 전환 시점에 따라 구분합니다.
+
+### 11.1 EC2 데이터 쓰기 전 배포 실패
+
+새 ECS Task가 정상 서비스에 진입하기 전에 실패하여
+Redis, Kafka, OpenSearch에 운영 데이터가 기록되지 않은 경우에는
+기존 Managed endpoint를 사용하는 Task Definition으로 되돌릴 수 있습니다.
+
+```text
+새 Task 배포 실패
+→ Deployment Circuit Breaker
+→ 기존 Task Definition 복구
+→ 기존 Managed Redis / Kafka / OpenSearch 사용
+```
+
+이 구간에서는 기존 Managed 서비스가 계속 최신 운영 상태이므로
+기존 ECS Task Definition 기반 Rollback이 기본 복구 경로입니다.
+
+### 11.2 EC2 데이터 쓰기 시작 후 Rollback
+
+새 ECS Task가 정상 서비스에 진입하고
+EC2 Redis, Kafka 또는 OpenSearch에 운영 데이터가 기록된 이후에는
+기존 Task Definition으로 즉시 되돌리지 않습니다.
+
+먼저 애플리케이션 쓰기를 중지하고 상태를 확인합니다.
+
+```text
+운영 쓰기 중지
+→ EC2 Kafka 처리 상태 확인
+→ Notification Outbox 확인
+→ Redis 상태 영향 확인
+→ 검색 인덱스 정합성 확인
+→ Managed 서비스 복귀 여부 결정
+```
+
+#### Kafka
+
+EC2 Kafka로 발행된 메시지는 기존 Amazon MSK에 자동 복제되지 않습니다.
+
+따라서 Rollback 전에 다음을 확인합니다.
+
+```text
+Notification Consumer Lag = 0
+처리 중 메시지 없음
+Notification Outbox pending / failed 상태 확인
+DLT 미처리 메시지 확인
+```
+
+EC2 Kafka에 이미 발행된 메시지가 남아 있는 상태에서
+MSK 기반 Task로 되돌리면 해당 메시지가 처리되지 않을 수 있습니다.
+
+가능한 경우 EC2 Kafka의 처리 대상 메시지를 모두 Drain한 후 Rollback합니다.
+
+Outbox와 실제 Consumer 처리 결과를 확인하지 않은 상태에서
+동일 이벤트를 MSK로 다시 발행하지 않습니다.
+중복 처리 가능성이 있기 때문입니다.
+
+#### Redis
+
+EC2 Redis와 기존 ElastiCache 사이에는
+상태를 양방향 동기화하지 않습니다.
+
+Rollback 시 다음 상태는 유지되지 않을 수 있습니다.
+
+```text
+Refresh Token
+Refresh Token consumed marker
+Password Reset 상태
+Login Attempt / Block 상태
+각종 Cache
+```
+
+Redis 상태 손실은 허용된 Cold Cutover 특성으로 취급하며,
+필요한 경우 사용자는 다시 로그인하고 Cache는 재생성합니다.
+
+RDS의 영구 데이터는 Redis Rollback 대상이 아닙니다.
+
+#### OpenSearch
+
+EC2 OpenSearch에 반영된 검색 인덱스 변경은
+기존 Amazon OpenSearch Service에 자동 반영되지 않습니다.
+
+따라서 Managed OpenSearch로 복귀하는 경우
+RDS의 원본 Feed 데이터를 기준으로 다시 재색인합니다.
+
+```text
+RDS 원본 Feed 확인
+→ Managed OpenSearch 재색인
+→ 문서 수 확인
+→ 실제 검색 API 확인
+```
+
+검색 결과 검증이 완료되기 전에는
+Rollback 완료로 판단하지 않습니다.
+
+### 11.3 Rollback 완료 기준
+
+다음 조건을 확인한 뒤 운영 복구 완료로 판단합니다.
+
+```text
+ECS Service stable
+ALB Target healthy
+HTTPS Health Check 정상
+Notification 처리 상태 정상
+Redis 영향 범위 확인
+검색 인덱스 재색인 및 검색 검증 완료
+```
+
+Managed 서비스 삭제 후에는 이 Rollback 경로를 사용할 수 없습니다.
+
+따라서 실제 기능 검증과 안정화,
+Stateful 서비스의 복귀 필요성이 없음을 확인한 뒤
+기존 Managed 서비스를 삭제합니다.
 
 ---
 
@@ -401,6 +512,82 @@ EC2 장애가 세 서비스에 동시에 영향을 줍니다.
 
 고가용성, 서비스별 독립 장애 격리, 전송구간 암호화가 중요한
 장기 상용 환경에서는 Managed 서비스 또는 다중 노드 구조를 검토합니다.
+
+
+### 12.1 전송 암호화 제거에 대한 위험 수용
+
+Issue #279의 EC2 통합 구성에서는 운영 비용 절감을 위해
+Redis, Kafka, OpenSearch의 전송 구간 암호화 수준을 기존 Managed 구성보다 낮춥니다.
+
+적용 범위:
+
+```text
+Redis
+REDIS_SSL_ENABLED=false
+AUTH 유지
+
+Kafka
+KAFKA_SECURITY_PROTOCOL=PLAINTEXT
+
+OpenSearch
+SEARCH_ENDPOINT=http://<EC2 Private IP>:9200
+Security Plugin disabled
+```
+
+이 구성에서는 동일 VPC 내부 네트워크 구간에서
+Redis 인증정보, Kafka 메시지, OpenSearch 요청과 응답이
+TLS로 암호화되지 않습니다.
+
+위험을 줄이기 위해 다음 네트워크 제한을 필수 조건으로 유지합니다.
+
+```text
+EC2 Public endpoint 사용 금지
+ECS → EC2 Private IP 연결
+Data Security Group 인바운드 소스 = ECS Application Security Group
+허용 포트 = 6379 / 9092 / 9200
+0.0.0.0/0 인바운드 금지
+VPC 전체 CIDR 인바운드 금지
+SSH 22 포트 공개 금지
+EC2 운영 접근 = AWS Systems Manager
+```
+
+이 Trade-off는 저트래픽 포트폴리오·시연 환경의
+비용 최적화를 위한 프로젝트 범위의 결정입니다.
+
+승인 주체는 프로젝트 운영 및 인프라 담당자이며,
+Issue #279와 해당 Pull Request를 변경 승인 기록으로 사용합니다.
+
+다음 조건 중 하나라도 발생하면 현재 위험 수용 범위를 종료하고
+TLS 및 서비스 인증 구성을 다시 검토합니다.
+
+```text
+장기 상용 운영으로 전환
+외부 사용자 또는 트래픽 규모 증가
+민감 데이터 처리 범위 증가
+Security Group 허용 범위 확대 필요
+VPC 외부 또는 다른 네트워크에서 접근 필요
+EC2 데이터 스택을 다중 사용자 환경에서 공동 사용
+보안 사고 또는 비인가 접근 의심
+```
+
+보안 사고 또는 비인가 접근이 의심되는 경우에는
+우선 데이터 EC2로의 애플리케이션 쓰기를 중지하고
+Security Group 접근 범위를 차단하거나 축소합니다.
+
+이후 다음 순서로 대응합니다.
+
+```text
+ECS → Data EC2 트래픽 제한
+→ CloudWatch / ECS / EC2 관련 로그 확인
+→ Redis AUTH Token 폐기 및 재발급
+→ 영향받은 Redis 상태 초기화
+→ Kafka / OpenSearch 데이터 영향 범위 확인
+→ 필요한 경우 기존 Managed 서비스 기반 복구 검토
+→ 원인 제거 후 재배포
+```
+
+현재 구성의 보안 경계가 유지되지 않는 상태에서는
+비용 절감을 이유로 PLAINTEXT / HTTP 구성을 계속 사용하지 않습니다.
 
 ---
 
