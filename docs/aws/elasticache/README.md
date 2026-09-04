@@ -1,5 +1,24 @@
 # Amazon ElastiCache for Redis OSS 구성
 
+> **운영 상태 안내**
+>
+> 이 문서는 Issue #73에서 구성한 Amazon ElastiCache 기반 Redis 운영 환경의
+> 설계와 검증 이력을 보존하기 위한 문서입니다.
+>
+> Issue #279에서는 AWS 운영 비용 최적화를 위해 운영 Redis를
+> EC2 통합 데이터 스택의 Redis로 전환합니다.
+>
+> 전환 후 애플리케이션은 EC2 Private IP의 Redis `6379` 포트에 연결하고,
+> 기존 `REDIS_PASSWORD` SSM Secret은 재사용하며
+> `REDIS_SSL_ENABLED=false`를 사용합니다.
+>
+> 기존 ElastiCache는 전환 직후 삭제하지 않고 실제 기능 검증과
+> 안정화가 완료될 때까지 Rollback 대상으로 유지합니다.
+>
+> 현재 운영 데이터 스택은
+> [EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 기준으로 합니다.
+
+
 ## 1. 구성 목적
 
 운영 환경에서 애플리케이션 캐시와 재생성 가능한 임시 데이터를 관리하기 위해 Amazon ElastiCache for Redis OSS를 구성합니다.

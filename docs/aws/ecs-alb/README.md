@@ -36,10 +36,12 @@ ALB DNS의 루트 `/` 경로에서 프론트엔드와 백엔드 API를 함께 �
 - Issue #163: HTTPS 운영 도메인 외부 서비스 경로 검증
 - Issue #223: ECS 실패 배포 자동·수동 롤백 검증
   - 상세 절차: [`rollback-runbook/README.md`](./rollback-runbook/README.md)
+- Issue #279: Managed Redis / Kafka / OpenSearch를 EC2 통합 데이터 스택으로 전환
 - [AWS 기본 운영 기준](../README.md)
 - [Amazon ECR 구성 및 이미지 검증](../ecr/README.md)
 - [RDS PostgreSQL 및 S3 구성](../rds-s3/README.md)
 - [Amazon ElastiCache for Redis OSS 구성](../elasticache/README.md)
+- [EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)
 
 ---
 
@@ -129,6 +131,55 @@ ECS Fargate Service
 최초 배포에서는 ECS Task를 Public Subnet에 배치하고 Public IP를 할당합니다.
 
 RDS PostgreSQL과 ElastiCache Redis는 기존 Private Subnet 구성을 유지합니다.
+
+### Issue #279 비용 최적화 이후 데이터 연결 구조
+
+Issue #279에서는 기존 Managed Redis, Kafka, OpenSearch를
+하나의 운영 데이터 EC2로 통합합니다.
+
+```text
+사용자
+  ↓
+ALB
+  ↓
+ECS Fargate
+  ├─ RDS PostgreSQL
+  ├─ Amazon S3
+  └─ VPC Private IP
+       ↓
+     otboo-prod-data EC2
+       ├─ Redis :6379
+       ├─ Kafka :9092
+       └─ OpenSearch :9200
+```
+
+ECS Task는 데이터 EC2의 Public IP를 사용하지 않고
+동일 VPC 내부의 Private IP로 연결합니다.
+
+데이터 EC2 Security Group은 ECS Application Security Group에서 들어오는
+TCP `6379`, `9092`, `9200`만 허용합니다.
+
+운영 배포 전에 GitHub Actions ECS Deploy Role이
+AWS Systems Manager Run Command를 사용하여 데이터 EC2의 Ready 상태를 확인합니다.
+
+```text
+EC2 running 확인
+→ Private IP 조회
+→ SSM Run Command
+→ systemd active 확인
+→ Redis / Kafka / OpenSearch Docker health 확인
+→ 6379 / 9092 / 9200 LISTEN 확인
+→ READY
+→ ECS Task Definition 갱신
+→ ECS 배포
+```
+
+Ready Gate가 실패하면 ECS 배포를 진행하지 않습니다.
+
+기존 Amazon ElastiCache, Amazon MSK 및 Amazon OpenSearch Service는
+전환 직후 삭제하지 않고 운영 검증과 안정화가 끝날 때까지
+Rollback 대상으로 유지합니다.
+
 
 ---
 
