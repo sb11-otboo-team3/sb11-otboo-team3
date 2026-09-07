@@ -1,5 +1,45 @@
 # Amazon MSK Provisioned 운영 Kafka 구성
 
+> **운영 상태 안내**
+>
+> 이 문서는 Issue #193에서 구성한 Amazon MSK Provisioned 기반
+> 운영 Kafka 환경의 설계와 검증 이력을 보존하기 위한 문서입니다.
+>
+> Issue #279에서는 AWS 운영 비용 최적화를 위해 운영 Kafka를
+> EC2 통합 데이터 스택의 단일 Kafka Broker로 전환합니다.
+>
+> 전환 후 애플리케이션은 EC2 Private IP의 Kafka `9092` 포트에 연결하고,
+> Kafka 연결 프로토콜은 다음과 같이 변경합니다.
+>
+> ```text
+> 기존 MSK
+> SASL_SSL + AWS_MSK_IAM
+>
+> Issue #279 EC2 Kafka
+> PLAINTEXT + VPC / Security Group
+> ```
+>
+> EC2 Kafka는 `apache/kafka:3.9.2` 기반 KRaft 단일 노드로 운영하며,
+> Replication Factor는 `1`을 사용합니다.
+>
+> 기존 Amazon MSK는 전환 직후 삭제하지 않고
+> Consumer Lag과 Notification Outbox 상태 확인,
+> 실제 Produce / Consume 검증 및 안정화가 완료될 때까지
+> Rollback 대상으로 유지합니다.
+>
+> 현재 운영 데이터 스택 기준은
+> [EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 참고합니다.
+
+
+> **#279 전환 전 구성 범위**
+>
+> 아래 `## 1`부터 이어지는 Amazon MSK Broker, IAM 인증, `SASL_SSL`,
+> 포트 `9098`, Subnet, Security Group 및 ECS 연동 값은 모두
+> **Issue #279 전환 이전의 Amazon MSK 운영 구성**을 기록한 것입니다.
+>
+> Issue #279 이후 현재 운영 기준은
+> [EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 따릅니다.
+
 ## 1. 구성 목적
 
 운영 환경에서 Kafka 기반 비동기 메시징을 사용할 수 있도록

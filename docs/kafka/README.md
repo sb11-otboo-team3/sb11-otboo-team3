@@ -230,7 +230,57 @@ Kafka를 기본 해결책으로 가정하지 않고 실제 검증 결과를 바�
 
 ## 9. 운영 환경
 
-운영 Kafka는 Amazon MSK Provisioned Standard를 사용합니다.
+Issue #279 전환 기준 운영 Kafka는
+EC2 통합 데이터 스택의 Kafka 3.9.2 단일 Broker를 사용합니다.
+
+상세 인프라 구성은
+[EC2 통합 데이터 스택 운영 구성](../aws/data-stack/README.md)을 참고합니다.
+
+### 운영 연결 구성
+
+```text
+Runtime: EC2 Docker
+Image: apache/kafka:3.9.2
+Metadata Mode: KRaft
+Broker Count: 1
+Replication Factor: 1
+Port: 9092
+Security Protocol: PLAINTEXT
+Network Boundary: VPC + Security Group
+```
+
+애플리케이션은 EC2의 Public IP가 아닌
+동일 VPC 내부의 Private IP로 Kafka에 연결합니다.
+
+운영 환경변수:
+
+```text
+KAFKA_BOOTSTRAP_SERVERS=<EC2 Private IP>:9092
+KAFKA_SECURITY_PROTOCOL=PLAINTEXT
+```
+
+`application-prod.yaml`의 기본 보안 프로토콜은
+기존 Amazon MSK Rollback을 위해 `SASL_SSL`로 유지하고,
+Issue #279 운영 배포에서는 ECS 환경변수로 `PLAINTEXT`를 명시합니다.
+
+기존 Amazon MSK는 EC2 Kafka 전환 직후 삭제하지 않고,
+Consumer Lag과 Notification Outbox 상태 및 실제 메시징 기능 검증이 끝날 때까지
+Rollback 대상으로 유지합니다.
+
+### 운영 Topic
+
+EC2 Kafka에는 다음 Topic을 명시적으로 생성합니다.
+
+```text
+otboo.notification.created.v1
+otboo.notification.created.v1.dlt
+otboo.weather.prefetch-requested.v1
+otboo.weather.prefetch-requested.v1.dlt
+otboo.infrastructure.connectivity-checked.v1
+```
+
+현재 단일 Broker 운영 환경에서는 각 Topic을
+Partition `1`, Replication Factor `1`로 구성합니다.
 
 ### Consumer Offset 정책
 
@@ -266,7 +316,9 @@ Consumer Group ID는 단순 배포나 코드 수정 과정에서 임의로 변�
 특정 Consumer가 과거 메시지를 처리하지 않아야 하는 요구사항이 있다면
 전역 설정을 변경하지 않고 해당 도메인의 Kafka 적용 이슈에서 별도로 결정합니다.
 
-실제 운영 환경은 다음 구성으로 구축했습니다.
+### #279 전환 전 Amazon MSK 운영 구성
+
+Issue #279 전환 이전 운영 Kafka는 다음 구성으로 구축했습니다.
 
 ```text
 Service: Amazon MSK Provisioned
@@ -300,7 +352,7 @@ Port: 9098
 Authentication Identity: ECS Task Role
 ```
 
-운영 Kafka 연결 주소는 다음 환경변수로 주입합니다.
+전환 전 Amazon MSK 연결 주소는 다음 환경변수로 주입했습니다.
 
 ```text
 KAFKA_BOOTSTRAP_SERVERS
@@ -311,7 +363,7 @@ Broker 주소와 AWS 인증정보는 소스 코드에 직접 작성하지 않습
 Consumer Group은 각 Consumer의 목적에 따라 결정하므로
 운영 공통 설정에는 전역 `group-id`를 지정하지 않습니다.
 
-실제 MSK Cluster, Subnet, Security Group, IAM Policy,
+Issue #279 전환 전 MSK Cluster, Subnet, Security Group, IAM Policy,
 ECS 연결, 운영 Produce·Consume 검증, 모니터링 및 삭제 절차는
 다음 문서에서 관리합니다.
 

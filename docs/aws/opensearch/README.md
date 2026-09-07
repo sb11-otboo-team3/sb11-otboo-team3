@@ -1,5 +1,52 @@
 # Elasticsearch / OpenSearch 운영 구성
 
+> **운영 상태 안내**
+>
+> 이 문서는 기존 Amazon OpenSearch Service 기반 운영 검색 환경의
+> 설계와 검증 이력을 보존하기 위한 문서입니다.
+>
+> Issue #279에서는 AWS 운영 비용 최적화를 위해 운영 OpenSearch를
+> EC2 통합 데이터 스택의 단일 OpenSearch 노드로 전환합니다.
+>
+> 전환 후 애플리케이션은 EC2 Private IP의 OpenSearch `9200` 포트에
+> HTTP로 연결합니다.
+>
+> ```text
+> 기존 Amazon OpenSearch Service
+> HTTPS :443
+> VPC + Security Group
+> AWS Managed Encryption
+>
+> Issue #279 EC2 OpenSearch
+> HTTP :9200
+> VPC + Security Group
+> Single Node
+> ```
+>
+> EC2 OpenSearch는 `opensearchproject/opensearch:1.3.20`을 사용하며
+> 현재 Elasticsearch REST High Level Client 7.10.2와의 호환성을 유지합니다.
+>
+> 기존 Amazon OpenSearch Service의 인덱스를 직접 이전하지 않고,
+> RDS의 원본 Feed 데이터를 관리자 재색인 API를 통해 다시 색인합니다.
+>
+> 기존 Amazon OpenSearch Service는 전환 직후 삭제하지 않고
+> 재색인 수량, OpenSearch 문서 수 및 실제 검색 API 검증이 완료될 때까지
+> Rollback 대상으로 유지합니다.
+>
+> 현재 운영 데이터 스택 기준은
+> [EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 참고합니다.
+
+
+> **#279 전환 전 구성 범위**
+>
+> 아래 `## 1`부터 이어지는 Amazon OpenSearch Service Endpoint,
+> HTTPS `443`, TLS, Domain Access Policy, Subnet, Security Group 및
+> ECS 연동 값은 모두 **Issue #279 전환 이전의 Managed OpenSearch 운영 구성**을
+> 기록한 것입니다.
+>
+> Issue #279 이후 현재 운영 기준은
+> [EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 따릅니다.
+
 ## 1. 목적 및 범위
 
 피드 검색 기능의 Full Text Search를 지원하기 위한 검색 인프라를 구성합니다.

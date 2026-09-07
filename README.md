@@ -35,7 +35,7 @@
 ### Data & Messaging
 
 `PostgreSQL 16` · `Redis 7.4`  
-`Apache Kafka` · `Amazon MSK` · `Amazon OpenSearch`
+`Apache Kafka 3.9.2` · `OpenSearch 1.3.20`
 
 ### Realtime
 
@@ -44,9 +44,9 @@
 ### Infra & DevOps
 
 `Docker` · `Nginx` · `GitHub Actions`  
-`AWS ECS Fargate` · `Amazon ECR` · `ALB`  
+`AWS ECS Fargate` · `Amazon EC2` · `Amazon ECR` · `ALB`  
 `Route 53` · `ACM` · `Amazon RDS` · `Amazon S3`  
-`ElastiCache` · `CloudWatch` · `SNS`
+`AWS Systems Manager` · `CloudWatch` · `SNS`
 
 ### Test
 
@@ -82,10 +82,14 @@ ECS Fargate
 └─────────────────────────────┘
    │
    ├─ RDS PostgreSQL
-   ├─ ElastiCache Redis
    ├─ Amazon S3
-   ├─ Amazon MSK
-   └─ Amazon OpenSearch
+   └─ VPC Private IP
+        │
+        ▼
+      EC2 Data Stack
+        ├─ Redis 7.4 :6379
+        ├─ Kafka 3.9.2 :9092
+        └─ OpenSearch 1.3.20 :9200
 
 
 Client
@@ -107,6 +111,9 @@ GitHub Actions는 OIDC로 AWS에 인증하고,
 Git Commit SHA 기반 Docker 이미지를 ECR에 저장한 뒤 ECS Fargate에 배포합니다.
 
 운영 트래픽은 `otboo.work` → Route 53 → ALB HTTPS → Nginx → Spring Boot 순서로 전달됩니다.
+
+Redis, Kafka, OpenSearch는 비용 최적화를 위해 단일 EC2 Data Stack으로 통합하고,
+ECS에서는 동일 VPC의 Private IP를 통해 접근합니다.
 
 > 인프라가 어떻게 여기까지 왔는지 궁금하다면 `docs/aws`에 꽤 많이 적혀 있습니다. ☁️
 
@@ -158,9 +165,10 @@ http://localhost:8080/swagger-ui/index.html
 | 🚀 ECS / ALB / 배포 | [docs/aws/ecs-alb/README.md](./docs/aws/ecs-alb/README.md) |
 | 📦 ECR | [docs/aws/ecr/README.md](./docs/aws/ecr/README.md) |
 | 🗄️ RDS / S3 | [docs/aws/rds-s3/README.md](./docs/aws/rds-s3/README.md) |
-| ⚡ Redis / ElastiCache | [docs/aws/elasticache/README.md](./docs/aws/elasticache/README.md) |
-| 📨 Amazon MSK | [docs/aws/msk/README.md](./docs/aws/msk/README.md) |
-| 🔎 OpenSearch | [docs/aws/opensearch/README.md](./docs/aws/opensearch/README.md) |
+| 🖥️ EC2 통합 데이터 스택 | [docs/aws/data-stack/README.md](./docs/aws/data-stack/README.md) |
+| ⚡ ElastiCache 운영 이력 | [docs/aws/elasticache/README.md](./docs/aws/elasticache/README.md) |
+| 📨 Amazon MSK 운영 이력 | [docs/aws/msk/README.md](./docs/aws/msk/README.md) |
+| 🔎 OpenSearch 운영 이력 | [docs/aws/opensearch/README.md](./docs/aws/opensearch/README.md) |
 | 📨 Kafka | [docs/kafka/README.md](./docs/kafka/README.md) |
 | 💾 Storage | [docs/storage/README.md](./docs/storage/README.md) |
 | 🧩 ERD | [docs/erd/README.md](./docs/erd/README.md) |
@@ -174,10 +182,20 @@ http://localhost:8080/swagger-ui/index.html
 - ECS Fargate **Rolling Update**
 - ALB Health Check 기반 트래픽 전환
 - Deployment Circuit Breaker 및 Rollback
-- RDS / Redis Private Network 구성
-- Redis TLS / AUTH 적용
-- Kafka / Amazon MSK 기반 메시징
-- Amazon OpenSearch 기반 검색
+- RDS 및 EC2 Data Stack과 **VPC Private Network 통신**
+
+- Redis **AUTH + Security Group 기반 접근 제어**
+
+- Kafka 3.9.2 **KRaft 단일 Broker 운영 및 Topic / DLT 구성**
+
+- OpenSearch 1.3.20 **Single Node 검색 인프라 운영**
+
+- ElastiCache / Amazon MSK / Amazon OpenSearch Service 구축 후
+  **EC2 통합 데이터 스택으로 비용 최적화**
+
+- EC2 재부팅 시 `systemd` 기반 **Redis / Kafka / OpenSearch 자동 복구**
+
+- GitHub Actions + SSM 기반 **데이터 스택 Ready Gate**
 - WebSocket / SSE 기반 실시간 통신
 - CloudWatch / SNS 기반 운영 모니터링
 - JaCoCo **Line Coverage 80% Quality Gate**

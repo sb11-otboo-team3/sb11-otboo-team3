@@ -31,7 +31,7 @@ spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
     security:
-      protocol: SASL_SSL
+      protocol: ${KAFKA_SECURITY_PROTOCOL:SASL_SSL}
     properties:
       "[sasl.mechanism]": AWS_MSK_IAM
       "[sasl.jaas.config]": "software.amazon.msk.auth.iam.IAMLoginModule required;"
