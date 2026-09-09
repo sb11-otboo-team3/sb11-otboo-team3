@@ -152,6 +152,7 @@ EC2 통합 데이터 스택으로 전환하고, 운영 시간을 실제 사용 �
 - Amazon ElastiCache → EC2 Redis 7.4
 - Amazon MSK Provisioned → EC2 Kafka 3.9.2 KRaft Single Broker
 - Amazon OpenSearch Service → EC2 OpenSearch 1.3.20 Single Node
+- 운영 스케줄 시간대: `Asia/Seoul (KST)`
 - 평일 `07:15` RDS / Data EC2 시작
 - 평일 `07:45` ECS 시작
 - 평일 `22:00` ECS → `22:10` Data EC2 → `22:15` RDS 순차 종료

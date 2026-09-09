@@ -501,7 +501,15 @@ Backend Image만 새로운 Git SHA 이미지로 교체합니다.
 
 ---
 
-## 10. 단일 노드 Replica 운영 기준
+## 10. #279 전환 이전 단일 노드 Replica 운영 이력
+
+> **전환 이전 운영 이력**
+>
+> 이 절은 Issue #279 이전 Amazon OpenSearch Service의
+> 단일 Data Node 및 Replica 운영 기준과 검증 결과를 기록합니다.
+>
+> 현재 운영 OpenSearch 기준은
+> [EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 따릅니다.
 
 Issue #279 전환 이전 Amazon OpenSearch Service는 Data Node가 1개인 단일 노드 구성으로 운영했습니다.
 
@@ -512,13 +520,13 @@ Primary Shard와 동일한 노드에 배치될 수 없습니다.
 Replica Shard가 할당되지 않고
 Cluster Health가 `Yellow` 상태가 될 수 있습니다.
 
-현재 프로젝트의 단일 노드 운영 기준은 다음과 같습니다.
+당시 Amazon OpenSearch Service의 단일 노드 운영 기준은 다음과 같았습니다.
 
 ```text
 number_of_replicas = 0
 ```
 
-### 현재 운영 설정 확인
+### 전환 이전 운영 설정 확인
 
 2026-08-25 운영 OpenSearch에 실제로 존재하는 인덱스를 조회한 결과:
 
@@ -542,7 +550,7 @@ green   open    .kibana_1    1    0
 }
 ```
 
-따라서 현재 운영 상태에서는:
+따라서 당시 운영 상태에서는:
 
 - Primary Shard: `1`
 - Replica Shard: `0`
@@ -551,11 +559,11 @@ green   open    .kibana_1    1    0
 
 상태가 일치하는 것을 확인했습니다.
 
-### 애플리케이션 인덱스 기준
+### 전환 이전 애플리케이션 인덱스 기준
 
-피드 등 향후 생성되는 애플리케이션 검색 인덱스도
-현재의 단일 데이터 노드 구성을 사용하는 동안에는
-다음 값을 운영 기준으로 사용합니다.
+Issue #279 전환 이전에는 피드 등 애플리케이션 검색 인덱스도
+Amazon OpenSearch Service의 단일 Data Node 구성을 기준으로
+다음 값을 운영 기준으로 사용했습니다.
 
 ```text
 number_of_replicas = 0
@@ -565,9 +573,9 @@ number_of_replicas = 0
 피드 검색 기능 담당 범위이므로
 본 인프라 작업에서는 인덱스 생성 코드를 추가하지 않습니다.
 
-애플리케이션 인덱스를 생성하는 작업에서는
-현재 운영 환경이 단일 노드임을 고려하여
-Replica 값을 명시적으로 `0`으로 설정해야 합니다.
+당시 애플리케이션 인덱스를 생성하는 작업에서는
+Amazon OpenSearch Service가 단일 Data Node였음을 고려하여
+Replica 값을 명시적으로 `0`으로 설정하는 기준을 사용했습니다.
 
 향후 데이터 노드를 2개 이상으로 확장하거나
 Multi-AZ 구성을 적용하는 경우에는

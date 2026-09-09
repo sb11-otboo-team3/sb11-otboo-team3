@@ -245,8 +245,9 @@ AWS 인증정보가 포함되지 않도록 관리합니다.
 Amazon OpenSearch Service는 EC2 전환과 실제 기능 검증,
 EC2 Stop / Start 복구 검증을 완료한 뒤 삭제했습니다.
 
-EventBridge Scheduler를 사용하여 평일에는
-RDS와 Data EC2를 `07:15`, ECS를 `07:45`에 시작하고,
+EventBridge Scheduler는 `Asia/Seoul (KST)` 시간대를 기준으로 사용합니다.
+
+평일에는 RDS와 Data EC2를 `07:15`, ECS를 `07:45`에 시작하고,
 `22:00` ECS → `22:10` Data EC2 → `22:15` RDS 순서로 종료합니다.
 
 주말에는 ECS, RDS, Data EC2를 운영하지 않습니다.

@@ -23,7 +23,10 @@ ALB DNS의 루트 `/` 경로에서 프론트엔드와 백엔드 API를 함께 �
 WebSocket·SSE 연결 및 재연결은 후속 운영 안정화 과정에서 검증했습니다.
 
 현재 ECS Service는 저트래픽 포트폴리오·시연 환경을 기준으로
-Desired Count `1`을 유지하며, 다중 Task 구성은 적용하지 않습니다.
+평일 운영 시간에는 Desired Count `1`을 유지하고,
+비운영 시간과 주말에는 `0`으로 조정합니다.
+
+다중 Task 구성은 적용하지 않습니다.
 
 ---
 
@@ -2611,20 +2614,27 @@ OAuth 운영 Redirect 검증은
 
 ## 다중 Task 환경 WebSocket·SSE 정합성 검증 (Issue #190)
 
-Issue #190에서는 평상시 단일 ECS Task로 운영하는 현재 구조에서
+Issue #190에서는 평일 운영 시간에는 단일 ECS Task로 운영하는 현재 구조에서
 Rolling Update 중 일시적으로 복수 Task가 공존할 때
 WebSocket과 SSE 연결 및 실시간 이벤트 전달에 어떤 영향이 있는지 검증했습니다.
 
 현재 운영 기준은 다음과 같습니다.
 
 ```text
-Normal Operation
+Weekday Operating Hours
+
 Desired Count: 1
 
-Rolling Update
+Non-operating Hours / Weekend
+
+Desired Count: 0
+
+Rolling Update during Operating Hours
+
 Old Task + New Task 일시 공존
 
 Deployment Complete
+
 Desired Count: 1
 ```
 
@@ -2708,16 +2718,20 @@ ALB Stickiness는 이번 문제의 해결책으로 적용하지 않습니다.
 Redis Pub/Sub 등의 공유 이벤트 전달 구조를 적용하면
 각 Task에서 발생한 실시간 이벤트를 다른 Task에도 전달할 수 있습니다.
 
-다만 현재 운영 정책은 평상시 단일 Task이며,
-복수 Task는 Rolling Update 중 일시적으로만 발생합니다.
+다만 현재 운영 정책은 평일 운영 시간에는 단일 Task이며,
+
+비운영 시간과 주말에는 Desired Count를 `0`으로 조정합니다.
+복수 Task는 평일 운영 시간의 Rolling Update 중 일시적으로만 발생합니다.
 
 현재 프로젝트 규모에서는 다중 Task 실시간 Fan-out을 위해
 추가 분산 메시징 구조를 도입하는 것보다
-현재 단일 Task 운영 구조를 유지하는 것으로 결정했습니다.
+평일 운영 시간의 단일 Task 구조를 유지하는 것으로 결정했습니다.
 
 ```text
 현재
-Single Task 운영 유지
+평일 운영 시간: Single Task (Desired Count 1)
+
+비운영 시간 / 주말: Desired Count 0
 ALB Stickiness 적용하지 않음
 공유 실시간 이벤트 전달 구조 적용하지 않음
 
@@ -2740,7 +2754,7 @@ SSE 기능의 후속 점검 대상으로 남깁니다.
 - `lastEventId` 전달 및 서버 수신 규칙 확인
 - SSE 재연결 시 DB 기반 누락 이벤트 Replay 동작 검증
 
-특히 현재 단일 Task 운영에서는
+특히 평일 운영 시간의 단일 Task 구조에서는
 배포로 인해 SSE 연결이 일시적으로 끊어질 수 있으므로
 재연결 후 누락 이벤트 Replay가 정상 동작하는지 확인하는 것이
 상시 다중 Task용 공유 이벤트 구조를 추가하는 것보다 우선합니다.
@@ -2757,9 +2771,9 @@ SSE 기능의 후속 점검 대상으로 남깁니다.
 - Frontend WebSocket/STOMP 자동 재연결 확인
 - 재연결 이후 STOMP 구독 및 DM MESSAGE 수신 확인
 - ALB Stickiness가 Task 간 이벤트 전달 문제의 해결책이 아님을 확인
-- 현재 단일 Task 운영에서는 공유 이벤트 전달 구조를 도입하지 않기로 결정
+- 평일 운영 시간의 단일 Task 구조에서는 공유 이벤트 전달 구조를 도입하지 않기로 결정
 - 상시 다중 Task 또는 Auto Scaling 도입 시 공유 이벤트 전달 구조를 재검토하기로 결정
 - SSE Heartbeat 및 `lastEventId` Replay를 후속 점검 대상으로 분리
 
 검증 완료 후 ECS Service의 Desired Count는
-기존 운영 기준인 `1`로 복구했습니다.
+검증 당시 평일 운영 시간 기준인 `1`로 복구했습니다.

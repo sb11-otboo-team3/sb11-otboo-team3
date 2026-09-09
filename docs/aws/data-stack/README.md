@@ -642,6 +642,8 @@ RDS PostgreSQL과 Amazon S3는 이번 비용 최적화 대상에서 제외했으
 저트래픽 포트폴리오·시연 환경의 실제 사용 시간을 기준으로
 EventBridge Scheduler를 사용해 주요 Compute 리소스의 운영 시간을 제한합니다.
 
+Scheduler 시간대는 `Asia/Seoul (KST)`을 사용합니다.
+
 | 시간 | 평일 운영 |
 | --- | --- |
 | `07:15` | RDS 시작 |
