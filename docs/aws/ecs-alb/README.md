@@ -9,20 +9,24 @@ Application Load Balancer를 통해 외부에서 접근할 수 있도록 구성�
 React·Vite 프론트엔드 정적 리소스는 Spring Boot 애플리케이션에 포함하며,
 ALB DNS의 루트 `/` 경로에서 프론트엔드와 백엔드 API를 함께 제공합니다.
 
-이번 배포에서는 최초 배포의 정상 동작 확인을 우선합니다.
+이번 배포에서는 최초 배포의 정상 동작 확인을 우선했습니다.
 
-후속 이슈에서 다음 구성을 추가로 적용했습니다.
+이후 후속 이슈에서 운영 환경을 단계적으로 보완했습니다.
 
 - Issue #131: GitHub Actions ECS 자동 배포
 - Issue #142: Nginx Reverse Proxy
 - Issue #157: 운영 도메인 DNS 연결
 - Issue #160: HTTPS 및 운영 Secure Cookie 적용
+- Issue #279: Managed Redis / Kafka / OpenSearch를 EC2 Data Stack으로 통합
+- Issue #279: EventBridge Scheduler 기반 운영시간 조정 및 비용 최적화
 
-다음 항목은 후속 이슈에서 진행합니다.
+WebSocket·SSE 연결 및 재연결은 후속 운영 안정화 과정에서 검증했습니다.
 
-- ECS 다중 Task
-- 장시간 WebSocket·SSE 연결 및 재연결
-- AWS 예상 비용 산정 및 비용 최적화
+현재 ECS Service는 저트래픽 포트폴리오·시연 환경을 기준으로
+평일 운영 시간에는 Desired Count `1`을 유지하고,
+비운영 시간과 주말에는 `0`으로 조정합니다.
+
+다중 Task 구성은 적용하지 않습니다.
 
 ---
 
@@ -36,10 +40,12 @@ ALB DNS의 루트 `/` 경로에서 프론트엔드와 백엔드 API를 함께 �
 - Issue #163: HTTPS 운영 도메인 외부 서비스 경로 검증
 - Issue #223: ECS 실패 배포 자동·수동 롤백 검증
   - 상세 절차: [`rollback-runbook/README.md`](./rollback-runbook/README.md)
+- Issue #279: Managed Redis / Kafka / OpenSearch를 EC2 통합 데이터 스택으로 전환
 - [AWS 기본 운영 기준](../README.md)
 - [Amazon ECR 구성 및 이미지 검증](../ecr/README.md)
 - [RDS PostgreSQL 및 S3 구성](../rds-s3/README.md)
 - [Amazon ElastiCache for Redis OSS 구성](../elasticache/README.md)
+- [EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)
 
 ---
 
@@ -129,6 +135,62 @@ ECS Fargate Service
 최초 배포에서는 ECS Task를 Public Subnet에 배치하고 Public IP를 할당합니다.
 
 RDS PostgreSQL과 ElastiCache Redis는 기존 Private Subnet 구성을 유지합니다.
+
+### Issue #279 비용 최적화 이후 데이터 연결 구조
+
+Issue #279에서는 기존 Managed Redis, Kafka, OpenSearch를
+하나의 운영 데이터 EC2로 통합합니다.
+
+```text
+사용자
+  ↓
+ALB
+  ↓
+ECS Fargate
+  ├─ RDS PostgreSQL
+  ├─ Amazon S3
+  └─ VPC Private IP
+       ↓
+     otboo-prod-data EC2
+       ├─ Redis :6379
+       ├─ Kafka :9092
+       └─ OpenSearch :9200
+```
+
+ECS Task는 데이터 EC2의 Public IP를 사용하지 않고
+동일 VPC 내부의 Private IP로 연결합니다.
+
+데이터 EC2 Security Group은 ECS Application Security Group에서 들어오는
+TCP `6379`, `9092`, `9200`만 허용합니다.
+
+운영 배포 전에 GitHub Actions ECS Deploy Role이
+AWS Systems Manager Run Command를 사용하여 데이터 EC2의 Ready 상태를 확인합니다.
+
+```text
+EC2 running 확인
+→ Private IP 조회
+→ SSM Run Command
+→ systemd active 확인
+→ Redis / Kafka / OpenSearch Docker health 확인
+→ 6379 / 9092 / 9200 LISTEN 확인
+→ READY
+→ ECS Task Definition 갱신
+→ ECS 배포
+```
+
+Ready Gate가 실패하면 ECS 배포를 진행하지 않습니다.
+
+전환 직후에는 Amazon ElastiCache, Amazon MSK 및
+Amazon OpenSearch Service를 Rollback 대상으로 유지했습니다.
+
+EC2 Data Stack 연결, Redis / Kafka / OpenSearch 기능,
+재색인, 실제 검색 API, EC2 Stop / Start 자동 복구 및
+ECS 재배포 검증을 완료한 뒤 기존 Managed 3종은 모두 삭제했습니다.
+
+현재 ECS는 RDS PostgreSQL과 EC2 Data Stack을 운영 데이터 계층으로 사용합니다.
+최종 운영 스케줄과 비용 검증 결과는
+[EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 기준으로 합니다.
+
 
 ---
 
@@ -928,12 +990,22 @@ Secret 값만 변경되고 Task Definition 구조가 동일한 경우에도
 10. ECS Cluster 삭제
 ```
 
-RDS, Redis, S3, ECR, Secrets Manager 및 Parameter Store는
+RDS, Data EC2, S3, ECR, Secrets Manager 및 Parameter Store는
 다른 환경과 이슈에서 사용 중인지 확인한 뒤 별도로 정리합니다.
 
 데이터가 저장된 RDS와 S3는 백업 및 보존 정책을 확인하기 전에 삭제하지 않습니다.
 
-AWS 예상 비용 산정과 비용 최적화는 별도 이슈에서 진행합니다.
+Data EC2를 영구 삭제하는 경우에는
+Redis, Kafka, OpenSearch의 상태와 EBS 보존 필요성을 먼저 확인합니다.
+
+AWS 운영 비용 최적화는 Issue #279에서 진행했습니다.
+
+기존 Amazon ElastiCache, Amazon MSK, Amazon OpenSearch Service를 제거하고
+EC2 Data Stack으로 통합했으며,
+ECS / RDS / Data EC2의 평일 운영시간도 함께 조정했습니다.
+
+실제 비용 검증 결과와 최종 Scheduler 운영시간은
+[EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 참고합니다.
 
 ---
 
@@ -2542,20 +2614,27 @@ OAuth 운영 Redirect 검증은
 
 ## 다중 Task 환경 WebSocket·SSE 정합성 검증 (Issue #190)
 
-Issue #190에서는 평상시 단일 ECS Task로 운영하는 현재 구조에서
+Issue #190에서는 평일 운영 시간에는 단일 ECS Task로 운영하는 현재 구조에서
 Rolling Update 중 일시적으로 복수 Task가 공존할 때
 WebSocket과 SSE 연결 및 실시간 이벤트 전달에 어떤 영향이 있는지 검증했습니다.
 
 현재 운영 기준은 다음과 같습니다.
 
 ```text
-Normal Operation
+Weekday Operating Hours
+
 Desired Count: 1
 
-Rolling Update
+Non-operating Hours / Weekend
+
+Desired Count: 0
+
+Rolling Update during Operating Hours
+
 Old Task + New Task 일시 공존
 
 Deployment Complete
+
 Desired Count: 1
 ```
 
@@ -2639,16 +2718,20 @@ ALB Stickiness는 이번 문제의 해결책으로 적용하지 않습니다.
 Redis Pub/Sub 등의 공유 이벤트 전달 구조를 적용하면
 각 Task에서 발생한 실시간 이벤트를 다른 Task에도 전달할 수 있습니다.
 
-다만 현재 운영 정책은 평상시 단일 Task이며,
-복수 Task는 Rolling Update 중 일시적으로만 발생합니다.
+다만 현재 운영 정책은 평일 운영 시간에는 단일 Task이며,
+
+비운영 시간과 주말에는 Desired Count를 `0`으로 조정합니다.
+복수 Task는 평일 운영 시간의 Rolling Update 중 일시적으로만 발생합니다.
 
 현재 프로젝트 규모에서는 다중 Task 실시간 Fan-out을 위해
 추가 분산 메시징 구조를 도입하는 것보다
-현재 단일 Task 운영 구조를 유지하는 것으로 결정했습니다.
+평일 운영 시간의 단일 Task 구조를 유지하는 것으로 결정했습니다.
 
 ```text
 현재
-Single Task 운영 유지
+평일 운영 시간: Single Task (Desired Count 1)
+
+비운영 시간 / 주말: Desired Count 0
 ALB Stickiness 적용하지 않음
 공유 실시간 이벤트 전달 구조 적용하지 않음
 
@@ -2671,7 +2754,7 @@ SSE 기능의 후속 점검 대상으로 남깁니다.
 - `lastEventId` 전달 및 서버 수신 규칙 확인
 - SSE 재연결 시 DB 기반 누락 이벤트 Replay 동작 검증
 
-특히 현재 단일 Task 운영에서는
+특히 평일 운영 시간의 단일 Task 구조에서는
 배포로 인해 SSE 연결이 일시적으로 끊어질 수 있으므로
 재연결 후 누락 이벤트 Replay가 정상 동작하는지 확인하는 것이
 상시 다중 Task용 공유 이벤트 구조를 추가하는 것보다 우선합니다.
@@ -2688,9 +2771,9 @@ SSE 기능의 후속 점검 대상으로 남깁니다.
 - Frontend WebSocket/STOMP 자동 재연결 확인
 - 재연결 이후 STOMP 구독 및 DM MESSAGE 수신 확인
 - ALB Stickiness가 Task 간 이벤트 전달 문제의 해결책이 아님을 확인
-- 현재 단일 Task 운영에서는 공유 이벤트 전달 구조를 도입하지 않기로 결정
+- 평일 운영 시간의 단일 Task 구조에서는 공유 이벤트 전달 구조를 도입하지 않기로 결정
 - 상시 다중 Task 또는 Auto Scaling 도입 시 공유 이벤트 전달 구조를 재검토하기로 결정
 - SSE Heartbeat 및 `lastEventId` Replay를 후속 점검 대상으로 분리
 
 검증 완료 후 ECS Service의 Desired Count는
-기존 운영 기준인 `1`로 복구했습니다.
+검증 당시 평일 운영 시간 기준인 `1`로 복구했습니다.
