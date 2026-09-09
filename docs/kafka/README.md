@@ -260,12 +260,15 @@ KAFKA_SECURITY_PROTOCOL=PLAINTEXT
 ```
 
 `application-prod.yaml`의 기본 보안 프로토콜은
-기존 Amazon MSK Rollback을 위해 `SASL_SSL`로 유지하고,
-Issue #279 운영 배포에서는 ECS 환경변수로 `PLAINTEXT`를 명시합니다.
+기존 MSK 구성과의 하위 호환성을 위해 `SASL_SSL`로 유지하고,
+현재 Issue #279 운영 환경에서는 ECS 환경변수로 `PLAINTEXT`를 명시합니다.
 
-기존 Amazon MSK는 EC2 Kafka 전환 직후 삭제하지 않고,
-Consumer Lag과 Notification Outbox 상태 및 실제 메시징 기능 검증이 끝날 때까지
-Rollback 대상으로 유지합니다.
+기존 Amazon MSK는 전환 안정화 기간 동안 Rollback 대상으로 유지했으나,
+Consumer Lag과 Notification Outbox 상태,
+EC2 Kafka Produce / Consume 및 실제 메시징 기능 검증을 완료한 뒤 삭제했습니다.
+
+따라서 현재 `SASL_SSL` 기본값만으로 기존 MSK 환경으로 Rollback할 수는 없으며,
+현재 운영 Kafka 기준은 EC2 Data Stack의 Kafka 3.9.2입니다.
 
 ### 운영 Topic
 

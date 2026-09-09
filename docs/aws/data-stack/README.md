@@ -329,6 +329,12 @@ Partition 1, Replication Factor 1을 사용합니다.
 
 ## 10. OpenSearch 데이터 전환
 
+> **현재 상태**
+>
+> RDS 원본 Feed 기반 재색인과 실제 Feed 검색 API 검증을 완료했으며,
+> 기존 Amazon OpenSearch Service는 최종 운영 검증 이후 삭제했습니다.
+> 아래 내용은 Issue #279 전환 당시의 데이터 이관 및 검증 기준을 보존한 기록입니다.
+
 기존 Amazon OpenSearch Service의 인덱스를 직접 Snapshot 이관하지 않습니다.
 
 운영 애플리케이션이 EC2 OpenSearch의 `feeds` 인덱스를 생성한 뒤
@@ -355,6 +361,16 @@ OpenSearch feeds _count
 ---
 
 ## 11. Rollback
+
+> **현재 상태**
+>
+> Amazon ElastiCache, Amazon MSK, Amazon OpenSearch Service는
+> EC2 Data Stack 전환과 실제 기능 검증 완료 후 모두 삭제했습니다.
+>
+> 따라서 아래 Managed 서비스 기반 Rollback 경로는
+> **현재 운영 환경에서는 더 이상 사용할 수 없습니다.**
+> 이 절은 Issue #279 전환 당시의 Rollback 설계와 안정화 기준을
+> 운영 이력으로 보존합니다.
 
 기존 Managed 서비스는 EC2 전환 직후 즉시 삭제하지 않습니다.
 
@@ -582,7 +598,7 @@ ECS → Data EC2 트래픽 제한
 → Redis AUTH Token 폐기 및 재발급
 → 영향받은 Redis 상태 초기화
 → Kafka / OpenSearch 데이터 영향 범위 확인
-→ 필요한 경우 기존 Managed 서비스 기반 복구 검토
+→ EC2 Data Stack 복구 또는 RDS 원본 기반 재색인 / 재구성 검토
 → 원인 제거 후 재배포
 ```
 
@@ -591,9 +607,9 @@ ECS → Data EC2 트래픽 제한
 
 ---
 
-## 13. 운영 종료 후 Managed 리소스 제거
+## 13. Managed 리소스 제거 결과
 
-다음 조건을 모두 만족한 이후 기존 Managed 서비스를 제거합니다.
+다음 조건을 모두 검증한 뒤 기존 Managed 서비스 3종을 삭제했습니다.
 
 ```text
 ECS → EC2 Private IP 연결 검증
@@ -607,7 +623,7 @@ Rolling Deployment 정상
 Rollback 필요성 해소
 ```
 
-삭제 대상:
+삭제 완료:
 
 ```text
 Amazon ElastiCache
@@ -615,4 +631,112 @@ Amazon MSK Provisioned
 Amazon OpenSearch Service
 ```
 
-RDS PostgreSQL과 S3는 이번 비용 최적화 대상에서 제외합니다.
+
+RDS PostgreSQL과 Amazon S3는 이번 비용 최적화 대상에서 제외했으며
+현재 운영 구성에서 계속 사용합니다.
+
+---
+
+## 14. 운영 스케줄
+
+저트래픽 포트폴리오·시연 환경의 실제 사용 시간을 기준으로
+EventBridge Scheduler를 사용해 주요 Compute 리소스의 운영 시간을 제한합니다.
+
+Scheduler 시간대는 `Asia/Seoul (KST)`을 사용합니다.
+
+| 시간 | 평일 운영 |
+| --- | --- |
+| `07:15` | RDS 시작 |
+| `07:15` | Data EC2 시작 |
+| `07:45` | ECS Desired Count `1` |
+| `08:15` | Weather Prefetch |
+| `11:15` | Weather Prefetch |
+| `14:15` | Weather Prefetch |
+| `17:15` | Weather Prefetch |
+| `20:15` | Weather Prefetch |
+| `20:45` | Weather Cleanup |
+| `21:00` | Feed Cleanup |
+| `21:15` | DM Cleanup |
+| `21:30` | Outbox Cleanup |
+| `22:00` | ECS Desired Count `0` |
+| `22:10` | Data EC2 중지 |
+| `22:15` | RDS 중지 |
+
+주말에는 ECS, RDS, Data EC2를 운영하지 않습니다.
+
+시작 시 RDS와 Data EC2는 서로 독립적이므로 동시에 시작하고,
+Data EC2의 `systemd` 서비스가 Redis, Kafka, OpenSearch를 자동으로 기동합니다.
+
+종료 시에는 애플리케이션과 데이터 계층의 의존성을 고려하여
+다음 순서를 유지합니다.
+
+```text
+ECS
+→ Data EC2
+→ RDS
+```
+
+GitHub Actions의 Data Stack Ready Gate는
+Data EC2가 실행 중이고 Redis, Kafka, OpenSearch가 정상 상태일 때만
+ECS 배포를 진행합니다.
+
+따라서 Data EC2 운영시간 외에 배포할 경우
+먼저 Data EC2와 데이터 스택을 시작해야 합니다.
+
+---
+
+## 15. 비용 최적화 검증 결과
+
+AWS Cost Explorer의 `UnblendedCost`를 기준으로
+전환 전 정상 평일과 전환 후 정상 평일 비용을 비교했습니다.
+
+### 변경 전
+
+```text
+2026-09-02  US$6.7146
+2026-09-03  US$6.7948
+
+평균          약 US$6.75 /일
+```
+
+### 변경 후
+
+```text
+2026-09-08  US$2.6956
+
+약 US$2.70 /일
+```
+
+### 절감 결과
+
+| 항목 | 결과 |
+| --- | ---: |
+| 변경 전 평일 평균 | 약 `US$6.75 /일` |
+| 변경 후 평일 비용 | 약 `US$2.70 /일` |
+| 평일 일 절감액 | 약 `US$4.06` |
+| 평일 기준 절감률 | 약 `60.1%` |
+| 평일 20일 단순 환산 | 약 `US$81.2 /월 절감` |
+
+비용 절감의 핵심 구조는 다음과 같습니다.
+
+```text
+Amazon ElastiCache
+Amazon MSK Provisioned
+Amazon OpenSearch Service
+        ↓
+EC2 Data Stack
+Redis + Kafka + OpenSearch
+```
+
+기존 Managed 3종의 비용을 하나의 Data EC2로 통합하고,
+ECS와 RDS를 포함한 주요 Compute 리소스도
+실제 사용 시간에 맞춰 평일에만 제한적으로 운영합니다.
+
+비용 조회 당시 Cost Explorer의 일별 값은 `Estimated=true`였으므로
+최종 청구 과정에서 소폭 조정될 수 있습니다.
+
+또한 `US$81.2 /월`은
+평일 일 절감액 `US$4.06 × 20일`의 단순 환산값입니다.
+
+실제 월 비용은 해당 월의 평일 수와 트래픽,
+ALB, EBS, ECR, VPC 등 상시 또는 별도 과금 항목에 따라 달라질 수 있습니다.

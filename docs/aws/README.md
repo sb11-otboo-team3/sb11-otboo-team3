@@ -231,6 +231,34 @@ AWS 인증정보가 포함되지 않도록 관리합니다.
 * Issue #131: GitHub Actions ECS 자동 배포 구성
 * Issue #279: Managed Redis / Kafka / OpenSearch를 EC2 통합 데이터 스택으로 전환
 
+### Issue #279 이후 현재 운영 상태
+
+현재 운영 데이터 계층은 다음 구조를 사용합니다.
+
+* Amazon RDS PostgreSQL: Managed 서비스 유지
+* Amazon S3: Managed 서비스 유지
+* Redis 7.4: EC2 Data Stack
+* Kafka 3.9.2 KRaft: EC2 Data Stack
+* OpenSearch 1.3.20: EC2 Data Stack
+
+기존 Amazon ElastiCache, Amazon MSK Provisioned,
+Amazon OpenSearch Service는 EC2 전환과 실제 기능 검증,
+EC2 Stop / Start 복구 검증을 완료한 뒤 삭제했습니다.
+
+EventBridge Scheduler는 `Asia/Seoul (KST)` 시간대를 기준으로 사용합니다.
+
+평일에는 RDS와 Data EC2를 `07:15`, ECS를 `07:45`에 시작하고,
+`22:00` ECS → `22:10` Data EC2 → `22:15` RDS 순서로 종료합니다.
+
+주말에는 ECS, RDS, Data EC2를 운영하지 않습니다.
+
+AWS Cost Explorer 기준 평일 비용은
+변경 전 약 `US$6.75 /일`에서 변경 후 약 `US$2.70 /일`로 감소했으며,
+약 `US$4.06 /일`, `60.1%`의 비용 절감 효과를 확인했습니다.
+
+세부 운영 스케줄과 비용 검증 결과는
+[EC2 통합 데이터 스택 운영 구성](./data-stack/README.md)을 기준으로 합니다.
+
 GitHub Actions 자동 Push와 ECS 배포는 Issue #46 범위에 포함하지 않습니다.
 
 ## 10. AWS 서비스별 문서
@@ -238,13 +266,23 @@ GitHub Actions 자동 Push와 ECS 배포는 Issue #46 범위에 포함하지 않
 AWS 서비스별 상세 설정과 검증 절차는 하위 문서에서 관리합니다.
 
 * [Amazon ECR 구성 및 이미지 검증](./ecr/README.md)
+
 * [RDS PostgreSQL 및 S3 구성](./rds-s3/README.md)
-* [Amazon ElastiCache for Redis OSS 구성](./elasticache/README.md)
-* [Amazon MSK Provisioned 운영 Kafka 구성](./msk/README.md)
-* [EC2 통합 데이터 스택 운영 구성](./data-stack/README.md)
+
+* [EC2 통합 데이터 스택 운영 구성](./data-stack/README.md) - **현재 운영 기준**
+
+* [Amazon ElastiCache for Redis OSS 구성](./elasticache/README.md) - #279 전환 전 운영 이력
+
+* [Amazon MSK Provisioned 운영 Kafka 구성](./msk/README.md) - #279 전환 전 운영 이력
+
+* [Amazon OpenSearch Service 운영 구성](./opensearch/README.md) - #279 전환 전 운영 이력
+
 * RDS PostgreSQL 및 S3 운영 환경: Issue #21에서 작성
+
 * ECS 및 ALB 운영 환경: Issue #22에서 작성
+
 * GitHub Actions OIDC 및 ECR Push: Issue #124에서 작성
+
 * GitHub Actions ECS 자동 배포: Issue #131에서 작성
 
 상위 문서에는 AWS 공통 운영 원칙만 작성하고,
