@@ -9,20 +9,21 @@ Application Load Balancer를 통해 외부에서 접근할 수 있도록 구성�
 React·Vite 프론트엔드 정적 리소스는 Spring Boot 애플리케이션에 포함하며,
 ALB DNS의 루트 `/` 경로에서 프론트엔드와 백엔드 API를 함께 제공합니다.
 
-이번 배포에서는 최초 배포의 정상 동작 확인을 우선합니다.
+이번 배포에서는 최초 배포의 정상 동작 확인을 우선했습니다.
 
-후속 이슈에서 다음 구성을 추가로 적용했습니다.
+이후 후속 이슈에서 운영 환경을 단계적으로 보완했습니다.
 
 - Issue #131: GitHub Actions ECS 자동 배포
 - Issue #142: Nginx Reverse Proxy
 - Issue #157: 운영 도메인 DNS 연결
 - Issue #160: HTTPS 및 운영 Secure Cookie 적용
+- Issue #279: Managed Redis / Kafka / OpenSearch를 EC2 Data Stack으로 통합
+- Issue #279: EventBridge Scheduler 기반 운영시간 조정 및 비용 최적화
 
-다음 항목은 후속 이슈에서 진행합니다.
+WebSocket·SSE 연결 및 재연결은 후속 운영 안정화 과정에서 검증했습니다.
 
-- ECS 다중 Task
-- 장시간 WebSocket·SSE 연결 및 재연결
-- AWS 예상 비용 산정 및 비용 최적화
+현재 ECS Service는 저트래픽 포트폴리오·시연 환경을 기준으로
+Desired Count `1`을 유지하며, 다중 Task 구성은 적용하지 않습니다.
 
 ---
 
@@ -176,9 +177,16 @@ EC2 running 확인
 
 Ready Gate가 실패하면 ECS 배포를 진행하지 않습니다.
 
-기존 Amazon ElastiCache, Amazon MSK 및 Amazon OpenSearch Service는
-전환 직후 삭제하지 않고 운영 검증과 안정화가 끝날 때까지
-Rollback 대상으로 유지합니다.
+전환 직후에는 Amazon ElastiCache, Amazon MSK 및
+Amazon OpenSearch Service를 Rollback 대상으로 유지했습니다.
+
+EC2 Data Stack 연결, Redis / Kafka / OpenSearch 기능,
+재색인, 실제 검색 API, EC2 Stop / Start 자동 복구 및
+ECS 재배포 검증을 완료한 뒤 기존 Managed 3종은 모두 삭제했습니다.
+
+현재 ECS는 RDS PostgreSQL과 EC2 Data Stack을 운영 데이터 계층으로 사용합니다.
+최종 운영 스케줄과 비용 검증 결과는
+[EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 기준으로 합니다.
 
 
 ---
@@ -979,12 +987,22 @@ Secret 값만 변경되고 Task Definition 구조가 동일한 경우에도
 10. ECS Cluster 삭제
 ```
 
-RDS, Redis, S3, ECR, Secrets Manager 및 Parameter Store는
+RDS, Data EC2, S3, ECR, Secrets Manager 및 Parameter Store는
 다른 환경과 이슈에서 사용 중인지 확인한 뒤 별도로 정리합니다.
 
 데이터가 저장된 RDS와 S3는 백업 및 보존 정책을 확인하기 전에 삭제하지 않습니다.
 
-AWS 예상 비용 산정과 비용 최적화는 별도 이슈에서 진행합니다.
+Data EC2를 영구 삭제하는 경우에는
+Redis, Kafka, OpenSearch의 상태와 EBS 보존 필요성을 먼저 확인합니다.
+
+AWS 운영 비용 최적화는 Issue #279에서 진행했습니다.
+
+기존 Amazon ElastiCache, Amazon MSK, Amazon OpenSearch Service를 제거하고
+EC2 Data Stack으로 통합했으며,
+ECS / RDS / Data EC2의 평일 운영시간도 함께 조정했습니다.
+
+실제 비용 검증 결과와 최종 Scheduler 운영시간은
+[EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 참고합니다.
 
 ---
 

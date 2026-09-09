@@ -22,10 +22,13 @@
 > EC2 Kafka는 `apache/kafka:3.9.2` 기반 KRaft 단일 노드로 운영하며,
 > Replication Factor는 `1`을 사용합니다.
 >
-> 기존 Amazon MSK는 전환 직후 삭제하지 않고
-> Consumer Lag과 Notification Outbox 상태 확인,
-> 실제 Produce / Consume 검증 및 안정화가 완료될 때까지
-> Rollback 대상으로 유지합니다.
+> 전환 직후에는 기존 Amazon MSK를 Rollback 대상으로 유지했습니다.
+> 이후 Consumer Lag과 Notification Outbox 상태,
+> EC2 Kafka Produce / Consume, Topic 유지 및
+> 실제 ECS Kafka 연결을 검증한 뒤 기존 Amazon MSK를 삭제했습니다.
+>
+> 따라서 현재 운영 환경에서는 Amazon MSK를 사용하지 않으며,
+> 아래 MSK 구성 내용은 전환 이전 운영 이력으로만 유지합니다.
 >
 > 현재 운영 데이터 스택 기준은
 > [EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 참고합니다.

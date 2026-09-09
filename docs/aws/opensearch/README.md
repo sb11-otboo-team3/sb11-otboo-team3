@@ -29,9 +29,13 @@
 > 기존 Amazon OpenSearch Service의 인덱스를 직접 이전하지 않고,
 > RDS의 원본 Feed 데이터를 관리자 재색인 API를 통해 다시 색인합니다.
 >
-> 기존 Amazon OpenSearch Service는 전환 직후 삭제하지 않고
-> 재색인 수량, OpenSearch 문서 수 및 실제 검색 API 검증이 완료될 때까지
-> Rollback 대상으로 유지합니다.
+> 전환 직후에는 기존 Amazon OpenSearch Service를 Rollback 대상으로 유지했습니다.
+> 이후 RDS 원본 Feed 재색인, EC2 OpenSearch 문서 수,
+> 실제 Feed 검색 API 및 EC2 Stop / Start 후 데이터 유지를 검증한 뒤
+> 기존 Amazon OpenSearch Service를 삭제했습니다.
+>
+> 따라서 현재 운영 환경에서는 Amazon OpenSearch Service를 사용하지 않으며,
+> 아래 Managed OpenSearch 구성 내용은 전환 이전 운영 이력으로만 유지합니다.
 >
 > 현재 운영 데이터 스택 기준은
 > [EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 참고합니다.
@@ -52,7 +56,7 @@
 피드 검색 기능의 Full Text Search를 지원하기 위한 검색 인프라를 구성합니다.
 
 개발 환경에서는 Docker 기반 Elasticsearch OSS를 사용하고,
-운영 환경에서는 Amazon OpenSearch Service를 사용합니다.
+Issue #279 전환 이전 운영 환경에서는 Amazon OpenSearch Service를 사용했습니다.
 
 구성 범위는 다음과 같습니다.
 
@@ -499,7 +503,7 @@ Backend Image만 새로운 Git SHA 이미지로 교체합니다.
 
 ## 10. 단일 노드 Replica 운영 기준
 
-현재 운영 OpenSearch는 Data Node가 1개인 단일 노드 구성입니다.
+Issue #279 전환 이전 Amazon OpenSearch Service는 Data Node가 1개인 단일 노드 구성으로 운영했습니다.
 
 OpenSearch의 Replica Shard는
 Primary Shard와 동일한 노드에 배치될 수 없습니다.

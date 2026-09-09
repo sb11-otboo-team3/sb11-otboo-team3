@@ -12,8 +12,12 @@
 > 기존 `REDIS_PASSWORD` SSM Secret은 재사용하며
 > `REDIS_SSL_ENABLED=false`를 사용합니다.
 >
-> 기존 ElastiCache는 전환 직후 삭제하지 않고 실제 기능 검증과
-> 안정화가 완료될 때까지 Rollback 대상으로 유지합니다.
+> 전환 직후에는 기존 ElastiCache를 Rollback 대상으로 유지했습니다.
+> 이후 EC2 Redis 연결, AUTH, 데이터 유지, EC2 Stop / Start 자동 복구 및
+> 실제 애플리케이션 Redis 사용 경로를 검증한 뒤 기존 ElastiCache를 삭제했습니다.
+>
+> 따라서 현재 운영 환경에서는 ElastiCache를 사용하지 않으며,
+> 아래 ElastiCache 구성 내용은 전환 이전 운영 이력으로만 유지합니다.
 >
 > 현재 운영 데이터 스택은
 > [EC2 통합 데이터 스택 운영 구성](../data-stack/README.md)을 기준으로 합니다.
